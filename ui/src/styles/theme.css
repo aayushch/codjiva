@@ -1,46 +1,25 @@
 /**
- * The light theme of the app's own window, and the rule that keeps pictures and films dark.
+ * How the app's window uses the two palettes of tokens.css.
  *
- * tokens.css defines the dark palette, which is the default. The root element has the attribute
- * data-theme="light" or data-theme="dark"; lib/theme.ts sets it from the `theme` setting.
+ * tokens.css defines the dark palette, which is the default, and the light palette. The root
+ * element has the attribute data-theme="light" or data-theme="dark"; lib/theme.ts sets it from
+ * the `theme` setting.
  */
 :root { color-scheme:dark }
 
-/* Light theme: drafting paper with dark ink. Amber and cyan are darker than in the dark theme
-   so that text in those colours stays readable on a light background. Only the base colours
-   and the shell neutrals are set here; tokens.css derives every other tone from them. */
-:root[data-theme="light"] {
-  color-scheme:light;
-  --ground:#F7F5EF;
-  --main:#A05F00;
-  --second:#1A202B;
-  --accent:#0E7490;
-
-  --shell-window:#E3E0D8;
-  --shell-bar:#EFEDE6;
-  --shell-button:#E2DFD6;
-  --shell-hover:#D6D2C8;
-  --shell-border:#C6C2B6;
-  --shell-border-soft:#D8D5CB;
-  --shell-tick:#868C97;
-  --shell-text-2:#505866;
-}
-/* The page of a picture or a film declares no colour scheme, which browsers treat as light.
-   A frame whose own scheme differs from its page's scheme is given an opaque white background
-   by the browser. Declaring every frame light keeps the two equal, so the frame stays
-   transparent and the dark canvas behind it shows through. */
-iframe { color-scheme:light }
-
+/* The light palette itself is in tokens.css, next to the dark one. These rules soften what is
+   drawn over the window in the light theme. */
 :root[data-theme="light"] .scrim { background:rgba(26,32,43,.35) }
 :root[data-theme="light"] .dialog { box-shadow:0 20px 60px rgba(26,32,43,.25) }
 :root[data-theme="light"] .toast { box-shadow:0 12px 30px rgba(26,32,43,.2) }
 
-/* A picture or a film is drawn in the dark palette on a transparent page, so whatever is behind
-   its frame must be dark in both themes. These are the three places that hold such a frame:
-   the canvas while it shows an artifact, the thumbnails in the library, and the hidden frame
-   that checks new artifacts. Inside them the dark palette of tokens.css is declared again,
-   together with the derived tones, because a derived tone is computed where it is declared. */
-:root[data-theme="light"] :is(.canvas:has(iframe), .thumb, .validator) {
+/* A picture or a film is transparent around its drawing, so whatever is behind its frame has
+   to be in the same palette as the drawing. A frame whose page is drawn in the dark palette
+   has the class `dark-stage` (see ArtifactFrame.svelte). The thumbnails in the library and the
+   hidden frame that checks new artifacts are always drawn dark. Inside these three places the
+   dark palette of tokens.css is declared again, together with the derived tones, because a
+   derived tone is computed where it is declared. */
+:root[data-theme="light"] :is(.canvas:has(iframe.dark-stage), .thumb, .validator) {
   color-scheme:dark;
   color:var(--second);
   --ground:#14181F;
@@ -56,6 +35,7 @@ iframe { color-scheme:light }
   --amberdim:color-mix(in srgb, var(--main) 35%, var(--ground));
   --cyandim:color-mix(in srgb, var(--accent) 35%, var(--ground));
   --chip:color-mix(in srgb, var(--second) 12%, var(--ground));
+  --drop:rgba(0,0,0,.45);
   --shell-window:#0c0e12;
   --shell-bar:#101318;
   --shell-button:#1b2029;

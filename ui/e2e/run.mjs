@@ -513,6 +513,25 @@ await page.getByRole('button', { name: 'Turn sound on' }).click();
 await page.getByRole('button', { name: 'Mute' }).waitFor({ timeout: 3000 });
 check(true, 'the sound button switches the film\'s sound and mirrors its state');
 
+// ---- the film is drawn in the app's theme
+const exampleFrame = page.frameLocator('.canvas iframe');
+await page.keyboard.press(`${mod}+,`);
+await section('Appearance').click();
+await page.getByRole('button', { name: 'Light', exact: true }).click();
+await page.getByRole('button', { name: 'Done' }).click();
+await exampleFrame.locator('html[data-theme="light"]').waitFor({ timeout: 5000 });
+await page.locator('.canvas iframe:not(.dark-stage)').waitFor({ timeout: 5000 });
+const paper = await page.locator('.canvas').evaluate((el) => getComputedStyle(el).backgroundColor);
+check(paper === 'rgb(247, 245, 239)', 'in the light theme the film and the canvas behind it are light', paper);
+await shot('07b-film-light');
+await page.keyboard.press(`${mod}+,`);
+await section('Appearance').click();
+await page.getByRole('button', { name: 'Dark', exact: true }).click();
+await page.getByRole('button', { name: 'Done' }).click();
+await exampleFrame.locator('html:not([data-theme])').waitFor({ timeout: 5000 });
+await page.locator('.canvas iframe.dark-stage').waitFor({ timeout: 5000 });
+check(true, 'back in the dark theme the film is dark again, without reloading');
+
 // ---- example visual
 await page.locator('.tab', { hasText: 'Visual' }).click();
 await page.locator('.zoomctl').waitFor();

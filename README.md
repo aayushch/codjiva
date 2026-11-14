@@ -86,7 +86,7 @@ agent run.
 | Show the story outline for approval | on | A finished film waits until you accept its outline. |
 | Spending limit per job | none | For agents that can enforce one. |
 | Never suggest these files and folders | `vendor/`, `third_party/`, `node_modules/` | Patterns for third-party and generated code that should not be suggested as companion files. One per line, written like a line of a `.gitignore` file: `vendor/` is every folder of that name, `/internal/generated/` is that one folder, `*.pb.go` is every file with that ending. |
-| Theme | Match the system | Light or dark for the window. Visuals and films are always drawn on the dark blueprint. |
+| Theme | Match the system | Light or dark, for the window and for the visuals and films shown in it. An artifact made by an earlier version stays dark until it is made again, and an exported film is dark. |
 
 ## Building from source
 

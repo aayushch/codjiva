@@ -84,8 +84,8 @@ pub enum EffortSetting {
     High,
 }
 
-/// Which colours the app's own window uses. The pictures and films it shows are always drawn
-/// on the dark blueprint.
+/// Which colours the app's window uses. The visuals and films shown in it are drawn in the
+/// same theme.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {

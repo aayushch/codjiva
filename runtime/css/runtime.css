@@ -78,10 +78,10 @@ html.embed, html.embed body, html.embed #app { background:transparent }
 /* ---------- bubbles (the runtime sets opacity and the clamping transform) ---------- */
 .bub { position:absolute; width:max-content; max-width:420px; padding:12px 16px; font-size:20px; line-height:1.4;
   color:var(--second); background:var(--ground); border:2px solid var(--accent); border-radius:var(--radius-l);
-  box-shadow:0 0 0 7px color-mix(in srgb, var(--accent) 22%, transparent), 0 12px 30px rgba(0,0,0,.45);
+  box-shadow:0 0 0 7px color-mix(in srgb, var(--accent) 22%, transparent), 0 12px 30px var(--drop);
   opacity:0; white-space:normal }
 .bub .k { display:block; font-size:18px; letter-spacing:.06em; color:var(--accent); margin-bottom:6px }
-.bub.alarm { border-color:var(--main); box-shadow:0 0 0 7px color-mix(in srgb, var(--main) 26%, transparent), 0 12px 30px rgba(0,0,0,.45) }
+.bub.alarm { border-color:var(--main); box-shadow:0 0 0 7px color-mix(in srgb, var(--main) 26%, transparent), 0 12px 30px var(--drop) }
 .bub.alarm .k { color:var(--main) }
 .bub::after { content:''; position:absolute; width:18px; height:18px; background:var(--ground); border:2px solid var(--accent); transform:rotate(45deg) }
 .bub.alarm::after { border-color:var(--main) }
@@ -111,7 +111,7 @@ html.embed, html.embed body, html.embed #app { background:transparent }
 .cj-marker.open { box-shadow:0 0 0 5px color-mix(in srgb, var(--second) 45%, transparent) }
 .cj-layer-off { display:none !important }
 .cj-tip { position:absolute; max-width:440px; padding:8px 12px; font-size:16px; line-height:1.35; color:var(--ink); background:var(--ground);
-  border:1.5px solid var(--line); border-radius:var(--radius-m); box-shadow:0 12px 30px rgba(0,0,0,.45); opacity:0; pointer-events:none }
+  border:1.5px solid var(--line); border-radius:var(--radius-m); box-shadow:0 12px 30px var(--drop); opacity:0; pointer-events:none }
 .cj-tip b { display:block; color:var(--second) }
 
 /* Point-at mode: the app has asked the user to click the element their feedback is about. */

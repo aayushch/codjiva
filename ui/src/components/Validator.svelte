@@ -61,7 +61,7 @@
 {#if current}
   {#key current.token}
     <div class="validator" aria-hidden="true">
-      <ArtifactFrame bind:this={frame} src={api.artifactUrl(`artifact/${current.artifactId}/${current.version}`) + '?embed=1'} title="Self-test" {onmessage} />
+      <ArtifactFrame bind:this={frame} src={api.artifactUrl(`artifact/${current.artifactId}/${current.version}`) + '?embed=1'} title="Self-test" {onmessage} followTheme={false} />
     </div>
   {/key}
 {/if}

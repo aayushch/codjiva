@@ -8,6 +8,10 @@
 //
 // With `?poster=1` as well, a film draws the single frame named by its `thumbT` and does not
 // play. The app uses that for the small pictures in its library.
+//
+// An artifact is drawn in the dark palette unless it is told to use the light one. It is told
+// by `?theme=light` in the URL, or by a `theme` message from the app. The page reports the
+// palette in use in its `ready` message and after every `theme` message.
 
 const ICONS = {
   play: '<svg class="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg>',
@@ -30,7 +34,7 @@ const formatTime = (x) => {
   return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 };
 
-CJ.version = '1.0.0';
+CJ.version = '1.1.0';
 
 CJ.boot = async (data) => {
   const params = new URLSearchParams(window.location.search);
@@ -46,6 +50,14 @@ CJ.boot = async (data) => {
   const controls = $('controls');
   const markEmbedded = () => { document.documentElement.classList.add('embed'); document.body.classList.add('embed'); };
   if (embedded) markEmbedded();
+  // The style sheet holds both palettes. The attribute data-theme="light" on the root element
+  // selects the light one, and without the attribute the dark one applies.
+  const setTheme = (mode) => {
+    if (mode === 'light') document.documentElement.dataset.theme = 'light';
+    else delete document.documentElement.dataset.theme;
+  };
+  const theme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+  setTheme(params.get('theme'));
 
   // Messages go to the page that embeds this artifact. A standalone artifact has no such page.
   const host = window.parent !== window ? window.parent : null;
@@ -184,6 +196,7 @@ CJ.boot = async (data) => {
       if (ev.source !== host || !ev.data || !ev.data.cj) return;
       const msg = ev.data;
       if (msg.cj === 'hello') { embedded = true; markEmbedded(); fit(); sendReady(); }
+      else if (msg.cj === 'theme') { setTheme(msg.mode); post({ cj: 'theme', mode: theme() }); }
       else if (msg.cj === 'legend') visual.setLegend(msg.on);
       else if (msg.cj === 'layers') visual.setLayers(msg.on || {});
       else if (msg.cj === 'fit') visual.fit();
@@ -193,7 +206,7 @@ CJ.boot = async (data) => {
       else if (msg.cj === 'selftest') Promise.resolve(runSelfTest(msg.opts)).then((report) => post({ cj: 'selftest', report }));
     });
     pickContext = () => ({ prefix: 'v' });
-    const sendReady = () => post({ cj: 'ready', kind: 'visual', title: data.visual.title, layers: visual.layers(), nodes: (data.visual.nodes || []).map((n) => n.id), legend: visual.hasLegend, runtime: CJ.version });
+    const sendReady = () => post({ cj: 'ready', kind: 'visual', title: data.visual.title, layers: visual.layers(), nodes: (data.visual.nodes || []).map((n) => n.id), legend: visual.hasLegend, runtime: CJ.version, theme: theme() });
     fit();
     window.__cj = { kind: 'visual', visual, selfTest: runSelfTest, registry };
     document.body.classList.add('ready');
@@ -358,12 +371,13 @@ CJ.boot = async (data) => {
     const local = Math.min(scene.duration, Math.max(0, t - scene.start));
     return { prefix: scene.meta.id, scene: scene.meta.id, t: Math.round(t * 100) / 100, sceneT: Math.round(scene.warp.tau(local) * 100) / 100 };
   };
-  const sendReady = () => post({ cj: 'ready', kind: 'film', title: data.film.title, duration: total, chapters: film.chapters(), runtime: CJ.version });
+  const sendReady = () => post({ cj: 'ready', kind: 'film', title: data.film.title, duration: total, chapters: film.chapters(), runtime: CJ.version, theme: theme() });
 
   window.addEventListener('message', (ev) => {
     if (ev.source !== host || !ev.data || !ev.data.cj) return;
     const msg = ev.data;
     if (msg.cj === 'hello') { embedded = true; markEmbedded(); fit(); sendReady(); sendTime(true); }
+    else if (msg.cj === 'theme') { setTheme(msg.mode); post({ cj: 'theme', mode: theme() }); }
     else if (msg.cj === 'play') play();
     else if (msg.cj === 'pause') pause();
     else if (msg.cj === 'seek') seek(Number(msg.t) || 0);

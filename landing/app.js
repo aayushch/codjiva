@@ -17,6 +17,7 @@
 			var light = root.getAttribute('data-mode') !== 'light';
 			if (light) root.setAttribute('data-mode', 'light'); else root.removeAttribute('data-mode');
 			try { localStorage.setItem('codjiva-mode', light ? 'light' : 'dark'); } catch (e) {}
+			showDemo();
 		});
 	}
 
@@ -31,17 +32,28 @@
 	var frame = one('#demo-frame');
 	var note = one('#demo-note');
 	var keys = one('#demo-keys');
+	// The example on show. It starts as the film, which the page's own markup already loads.
+	var shown = 'film';
+	// Loads the example on show into the frame, in the page's theme. An example page is drawn in
+	// its light palette when its address ends in `?theme=light`. The frame is left alone when it
+	// already shows that address, so a film that is playing is not started again for nothing.
+	function showDemo() {
+		var demo = DEMOS[shown];
+		if (!demo || !frame) return;
+		var address = demo.src + (root.getAttribute('data-mode') === 'light' ? '?theme=light' : '');
+		if (frame.getAttribute('src') !== address) frame.setAttribute('src', address);
+		frame.title = demo.title;
+		if (note) note.textContent = demo.note;
+		if (keys) keys.hidden = !demo.keys;
+	}
 	all('.tab[data-demo]').forEach(function (tab) {
 		tab.addEventListener('click', function () {
-			var demo = DEMOS[tab.getAttribute('data-demo')];
-			if (!demo || !frame) return;
+			shown = tab.getAttribute('data-demo');
 			all('.tab[data-demo]').forEach(function (other) { other.setAttribute('aria-selected', other === tab ? 'true' : 'false'); });
-			frame.src = demo.src;
-			frame.title = demo.title;
-			if (note) note.textContent = demo.note;
-			if (keys) keys.hidden = !demo.keys;
+			showDemo();
 		});
 	});
+	showDemo();
 	// The example pages are built when the site is published. In a local copy that has not
 	// run scripts/landing.sh they are missing, and the frame would show the browser's error
 	// page. A request for the film page tells the two cases apart. On a page opened from a

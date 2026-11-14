@@ -15,9 +15,10 @@ const STORAGE_KEY = 'codjiva.theme';
 
 const systemIsLight = () => window.matchMedia('(prefers-color-scheme: light)').matches;
 
-// Sets the page and the window to the theme the setting asks for.
-export function applyTheme(setting: ThemeSetting) {
-  document.documentElement.dataset.theme = setting === 'system' ? (systemIsLight() ? 'light' : 'dark') : setting;
+// Sets the page and the window to the theme the setting asks for. Returns the theme now in use.
+export function applyTheme(setting: ThemeSetting): 'light' | 'dark' {
+  const theme = setting === 'system' ? (systemIsLight() ? 'light' : 'dark') : setting;
+  document.documentElement.dataset.theme = theme;
   try {
     localStorage.setItem(STORAGE_KEY, setting);
   } catch {
@@ -26,6 +27,7 @@ export function applyTheme(setting: ThemeSetting) {
   // The window's own theme decides the look of what the operating system draws, such as the
   // list a drop-down opens. `null` hands the choice back to the operating system.
   api.setWindowTheme(setting === 'system' ? null : setting).catch(() => {});
+  return theme;
 }
 
 // Applies the theme that was in use when the app last ran. Called before the interface is

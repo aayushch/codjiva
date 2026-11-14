@@ -39,8 +39,8 @@
   $effect(() => {
     const setting = app.settings?.theme;
     if (!setting) return;
-    applyTheme(setting);
-    if (setting === 'system') return onSystemThemeChange(() => applyTheme('system'));
+    app.theme = applyTheme(setting);
+    if (setting === 'system') return onSystemThemeChange(() => { app.theme = applyTheme('system'); });
   });
 
   // The sidebar's width when a drag of its edge began.

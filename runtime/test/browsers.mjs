@@ -47,6 +47,15 @@ for (const [name, engine] of [['chromium', chromium], ['firefox', firefox], ['we
   check(errors.length === 0, `${name}: film logs no errors`, errors.join(' | '));
   await page.close();
 
+  // ---- the same film asked for in the light palette
+  page = await context.newPage();
+  await page.goto(pathToFileURL(filmFile).href + '?theme=light');
+  await page.waitForFunction(() => document.body.classList.contains('ready') && !!window.__cj, null, { timeout: 30000 });
+  const ground = await page.evaluate(() => getComputedStyle(document.getElementById('stage')).getPropertyValue('--ground').trim());
+  const lightReport = await page.evaluate(() => window.__cj.selfTest({}));
+  check(ground.toUpperCase() === '#F7F5EF' && lightReport.ok, `${name}: with ?theme=light the film uses the light palette and still passes its self-test`, ground);
+  await page.close();
+
   // ---- still visual
   page = await context.newPage();
   errors = [];

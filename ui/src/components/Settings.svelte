@@ -136,7 +136,7 @@
         {:else if section === 'appearance'}
           <div class="field"><span class="label">Theme</span>
             <div class="seg">{#each themes as [value, label]}<button class="btn" class:on={s.theme === value} aria-pressed={s.theme === value} onclick={() => set('theme', value)}>{label}</button>{/each}</div>
-            <div class="why">The colours of the window, its panels and the source view. Visuals and films are always drawn on the dark blueprint, in both themes.</div></div>
+            <div class="why">The colours of the window, and of the visuals and films shown in it. A visual or a film made by an earlier version of the app stays dark until it is made again. An exported film is dark.</div></div>
         {/if}
       {/if}
     </div>

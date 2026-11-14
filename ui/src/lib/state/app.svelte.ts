@@ -42,6 +42,8 @@ class AppState {
   workspace = $state<WorkspaceInfo | null>(null);
   recents = $state<RecentWorkspace[]>([]);
   settings = $state<Settings | null>(null);
+  // The theme the window is drawn in. It follows the `theme` setting; App.svelte sets it.
+  theme = $state<'light' | 'dark'>(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
 
   // The entries of every folder loaded so far, by folder path. "" is the workspace root.
   children = $state<Record<string, TreeEntry[]>>({});
