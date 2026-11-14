@@ -1,0 +1,35 @@
+# Codjiva
+
+> Codjiva is a free, open-source desktop app that shows what code does instead of showing the code. It opens a folder like an IDE. For a file you pick, the coding agent you already use reads the code and draws it as a blueprint of machines, pipes, tanks and limits, or as a short narrated film that follows one unit of work through the file. Licence: Apache 2.0. Platforms: macOS, Windows, Linux.
+
+Codjiva contains no AI model. It runs a coding agent installed on the computer (Claude Code, Cursor Agent, Codex CLI, Gemini CLI, Antigravity, Pi), or calls a model provider with the user's own API key (Anthropic, OpenAI, Google Gemini, or any server that speaks the OpenAI chat format). It has no servers, no accounts and no telemetry.
+
+## The three things it makes
+
+1. Visualise: a still, explorable blueprint of one file or one folder. Click a part to see its role and the line of code it stands for. Numbered markers open short explanations. Layers switch data flow, control, error paths and labels on and off.
+2. Animate: a narrated film of one to five minutes. It follows one unit of work (an order, a request, a log line) through the file and the companion files the user ticks. Chapters show the normal path, the limits, and what happens when a limit is hit. Playback runs from 0.75x to 4x.
+3. Compose: joins the visuals of several files into one pipeline, at the call or message where one file hands work to the next, as a still picture or as a film that crosses the join.
+
+## How a job works
+
+1. The user picks a file and can say what the picture should show.
+2. The agent reads the file and writes a small set of source files (a plant, scenes, a declarative film.json) against Codjiva's drawing runtime. It may write only inside the workspace's `.codjiva/` folder; a write guard checks this and can undo anything else.
+3. Codjiva builds those sources into one self-contained HTML page and tests it in a hidden frame: overlapping labels, text that overflows its box, scenes that are not deterministic, state that jumps between chapters. Failures go back to the agent to fix, up to a set number of rounds.
+4. The result is shown in a sandboxed frame without network access. Each version is kept. When a source file changes, the artifact is marked stale; nothing is regenerated automatically.
+5. Feedback: the user writes what should change, optionally pinned to a moment of the film and to an element they point at. A new version is made with only that change.
+
+## Facts
+
+- Artifacts are plain HTML files under `<workspace>/.codjiva/`. An exported film opens offline in any browser, with its own player.
+- Companion files for a film are suggested from imports, tests and usages. An ignore list (patterns like `.gitignore` lines, for example `vendor/`) keeps third-party code out of the suggestions.
+- API keys are stored in the operating system's credential store, never in a file.
+- Tested end to end with Claude Code and Cursor Agent. The other agents and the API-key providers are implemented but not yet confirmed against the real services.
+- Built with Tauri 2, Rust and Svelte 5.
+
+## Links
+
+- Website: https://aayushch.github.io/codjiva/
+- Source: https://github.com/aayushch/codjiva
+- Downloads: https://github.com/aayushch/codjiva/releases/latest
+- Privacy: https://aayushch.github.io/codjiva/privacy.html
+- Terms: https://aayushch.github.io/codjiva/terms.html

@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codjiva/visual.schema.json",
+  "title": "Still visual definition (visual.json)",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "title": {
+      "type": "string"
+    },
+    "desc": {
+      "type": "string"
+    },
+    "camera": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "number"
+        },
+        "dur": {
+          "type": "number"
+        },
+        "cx": {
+          "type": "number"
+        },
+        "cy": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 6
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "cx",
+        "cy",
+        "z"
+      ]
+    },
+    "state": {
+      "type": "object"
+    },
+    "legend": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "primary",
+              "secondary",
+              "transient",
+              "batch",
+              "tally"
+            ]
+          },
+          "html": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "html"
+        ]
+      }
+    },
+    "layers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "line"
+              ]
+            }
+          },
+          "select": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "role",
+          "select"
+        ]
+      }
+    },
+    "markers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "n": {
+            "type": "integer"
+          },
+          "bubble": {
+            "type": "object",
+            "properties": {
+              "kicker": {
+                "type": "string"
+              },
+              "html": {
+                "type": "string"
+              },
+              "tail": {
+                "enum": [
+                  "u",
+                  "d",
+                  "l",
+                  "r"
+                ]
+              },
+              "alarm": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kicker",
+              "html"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "x",
+          "y",
+          "n",
+          "bubble"
+        ]
+      },
+      "maxItems": 12
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "title",
+    "camera",
+    "nodes"
+  ]
+}

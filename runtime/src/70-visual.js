@@ -1,0 +1,296 @@
+// The still visual: one copy of the plant that the viewer can pan, zoom and inspect. There is no
+// timeline. Hovering a part highlights it, clicking selects it, numbered markers open bubbles,
+// and layers can be switched off to declutter.
+
+/*@api
+## Still visuals (`visual.json`)
+
+A visual shows the plant once, in a representative state, with no timeline. The runtime provides pan, zoom,
+hover highlight, click to select, layer toggles and numbered markers. You only declare data:
+
+| Field | Meaning |
+|-------|---------|
+| `title` | Shown in the title band. |
+| `camera` | `{ cx, cy, z }`: the default framing. Choose it so the whole flow is visible with at least 40 px of margin. |
+| `state` | The plant state to show, merged over the plant's `defaults`. Pick a moment where the interesting parts are visible at once. |
+| `nodes` | The clickable parts: `{ id, label, role, refs: [{ path, line }], select: [names] }`. `select` lists the unprefixed names of the elements that highlight together; give each clickable machine one wrapping element. |
+| `layers` | `{ data: [...], control: [...], errors: [...], labels: [...] }`. Each entry is an unprefixed element name, a name ending in `*` (matches `pipe1`, `pipe2`, ...), or a class selector starting with `.` (such as `.pl` and `.plt` for all labels and plates). |
+| `markers` | 3 to 8 points of interest: `{ x, y, n, bubble: { kicker, html, tail, alarm } }`. `n` is the number shown, in reading order along the flow. Clicking a marker opens its bubble beside it. |
+| `legend` | Optional rows `{ kind, html }`, one per packet kind used. |
+*/
+
+const buildVisual = (visual, stage, post) => {
+  const plant = registry.plant;
+  if (!plant) throw new Error('No plant is defined. plant.js must call CJ.definePlant({...}).');
+  const box = document.createElement('div');
+  box.className = 'scene-box';
+  box.dataset.scene = 'v';
+  stage.append(box);
+
+  const markers = visual.markers || [];
+  const bubbles = markers.map((m) => Object.assign({ x: m.x, y: m.y, maxWidth: 420 }, m.bubble));
+  const m = mountPlantCopy(box, 'v', plant, visual.title, {}, bubbles);
+  const world = m.world;
+  const state = Object.assign({}, plant.defaults || {}, visual.state || {});
+  if (plant.set) plant.set(m.refs, state, 0);
+
+  // An overlay inside the world. When a part is highlighted, a veil dims the whole drawing and
+  // copies of the highlighted elements are drawn above the veil at full brightness.
+  const veil = elementFromHtml('<div class="cj-veil"></div>');
+  const liftSvg = elementFromHtml('<svg class="art cj-lift" viewBox="0 0 1920 1080"></svg>');
+  const liftHtml = elementFromHtml('<div class="cj-lift-html"></div>');
+  m.dimmer.before(veil, liftSvg, liftHtml);
+
+  const markerEls = markers.map((marker, i) => {
+    const el = elementFromHtml('<div class="cj-marker' + (marker.bubble && marker.bubble.alarm ? ' alarm' : '') + '" style="left:' + marker.x + 'px;top:' + marker.y + 'px">' + CJ.esc(marker.n == null ? i + 1 : marker.n) + '</div>');
+    m.dimmer.before(el);
+    return el;
+  });
+
+  const tip = elementFromHtml('<div class="cj-tip"></div>');
+  m.view.append(tip);
+
+  // Every element that belongs to a node, by node id.
+  const nodes = (visual.nodes || []).map((node) => {
+    const els = [];
+    (node.select || []).forEach((name) => { const el = m.q(name); if (el) els.push(el); });
+    els.forEach((el) => { el.classList.add('cj-node'); el.setAttribute('data-node', node.id); });
+    return { node, els };
+  });
+  const nodeById = {};
+  nodes.forEach((entry) => { nodeById[entry.node.id] = entry; });
+
+  // The elements each layer switches, resolved once from the layer's patterns.
+  const layerEls = {};
+  const prefixed = Array.from(world.querySelectorAll('[class]'));
+  Object.keys(visual.layers || {}).forEach((layer) => {
+    const found = new Set();
+    visual.layers[layer].forEach((pattern) => {
+      if (pattern.charAt(0) === '.') {
+        world.querySelectorAll(pattern).forEach((el) => found.add(el));
+        return;
+      }
+      const star = pattern.charAt(pattern.length - 1) === '*';
+      const stem = m.c(star ? pattern.slice(0, -1) : pattern);
+      prefixed.forEach((el) => {
+        const classes = (el.getAttribute('class') || '').split(/\s+/);
+        if (classes.some((one) => (star ? one.indexOf(stem) === 0 : one === stem))) found.add(el);
+      });
+    });
+    layerEls[layer] = Array.from(found);
+  });
+  const layerOn = {};
+  Object.keys(layerEls).forEach((layer) => { layerOn[layer] = true; });
+
+  const home = { cx: visual.camera.cx, cy: visual.camera.cy, z: visual.camera.z };
+  const view = { cx: home.cx, cy: home.cy, z: home.z };
+  let hovered = null;
+  let selected = null;
+  let openMarker = -1;
+  const bubbleSizes = bubbles.map(() => ({}));
+
+  // Where a marker's bubble goes: beside the marker, on the side its tail points away from.
+  const placeBubble = (i) => {
+    const el = m.bubbleEls[i];
+    const marker = markers[i];
+    const tail = (marker.bubble && marker.bubble.tail) || 'u';
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    let left = marker.x - 49;
+    let top = marker.y + 34;
+    if (tail === 'd') top = marker.y - 34 - h;
+    if (tail === 'l') { left = marker.x + 34; top = marker.y - 35; }
+    if (tail === 'r') { left = marker.x - 34 - w; top = marker.y - 35; }
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    if (!el.classList.contains('tail-' + tail)) el.classList.add('tail-' + tail);
+    bubbleSizes[i] = {};
+  };
+
+  const liftCopies = (entry, cls) => {
+    entry.els.forEach((el) => {
+      const copy = el.cloneNode(true);
+      copy.removeAttribute('id');
+      copy.querySelectorAll('[id]').forEach((child) => child.removeAttribute('id'));
+      copy.classList.add(cls);
+      copy.classList.remove('cj-layer-off');
+      copy.setAttribute('data-copy', '1');
+      (el instanceof SVGElement ? liftSvg : liftHtml).append(copy);
+    });
+  };
+
+  const draw = () => {
+    const scale = view.z * CAMERA_SCALE;
+    applyFraming(world, view.cx, view.cy, scale);
+    liftSvg.replaceChildren();
+    liftHtml.replaceChildren();
+    const focus = selected || hovered;
+    veil.style.opacity = focus ? 0.6 : 0;
+    if (selected) liftCopies(nodeById[selected], 'cj-selected');
+    if (hovered && hovered !== selected) liftCopies(nodeById[hovered], 'cj-hover');
+    m.bubbleEls.forEach((el, i) => {
+      const open = i === openMarker;
+      el.style.opacity = open ? 1 : 0;
+      el.style.pointerEvents = open ? 'auto' : 'none';
+      if (open) clampBubble(el, bubbleSizes[i], { cx: view.cx, cy: view.cy, z: scale }); else el.style.transform = '';
+    });
+    markerEls.forEach((el, i) => { el.classList.toggle('open', i === openMarker); });
+  };
+
+  const setLayers = (on) => {
+    Object.keys(layerEls).forEach((layer) => {
+      if (on && on[layer] != null) layerOn[layer] = !!on[layer];
+      layerEls[layer].forEach((el) => el.classList.toggle('cj-layer-off', !layerOn[layer]));
+    });
+  };
+
+  const select = (id, silent) => {
+    selected = id && nodeById[id] ? id : null;
+    draw();
+    if (!silent) post({ cj: 'selected', nodeId: selected });
+  };
+
+  const fit = () => {
+    view.cx = home.cx;
+    view.cy = home.cy;
+    view.z = home.z;
+    draw();
+  };
+
+  // The factor between page pixels and stage pixels, which changes when the window is resized.
+  const stageScale = () => stage.getBoundingClientRect().width / STAGE_W || 1;
+
+  const zoomAt = (factor, pageX, pageY) => {
+    const k = stageScale();
+    const rect = m.view.getBoundingClientRect();
+    const vx = (pageX - rect.left) / k;
+    const vy = (pageY - rect.top) / k;
+    const before = view.z * CAMERA_SCALE;
+    const wx = view.cx + (vx - VIEW_CX) / before;
+    const wy = view.cy + (vy - VIEW_CY) / before;
+    view.z = Math.min(3, Math.max(0.5, view.z * factor));
+    const after = view.z * CAMERA_SCALE;
+    view.cx = Math.min(STAGE_W, Math.max(0, wx - (vx - VIEW_CX) / after));
+    view.cy = Math.min(STAGE_H, Math.max(0, wy - (vy - VIEW_CY) / after));
+    draw();
+  };
+
+  // The id of the node at a page position, or null. Smaller parts are often drawn on top of the
+  // machine they belong to (a gear on a gate, stamps in a processor), so the topmost element is
+  // not enough: this looks down through everything stacked at that position for the first
+  // element that belongs to a node.
+  const nodeAt = (pageX, pageY) => {
+    const stack = document.elementsFromPoint(pageX, pageY);
+    for (const el of stack) {
+      if (!world.contains(el)) continue;
+      const owner = el.closest('[data-node]');
+      if (owner) return owner.getAttribute('data-node');
+    }
+    return null;
+  };
+
+  let drag = null;
+  m.view.addEventListener('pointerdown', (ev) => {
+    drag = { x: ev.clientX, y: ev.clientY, cx: view.cx, cy: view.cy, moved: false };
+    m.view.setPointerCapture(ev.pointerId);
+  });
+  m.view.addEventListener('pointermove', (ev) => {
+    if (drag) {
+      const k = stageScale() * view.z * CAMERA_SCALE;
+      const dx = ev.clientX - drag.x;
+      const dy = ev.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+      if (drag.moved) {
+        view.cx = Math.min(STAGE_W, Math.max(0, drag.cx - dx / k));
+        view.cy = Math.min(STAGE_H, Math.max(0, drag.cy - dy / k));
+        draw();
+      }
+      return;
+    }
+    const id = nodeAt(ev.clientX, ev.clientY);
+    if (id !== hovered) {
+      hovered = id;
+      draw();
+      post({ cj: 'hover', nodeId: hovered });
+    }
+    if (hovered) {
+      const node = nodeById[hovered].node;
+      const k = stageScale();
+      const rect = m.view.getBoundingClientRect();
+      tip.innerHTML = '<b>' + CJ.esc(node.label) + '</b><span>' + CJ.esc(node.role || '') + '</span>';
+      tip.style.left = Math.min(VIEW_W - 460, (ev.clientX - rect.left) / k + 18) + 'px';
+      tip.style.top = Math.min(VIEW_H - 120, (ev.clientY - rect.top) / k + 18) + 'px';
+      tip.style.opacity = 1;
+    } else {
+      tip.style.opacity = 0;
+    }
+  });
+  m.view.addEventListener('pointerup', (ev) => {
+    const wasDrag = drag && drag.moved;
+    drag = null;
+    if (wasDrag) return;
+    const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    const markerIndex = markerEls.indexOf(under);
+    if (markerIndex >= 0) {
+      openMarker = openMarker === markerIndex ? -1 : markerIndex;
+      if (openMarker >= 0) placeBubble(openMarker);
+      draw();
+      return;
+    }
+    if (under && under.closest && under.closest('.bub')) return;
+    openMarker = -1;
+    select(nodeAt(ev.clientX, ev.clientY));
+  });
+  m.view.addEventListener('pointerleave', () => {
+    if (hovered) { hovered = null; draw(); post({ cj: 'hover', nodeId: null }); }
+    tip.style.opacity = 0;
+  });
+  m.view.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    zoomAt(Math.exp(-ev.deltaY * 0.0015), ev.clientX, ev.clientY);
+  }, { passive: false });
+
+  // The legend card is hidden until the viewer asks for it, from the control bar of a standalone
+  // visual or from the app.
+  let legend = null;
+  if (Array.isArray(visual.legend) && visual.legend.length) {
+    legend = elementFromHtml(legendMarkup({ legend: visual.legend }));
+    legend.style.display = 'none';
+    m.ground.append(legend);
+  }
+
+  draw();
+
+  return {
+    kind: 'visual',
+    visual,
+    box,
+    mounted: m,
+    view,
+    nodes,
+    markers,
+    draw,
+    fit,
+    select,
+    setLayers,
+    layers: () => Object.assign({}, layerOn),
+    hasLegend: !!legend,
+    // Shows or hides the legend card. Called with no argument it switches the card over.
+    setLegend(on) {
+      if (!legend) return false;
+      const show = on == null ? legend.style.display === 'none' : !!on;
+      legend.style.display = show ? '' : 'none';
+      return show;
+    },
+    zoomBy(factor) {
+      const rect = m.view.getBoundingClientRect();
+      zoomAt(factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    },
+    // Opens one marker's bubble, or closes all with -1. The self-test uses it to check each bubble.
+    openMarker(i) {
+      openMarker = i;
+      if (i >= 0) placeBubble(i);
+      draw();
+    },
+  };
+};

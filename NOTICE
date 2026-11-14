@@ -1,0 +1,9 @@
+Codjiva
+Copyright 2026 Aayush Chawla
+
+This product is licensed under the Apache License, Version 2.0. See the file LICENSE.
+
+It bundles the JetBrains Mono typeface, Copyright 2020 The JetBrains Mono Project Authors
+(https://github.com/JetBrains/JetBrainsMono), which is licensed under the SIL Open Font
+License, Version 1.1. See resources/fonts/OFL.txt. The typeface is also embedded in every
+artifact the app builds.

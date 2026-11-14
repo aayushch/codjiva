@@ -1,0 +1,22 @@
+[package]
+name = "codjiva-build"
+description = "Builds a Codjiva visual or film from agent-written sources into one self-contained HTML file"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "codjiva_build"
+path = "src/lib.rs"
+
+[[bin]]
+name = "codjiva-build"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+jsonschema.workspace = true
+base64.workspace = true
+thiserror.workspace = true

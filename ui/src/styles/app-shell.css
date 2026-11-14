@@ -1,0 +1,126 @@
+/**
+ * Codjiva app shell styles (Svelte app). Requires tokens.css.
+ * Plain CSS, no UI kit.
+ */
+* { box-sizing:border-box }
+html, body { margin:0; height:100%; background:var(--shell-window); color:var(--second); font:13px/1.45 var(--font); -webkit-font-smoothing:antialiased }
+button, input, select, textarea { font:inherit; color:inherit }
+:focus-visible { outline:2px solid var(--main); outline-offset:2px }
+input[type=checkbox], input[type=radio], input[type=range] { accent-color:var(--main) }
+::selection { background:color-mix(in srgb, var(--main) 35%, transparent) }
+
+/* ---------- layout ---------- */
+.app { display:grid; height:100vh; grid-template-columns:var(--sidebar-w, 280px) 1fr var(--inspector-w, 0px);
+  grid-template-rows:36px 1fr var(--dock-h, 0px); grid-template-areas:"title title title" "side main insp" "side dock dock" }
+.titlebar { grid-area:title; display:flex; align-items:center; gap:10px; padding:0 14px; background:var(--shell-bar);
+  border-bottom:1px solid var(--shell-border-soft); -webkit-app-region:drag; font-size:12px; color:var(--shell-text-2) }
+.titlebar .ws { color:var(--second); font-weight:700 }
+.titlebar .agent { margin-left:auto; display:flex; align-items:center; gap:6px; -webkit-app-region:no-drag }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--main) } .dot.hollow { background:none; border:1.5px solid var(--main) }
+.dot.cool { background:var(--accent) } .dot.off { background:var(--shell-tick) }
+
+/* ---------- sidebar / file tree ---------- */
+.sidebar { grid-area:side; display:flex; flex-direction:column; background:var(--shell-bar); border-right:1px solid var(--shell-border-soft); min-width:200px; max-width:480px; overflow:hidden }
+.side-head { height:36px; display:flex; align-items:center; padding:0 12px; gap:8px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--shell-text-2) }
+.side-head .grow { flex:1 }
+.tree { flex:1; overflow:auto; padding:4px 0 12px }
+.row { height:26px; display:flex; align-items:center; gap:6px; padding-right:10px; padding-left:calc(10px + var(--depth, 0) * 16px);
+  white-space:nowrap; cursor:pointer; border-left:2px solid transparent; color:var(--ink) }
+.row:hover { background:var(--shell-button) }
+.row.selected { background:var(--shell-button); border-left-color:var(--main); color:var(--second) }
+.row .chev { width:12px; color:var(--shell-tick) }
+.row .ico { width:14px; height:14px; flex:none; stroke:currentColor; fill:none; stroke-width:1.5 }
+.row .name { overflow:hidden; text-overflow:ellipsis; flex:1 }
+.row .badge { flex:none }
+.row.codjiva { color:var(--accent) }
+.library { border-top:1px solid var(--shell-border-soft); max-height:40%; overflow:auto }
+.lib-item { display:grid; grid-template-columns:72px 1fr; gap:10px; padding:8px 12px; cursor:pointer }
+.lib-item:hover { background:var(--shell-button) }
+.lib-item img, .lib-item .thumb { width:72px; height:40px; border-radius:4px; border:1px solid var(--shell-border); background:var(--ground); object-fit:cover }
+.lib-item .t { font-weight:700; color:var(--second) } .lib-item .m { font-size:11px; color:var(--shell-text-2) }
+.ports { display:flex; gap:3px; margin-top:3px } .port { height:6px; width:14px; border-radius:2px; background:var(--accent) } .port.out { background:var(--main) }
+
+/* ---------- main / editor pane ---------- */
+.main { grid-area:main; position:relative; display:flex; flex-direction:column; min-width:0; background:var(--ground) }
+.toolbar { height:44px; flex:none; display:flex; align-items:center; gap:8px; padding:0 12px; background:var(--shell-bar); border-bottom:1px solid var(--shell-border-soft) }
+.toolbar .crumb { color:var(--shell-text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.toolbar .crumb b { color:var(--second) }
+.toolbar .spacer { flex:1 }
+.tabs { display:flex; gap:2px } .tab { padding:6px 12px; border-radius:6px; color:var(--shell-text-2); cursor:pointer }
+.tab.on { background:var(--shell-button); color:var(--second) }
+.canvas { flex:1; position:relative; overflow:hidden;
+  background-color:var(--ground);
+  background-image:
+    linear-gradient(var(--faint) 1px, transparent 1px), linear-gradient(90deg, var(--faint) 1px, transparent 1px),
+    linear-gradient(var(--fainter) 1px, transparent 1px), linear-gradient(90deg, var(--fainter) 1px, transparent 1px);
+  background-size:120px 120px, 120px 120px, 24px 24px, 24px 24px }
+.canvas iframe { position:absolute; inset:0; width:100%; height:100%; border:0; background:var(--ground) }
+
+/* empty state */
+.empty { position:absolute; inset:0; display:grid; place-items:center }
+.empty .card { text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px; padding:36px 48px;
+  background:color-mix(in srgb, var(--ground) 88%, transparent); border:1.5px solid var(--line); border-radius:12px; max-width:560px }
+.empty .fname { font-size:28px; font-weight:700; color:var(--second) }
+.empty .path { font-size:14px; color:var(--muted) }
+.empty .meta { display:flex; gap:14px; font-size:12px; color:var(--shell-text-2) }
+.empty .actions { display:flex; gap:10px; margin-top:14px }
+.empty .hint { font-size:12px; color:var(--muted); margin-top:6px }
+.empty .hint code, .inspector code, .job code { font-size:.92em; padding:1px 6px; border-radius:4px; background:var(--chip); white-space:nowrap }
+
+/* buttons */
+.btn { height:40px; padding:0 18px; border-radius:var(--radius-m); border:1px solid var(--shell-border); background:var(--shell-button); color:var(--second); cursor:pointer; display:inline-flex; align-items:center; gap:8px; font-weight:700 }
+.btn:hover { background:var(--shell-hover) }
+.btn.primary { background:var(--main); color:var(--ground); border-color:var(--main) }
+.btn.primary:hover { background:color-mix(in srgb, var(--main) 88%, white) }
+.btn.small { height:30px; padding:0 12px; font-weight:400 }
+.btn svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.5 }
+.badge-stale { padding:2px 8px; border-radius:10px; font-size:11px; color:var(--main); border:1px solid var(--main) }
+.badge-issues { padding:2px 8px; border-radius:10px; font-size:11px; color:var(--ground); background:var(--main) }
+.select { height:30px; padding:0 10px; border-radius:6px; border:1px solid var(--shell-border); background:var(--shell-button) }
+
+/* ---------- inspector ---------- */
+.inspector { grid-area:insp; background:var(--shell-bar); border-left:1px solid var(--shell-border-soft); overflow:auto; padding:14px 16px }
+.kicker { font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); margin:16px 0 8px }
+.kicker:first-child { margin-top:0 }
+.inspector h3 { margin:0 0 4px; font-size:16px; color:var(--second) }
+.inspector p { margin:0 0 8px; color:var(--ink) }
+.ref { display:block; color:var(--accent); text-decoration:none; padding:2px 0; cursor:pointer } .ref:hover { text-decoration:underline }
+.layer { display:flex; align-items:center; gap:8px; padding:4px 0 }
+.switch { width:28px; height:16px; border-radius:8px; background:var(--shell-border); position:relative }
+.switch::after { content:''; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:var(--shell-text-2) }
+.switch.on { background:color-mix(in srgb, var(--main) 50%, var(--ground)) } .switch.on::after { left:14px; background:var(--main) }
+
+/* ---------- job dock ---------- */
+.dock { grid-area:dock; background:var(--shell-bar); border-top:1px solid var(--shell-border-soft); display:grid; grid-template-columns:300px 1fr; min-height:0 }
+.steps { padding:12px 16px; border-right:1px solid var(--shell-border-soft) }
+.step { display:flex; align-items:center; gap:10px; height:26px; color:var(--muted) }
+.step .s { width:10px; height:10px; border-radius:50%; border:1.5px solid var(--shell-tick) }
+.step.done { color:var(--ink) } .step.done .s { background:var(--ink); border-color:var(--ink) }
+.step.now { color:var(--main) } .step.now .s { background:var(--main); border-color:var(--main); box-shadow:0 0 0 4px color-mix(in srgb, var(--main) 25%, transparent) }
+.log { padding:10px 14px; overflow:auto; font-size:12px; color:var(--shell-text-2); white-space:pre-wrap }
+.log .tool { color:var(--accent) } .log .warn { color:var(--main) }
+
+/* ---------- player bar (embedded films) ---------- */
+.player { height:56px; flex:none; display:flex; align-items:center; gap:14px; padding:0 16px; background:var(--shell-bar); border-top:1px solid var(--shell-border-soft) }
+.player .ibtn { width:36px; height:36px; border-radius:var(--radius-m); border:0; background:var(--shell-button); display:grid; place-items:center; cursor:pointer }
+.player .ibtn:hover { background:var(--shell-hover) }
+.player .scrub { position:relative; flex:1; height:22px }
+.player .scrub::before { content:''; position:absolute; left:0; right:0; top:9px; height:4px; border-radius:2px; background:var(--shell-border) }
+.player .scrub .fill { position:absolute; left:0; top:9px; height:4px; border-radius:2px; background:var(--main) }
+.player .scrub .knob { position:absolute; top:4px; width:14px; height:14px; margin-left:-7px; border-radius:50%; background:var(--main); box-shadow:0 0 0 3px color-mix(in srgb, var(--main) 25%, transparent) }
+.player .scrub .mark { position:absolute; top:6px; width:2px; height:10px; margin-left:-1px; background:var(--shell-tick) }
+.player .time { font-size:12px; color:var(--shell-text-2); font-variant-numeric:tabular-nums; min-width:96px; text-align:right }
+.player .chap { font-size:12px; max-width:24vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+
+/* ---------- dialogs ---------- */
+.scrim { position:fixed; inset:0; background:rgba(8,10,13,.6); display:grid; place-items:center }
+.dialog { width:min(640px, 92vw); background:var(--shell-bar); border:1px solid var(--shell-border); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.5); padding:20px 22px }
+.dialog h2 { margin:0 0 4px; font-size:18px } .dialog .lead { color:var(--shell-text-2); margin:0 0 14px }
+.check { display:grid; grid-template-columns:18px 1fr; gap:10px; padding:7px 0; border-bottom:1px solid var(--shell-border-soft) }
+.check .why { font-size:11px; color:var(--muted) }
+.field { display:flex; flex-direction:column; gap:6px; margin:12px 0 } .field label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--shell-text-2) }
+.input, textarea.input { padding:8px 10px; border-radius:6px; border:1px solid var(--shell-border); background:var(--ground) }
+.dialog .foot { display:flex; justify-content:flex-end; gap:10px; margin-top:18px }
+
+@media (prefers-reduced-motion: reduce) { * { transition:none !important } }
+.panel-enter { transition:transform var(--t-med) var(--ease-out), opacity var(--t-med) var(--ease-out) }

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codjiva/outline.schema.json",
+  "title": "Film outline (outline.json)",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "title": {
+      "type": "string"
+    },
+    "targetSeconds": {
+      "type": "number"
+    },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "description": "one line"
+          },
+          "beats": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "number"
+                },
+                "what": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "what"
+              ]
+            },
+            "minItems": 1
+          },
+          "rewind": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "beats"
+        ]
+      },
+      "minItems": 2,
+      "maxItems": 10
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "title",
+    "chapters"
+  ]
+}

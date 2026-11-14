@@ -1,0 +1,45 @@
+{
+  "id": "gemini-cli",
+  "name": "Gemini CLI",
+  "program": "gemini",
+  "versionArgs": [
+    "--version"
+  ],
+  "helpArgs": [
+    "--help"
+  ],
+  "args": [
+    "-o",
+    "stream-json",
+    "--approval-mode",
+    "auto_edit",
+    "--skip-trust",
+    "-p",
+    "Read the file {systemPromptPath} completely. It holds your instructions. Then read the file {userPromptPath} and carry out the task it describes. Write files only inside {artifactDirAbs}."
+  ],
+  "modelArgs": [
+    "-m",
+    "{model}"
+  ],
+  "resumeArgs": [
+    "--resume",
+    "{sessionId}"
+  ],
+  "cwd": "{workspaceRoot}",
+  "parser": "gemini-stream-json",
+  "env": {
+    "GEMINI_CLI_TRUST_WORKSPACE": "true"
+  },
+  "checkFlags": [
+    "--output-format",
+    "--approval-mode",
+    "--prompt",
+    "--resume",
+    "--skip-trust"
+  ],
+  "supportsResume": true,
+  "verified": false,
+  "limits": "Gemini CLI is run in the mode that lets it edit files without asking, so it could edit any file of the workspace. It is not allowed to execute commands. Codjiva checks the workspace after every run and discards the result if a file outside its own folder was changed.",
+  "installHint": "Install the Gemini CLI from https://geminicli.com, then run `gemini` once in a terminal to sign in.",
+  "loginHint": "Run `gemini` once in a terminal and sign in, or set GEMINI_API_KEY to a valid key."
+}

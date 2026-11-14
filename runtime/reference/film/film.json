@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "title": "How an order moves through the orders Handler",
+  "legend": [
+    { "kind": "primary", "html": "An order · <code>Order</code>, marked by <code>validateLines</code>, <code>price</code>, <code>stamp</code>" },
+    { "kind": "batch", "html": "The batch · <code>[]Order</code> written by one <code>WriteBatch</code>" }
+  ],
+  "legendAt": [560, 250],
+  "legendHold": 3.4,
+  "speed": { "base": 0.6, "slow": 0.1, "ramp": 0.5 },
+  "scenes": [
+    {
+      "id": "overview",
+      "title": "How an order moves through the orders Handler",
+      "name": "The assembly line",
+      "desc": "The whole plant, and one order from Submit to the batch",
+      "animLength": 8.4,
+      "camera": [{ "cx": 960, "cy": 560, "z": 1 }],
+      "bubbles": [
+        { "at": 7.4, "x": 540, "y": 165, "tail": "d", "tx": 150, "maxWidth": 480, "kicker": "ONE ORDER, ONE LINE", "html": "An <code>Order</code> enters <code>Submit()</code>, passes the three steps of <code>process()</code> and waits in <code>h.batch</code>; the tank tracks pending bytes." }
+      ],
+      "cues": [
+        { "at": 4.2, "fx": "whoosh", "vel": 24, "dur": 0.8 },
+        { "at": 7.3, "fx": "thud", "vel": 30 }
+      ]
+    },
+    {
+      "id": "routing",
+      "title": "1 · Submit routes each order",
+      "name": "Routing in Submit",
+      "desc": "A malformed order is refused; a priority order is written at once",
+      "animLength": 5.8,
+      "camera": [{ "t": 0.05, "dur": 1, "cx": 800, "cy": 560, "z": 1.2 }],
+      "bubbles": [
+        { "at": 1.5, "x": 480, "y": 760, "alarm": true, "tail": "l", "ty": 70, "maxWidth": 370, "kicker": "REFUSED · ErrInvalid", "html": "No ID, customer or lines: <code>Submit()</code> returns <code>ErrInvalid</code> and nothing is stored. <code>intake</code> logs it and reads on." },
+        { "at": 3.6, "x": 690, "y": 190, "tail": "d", "tx": 280, "maxWidth": 340, "kicker": "ROUTING · PRIORITY", "html": "A <code>KindPriority</code> order skips the batch: <code>Store.WriteBatch</code> writes it at once as <code>WrittenNow</code>." }
+      ],
+      "cues": [
+        { "at": 1.9, "fx": "thud", "vel": 34 },
+        { "at": 3.0, "fx": "click", "vel": 30 },
+        { "at": 5.0, "fx": "thud", "vel": 36 }
+      ]
+    },
+    {
+      "id": "budget",
+      "title": "2 · The pending-bytes budget",
+      "name": "Soft and hard limit",
+      "desc": "The soft limit starts shedding; the hard limit stops intake",
+      "animLength": 7.8,
+      "camera": [
+        { "t": 0.05, "dur": 0.9, "cx": 1400, "cy": 520, "z": 1.1 },
+        { "t": 5.7, "dur": 1, "cx": 960, "cy": 560, "z": 1 }
+      ],
+      "bubbles": [
+        { "at": 2.0, "x": 1930, "y": 430, "alarm": true, "tail": "l", "ty": 60, "maxWidth": 300, "kicker": "SOFT LIMIT · ModeShedding", "html": "At 4 MiB <code>reserve()</code> switches to <code>ModeShedding</code>, and it never goes back. Orders under <code>lowValueCents</code> are now only counted." },
+        { "at": 5.4, "x": 1930, "y": 200, "alarm": true, "tail": "l", "ty": 55, "maxWidth": 300, "kicker": "HARD LIMIT · hardPendingBytes", "html": "At 8 MiB <code>reserve()</code> sets <code>ModeStopped</code> and returns <code>ErrOverloaded</code>. <code>intake</code> stops reading and returns." }
+      ],
+      "cues": [
+        { "at": 2.0, "fx": "chime", "vel": 36 },
+        { "at": 4.0, "fx": "thud", "vel": 32 },
+        { "at": 5.4, "fx": "crash", "vel": 46 },
+        { "at": 6.4, "fx": "whoosh", "vel": 28, "dur": 1.2 }
+      ]
+    },
+    {
+      "id": "flush",
+      "title": "3 · Rewind, then the flush",
+      "name": "Otherwise: flush",
+      "desc": "Back before the hard limit: the tick writes the batch, and Close repeats it",
+      "animLength": 6.8,
+      "camera": [{ "t": 1.7, "dur": 1, "cx": 1480, "cy": 600, "z": 1.3 }],
+      "bubbles": [
+        { "at": 4.0, "x": 1925, "y": 300, "tail": "l", "ty": 190, "maxWidth": 280, "kicker": "FLUSH · flushLocked()", "html": "The tick writes the whole batch in one <code>WriteBatch</code> call. Bytes leave <code>pendingBytes</code> only on success; a failure keeps the batch." },
+        { "at": 5.9, "x": 1810, "y": 560, "tail": "l", "ty": 40, "maxWidth": 300, "kicker": "THE END · Close()", "html": "Pending bytes fall, but <code>ModeShedding</code> stays on. <code>Close()</code> flushes once more when intake ends, even after <code>ErrOverloaded</code>." }
+      ],
+      "cues": [
+        { "at": 0.03, "fx": "whoosh", "vel": 28, "dur": 1.6, "into": true },
+        { "at": 2.9, "fx": "click", "vel": 30 },
+        { "at": 4.3, "fx": "thud", "vel": 44 }
+      ],
+      "rewind": { "until": 1.6 }
+    }
+  ],
+  "thumbT": 14
+}

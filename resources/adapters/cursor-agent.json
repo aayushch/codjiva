@@ -1,0 +1,40 @@
+{
+  "id": "cursor-agent",
+  "name": "Cursor Agent",
+  "program": "cursor-agent",
+  "versionArgs": [
+    "--version"
+  ],
+  "helpArgs": [
+    "--help"
+  ],
+  "args": [
+    "-p",
+    "--trust",
+    "--output-format",
+    "stream-json",
+    "Read the file {systemPromptPath} completely. It holds your instructions. Then read the file {userPromptPath} and carry out the task it describes. Write files only inside {artifactDirAbs}."
+  ],
+  "modelArgs": [
+    "--model",
+    "{model}"
+  ],
+  "resumeArgs": [
+    "--resume={sessionId}"
+  ],
+  "cwd": "{workspaceRoot}",
+  "parser": "cursor-stream-json",
+  "env": {},
+  "checkFlags": [
+    "--print",
+    "--output-format",
+    "--trust",
+    "--resume",
+    "--model"
+  ],
+  "supportsResume": true,
+  "verified": true,
+  "limits": "Cursor Agent has no setting that confines it to one folder, so it could edit any file of the workspace. It is run without permission to execute commands. Codjiva checks the workspace after every run and discards the result if a file outside its own folder was changed.",
+  "installHint": "Install Cursor's command-line agent from https://cursor.com/cli, then run `cursor-agent login`.",
+  "loginHint": "Run `cursor-agent login` in a terminal."
+}

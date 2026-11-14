@@ -1,0 +1,36 @@
+{
+  "joins": [
+    {
+      "carries": "[]Order",
+      "from": "handler#out:Store.WriteBatch",
+      "kind": "write",
+      "reason": "`Store.WriteBatch` and `WriteBatch(orders)` end in the same name.",
+      "symbol": "WriteBatch(orders)",
+      "to": "store#in:FileStore.WriteBatch"
+    }
+  ],
+  "parts": [
+    {
+      "artifact": "visual-internal_orders_handler_go-30bb29",
+      "bay": [
+        52.0,
+        347.0
+      ],
+      "key": "handler",
+      "scale": 0.46,
+      "version": 1
+    },
+    {
+      "artifact": "visual-internal_orders_store_go-580411",
+      "bay": [
+        985.0,
+        347.0
+      ],
+      "key": "store",
+      "scale": 0.46,
+      "version": 1
+    }
+  ],
+  "schemaVersion": 1,
+  "title": "Pipeline"
+}

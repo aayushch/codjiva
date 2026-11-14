@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "subject": ["internal/orders/handler.go", "internal/orders/store.go"],
+  "language": ["Go"],
+  "unit": {
+    "primary": "one batch of orders ([]Order) travelling from Handler.batch to the file",
+    "secondary": ["a single Order submitted through Handler.Submit"]
+  },
+  "entryPoints": [
+    { "symbol": "Handler.Submit(o Order)", "ref": "internal/orders/handler.go:119" }
+  ],
+  "steps": [
+    { "name": "Submit refuses, de-duplicates and asks the limiter", "ref": "internal/orders/handler.go:123-136" },
+    { "name": "process: validateLines, price, stamp", "adds": "totals, Sequence, AcceptedAt", "ref": "internal/orders/handler.go:138" },
+    { "name": "enqueue appends the order to h.batch", "ref": "internal/orders/handler.go:205" },
+    { "name": "flushLocked passes h.batch to Store.WriteBatch", "ref": "internal/orders/handler.go:263" },
+    { "name": "FileStore.WriteBatch encodes every order as a JSON line into a bytes.Buffer", "ref": "internal/orders/store.go:56-62" },
+    { "name": "Lock, file.Write the buffer, file.Sync, then written += len(orders)", "ref": "internal/orders/store.go:64-72" }
+  ],
+  "accumulators": [
+    { "name": "h.batch", "kind": "slice of Order, flushed at maxBatch", "ref": "internal/orders/handler.go:205-207" }
+  ],
+  "flushTriggers": [
+    { "when": "len(h.batch) reaches maxBatch", "ref": "internal/orders/handler.go:206-207" },
+    { "when": "flushLoop tick", "ref": "internal/orders/handler.go:237-241" },
+    { "when": "Close", "ref": "internal/orders/handler.go:276-282" }
+  ],
+  "errors": [
+    { "raised": "Encode error in FileStore.WriteBatch", "outcome": "Nothing is written; the Handler keeps the batch in memory for the next flush", "ref": "internal/orders/store.go:59-60" },
+    { "raised": "file.Write or file.Sync error", "caughtBy": "Handler.flushLocked", "cleanup": "defer s.mu.Unlock() frees the lock", "outcome": "Error is wrapped and returned; the batch stays in h.batch", "ref": "internal/orders/store.go:66-71" }
+  ],
+  "ports": [
+    { "id": "in:Handler.Submit", "dir": "in", "symbol": "Submit(o Order)", "carries": "one Order", "kind": "call", "anchor": [60, 560], "ref": "internal/orders/handler.go:119" },
+    { "id": "out:os.File.Write", "dir": "out", "symbol": "os.File Write + Sync", "kind": "file", "anchor": [1600, 560], "ref": "internal/orders/store.go:66" }
+  ],
+  "focusChosen": ["The path of one batch across the join Store.WriteBatch to FileStore.WriteBatch"],
+  "illustrative": ["Marker positions"],
+  "omitted": [
+    { "what": "Handler's Limiter.Allow out port", "why": "No join was confirmed to another part, and a single batch does not pass through the limiter as a batch." },
+    { "what": "Join Store.WriteBatch to FileStore.WriteBatch", "why": "Verified as an interface call: Handler holds a Store, and FileStore.WriteBatch (store.go:55) implements it. Which implementation is used is decided where the Handler is built." }
+  ]
+}

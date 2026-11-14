@@ -1,0 +1,23 @@
+{
+  "name": "chunk-uploader",
+  "version": "0.9.2",
+  "description": "Uploads a large file to an HTTP endpoint in signed, optionally compressed chunks.",
+  "license": "MIT",
+  "private": true,
+  "main": "dist/index.js",
+  "bin": {
+    "chunk-upload": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}

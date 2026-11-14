@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codjiva/pipeline.schema.json",
+  "title": "Pipeline (pipeline.json)",
+  "description": "The parts of a pipeline, where each sits in the yard, and the joins between them.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "title": { "type": "string" },
+    "parts": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z][a-z0-9]*$", "description": "The short name of the part. It names the folder parts/<key>/ and is what CJ.bay(key) takes." },
+          "artifact": { "type": "string", "description": "The id of the artifact this part was copied from." },
+          "version": { "type": "integer", "minimum": 1 },
+          "bay": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "The top-left corner of the part's bay in the yard's world, [x, y]."
+          },
+          "scale": { "type": "number", "minimum": 0.15, "maximum": 1, "description": "How much the part's 1920 x 1080 sheet is shrunk." }
+        },
+        "additionalProperties": false,
+        "required": ["key", "artifact", "version", "bay", "scale"]
+      }
+    },
+    "joins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": { "type": "string", "pattern": "^[a-z][a-z0-9]*#out:", "description": "<part key>#<id of the out port>" },
+          "to": { "type": "string", "pattern": "^[a-z][a-z0-9]*#in:", "description": "<part key>#<id of the in port>" },
+          "kind": { "type": "string", "description": "call, message, queue, write, read, http, rpc, event or file" },
+          "symbol": { "type": "string", "description": "The symbol the work crosses at, as written in the source." },
+          "carries": { "type": "string", "description": "The unit of work that crosses." },
+          "reason": { "type": "string", "description": "Why these two ports are joined." }
+        },
+        "additionalProperties": false,
+        "required": ["from", "to"]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": ["schemaVersion", "title", "parts", "joins"]
+}

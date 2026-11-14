@@ -1,0 +1,50 @@
+/**
+ * Codjiva design tokens: machine shop blueprint.
+ * Four base colours; every other tone is a color-mix() of them, so a palette swap recolours everything.
+ * Used by the app shell AND by every generated artifact (the builder inlines this file).
+ * Font: JetBrains Mono 400/700 (SIL OFL 1.1), bundled. The font faces are declared by whoever loads this file:
+ * the builder embeds them in artifacts as data URLs, and the app serves the bundled files.
+ */
+:root, #stage {
+  /* base */
+  --ground: #14181F;   /* background */
+  --main:   #F2B33D;   /* amber: primary unit of work, active, limit hit, hot pipes */
+  --second: #E8ECF1;   /* ink: text, outlines of key items */
+  --accent: #4FB0C6;   /* cyan: secondary flow, info bubbles, storage, cool pipes */
+
+  /* derived */
+  --ink:      color-mix(in srgb, var(--second) 72%, var(--ground)); /* machine outlines */
+  --line:     color-mix(in srgb, var(--second) 45%, var(--ground)); /* plates, borders, gauges */
+  --muted:    color-mix(in srgb, var(--second) 60%, var(--ground)); /* secondary labels */
+  --faint:    color-mix(in srgb, var(--second)  9%, var(--ground)); /* grid major, inner dashes */
+  --fainter:  color-mix(in srgb, var(--second)  5%, var(--ground)); /* grid minor, shadows */
+  --panel:    color-mix(in srgb, var(--second)  4%, var(--ground)); /* machine fill */
+  --amberdim: color-mix(in srgb, var(--main)   35%, var(--ground)); /* hot pipe walls */
+  --cyandim:  color-mix(in srgb, var(--accent) 35%, var(--ground)); /* cool pipe walls, tank fill */
+  --chip:     color-mix(in srgb, var(--second) 12%, var(--ground)); /* code chip background */
+
+  /* app-shell neutrals (outside the stage) */
+  --shell-window: #0c0e12;
+  --shell-bar:    #101318;
+  --shell-button: #1b2029;
+  --shell-hover:  #252c38;
+  --shell-border: #2a313d;
+  --shell-border-soft: #262c36;
+  --shell-tick:   #5b6575;
+  --shell-text-2: #aab3c0;
+
+  /* type */
+  --font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: var(--font); --display: var(--font); --mono: var(--font);
+
+  /* geometry */
+  --stage-w: 1920px; --stage-h: 1080px; --hud-h: 110px;
+  --gap-min: 24px;          /* minimum gap between parts */
+  --bubble-margin: 28px;    /* bubbles stay this far inside the view */
+  --packet-w: 60px; --packet-h: 44px;
+  --radius-s: 4px; --radius-m: 8px; --radius-l: 10px;
+
+  /* motion (shell only; films are driven by the runtime clock) */
+  --ease-out: cubic-bezier(.22,.61,.36,1);
+  --t-fast: 120ms; --t-med: 180ms;
+}

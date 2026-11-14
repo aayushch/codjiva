@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "subject": ["internal/orders/handler.go"],
+  "language": ["Go"],
+  "unit": {
+    "primary": "an Order passed to Handler.Submit",
+    "secondary": ["a priority Order written to the Store at once", "a shed Order that is only counted", "a batch ([]Order) written by flushLocked"]
+  },
+  "entryPoints": [
+    { "symbol": "Handler.Submit", "ref": "internal/orders/handler.go:119" },
+    { "symbol": "NewHandler (starts flushLoop)", "ref": "internal/orders/handler.go:103" },
+    { "symbol": "Handler.Close", "ref": "internal/orders/handler.go:276" }
+  ],
+  "routes": [
+    { "when": "mode is ModeStopped", "to": "Rejected with ErrOverloaded", "ref": "internal/orders/handler.go:123" },
+    { "when": "ID, CustomerID or Lines missing", "to": "Rejected with ErrInvalid", "ref": "internal/orders/handler.go:126" },
+    { "when": "ID already in seen", "to": "Duplicate (counted only)", "ref": "internal/orders/handler.go:129" },
+    { "when": "limiter verdict is VerdictBlocked", "to": "Blocked (dropped)", "ref": "internal/orders/handler.go:135" },
+    { "when": "limiter verdict is VerdictDefer", "to": "reserve, then the deferred slice", "ref": "internal/orders/handler.go:143" },
+    { "when": "Kind is KindPriority", "to": "Store.WriteBatch at once (WrittenNow)", "ref": "internal/orders/handler.go:149" },
+    { "when": "ModeShedding and TotalCents < lowValueCents", "to": "Shed (counted, not stored)", "ref": "internal/orders/handler.go:155" },
+    { "when": "none of the above", "to": "enqueue into the batch", "ref": "internal/orders/handler.go:158" }
+  ],
+  "steps": [
+    { "name": "validateLines", "adds": "nothing; rejects a bad line", "ref": "internal/orders/handler.go:172" },
+    { "name": "price", "adds": "SubtotalCents, TaxCents, TotalCents", "ref": "internal/orders/handler.go:182" },
+    { "name": "stamp", "adds": "Sequence, AcceptedAt", "ref": "internal/orders/handler.go:192" }
+  ],
+  "accumulators": [
+    { "name": "batch", "kind": "slice of Order waiting for flush", "ref": "internal/orders/handler.go:90" },
+    { "name": "deferred", "kind": "slice of Order held by the soft rate limit", "ref": "internal/orders/handler.go:91" },
+    { "name": "pendingBytes", "kind": "estimated bytes of batch plus deferred", "ref": "internal/orders/handler.go:92" },
+    { "name": "seen", "kind": "set of submitted IDs", "ref": "internal/orders/handler.go:93" },
+    { "name": "counts", "kind": "per customer, per outcome counters", "ref": "internal/orders/handler.go:94" }
+  ],
+  "modes": [
+    { "name": "ModeNormal", "trigger": "initial state", "sticky": false, "ref": "internal/orders/handler.go:54" },
+    { "name": "ModeShedding", "trigger": "pendingBytes >= softPendingBytes inside reserve", "sticky": true, "ref": "internal/orders/handler.go:222" },
+    { "name": "ModeStopped", "trigger": "pendingBytes + n >= hardPendingBytes inside reserve", "sticky": true, "ref": "internal/orders/handler.go:217" }
+  ],
+  "limits": [
+    { "name": "maxBatch (64)", "scope": "per Handler batch", "effect": "enqueue flushes the batch at once", "ref": "internal/orders/handler.go:206" },
+    { "name": "softPendingBytes (4 MiB)", "scope": "global pending bytes", "effect": "switch to ModeShedding", "ref": "internal/orders/handler.go:222" },
+    { "name": "hardPendingBytes (8 MiB)", "scope": "global pending bytes", "effect": "switch to ModeStopped; reserve returns ErrOverloaded", "ref": "internal/orders/handler.go:217" },
+    { "name": "lowValueCents (2500)", "scope": "per order, ModeShedding only", "effect": "order is counted, not stored", "ref": "internal/orders/handler.go:155" },
+    { "name": "flushInterval (2s)", "scope": "background loop", "effect": "release deferred orders and flush", "ref": "internal/orders/handler.go:233" }
+  ],
+  "flushTriggers": [
+    { "when": "batch reaches maxBatch inside enqueue", "ref": "internal/orders/handler.go:206" },
+    { "when": "every flushInterval tick in flushLoop", "ref": "internal/orders/handler.go:237" },
+    { "when": "Close, after the loop has stopped", "ref": "internal/orders/handler.go:282" }
+  ],
+  "errors": [
+    { "raised": "ErrOverloaded when ModeStopped", "caughtBy": "the caller of Submit", "outcome": "Rejected, nothing stored", "ref": "internal/orders/handler.go:124" },
+    { "raised": "ErrInvalid for a malformed order or line", "caughtBy": "the caller of Submit", "outcome": "Rejected; line errors are tallied", "ref": "internal/orders/handler.go:127" },
+    { "raised": "ErrOverloaded from reserve", "caughtBy": "the caller of Submit", "outcome": "Rejected; mode becomes ModeStopped", "ref": "internal/orders/handler.go:219" },
+    { "raised": "Store error on a priority write", "caughtBy": "the caller of Submit", "cleanup": "ID removed from seen so the client may resubmit", "outcome": "Rejected", "ref": "internal/orders/handler.go:150" },
+    { "raised": "Store error in flushLocked", "caughtBy": "ignored by enqueue and flushLoop, returned by Close", "cleanup": "batch and pendingBytes are kept for the next flush", "outcome": "orders stay queued", "ref": "internal/orders/handler.go:263" }
+  ],
+  "ports": [
+    { "id": "in:Handler.Submit", "dir": "in", "symbol": "Submit(o Order)", "carries": "one Order", "kind": "call", "anchor": [60, 560], "ref": "internal/orders/handler.go:119" },
+    { "id": "out:Limiter.Allow", "dir": "out", "symbol": "Limiter.Allow", "carries": "customer ID, returns a verdict", "kind": "call", "ref": "internal/orders/handler.go:134" },
+    { "id": "out:Store.WriteBatch", "dir": "out", "symbol": "Store.WriteBatch", "carries": "[]Order", "kind": "write", "anchor": [1800, 870], "ref": "internal/orders/handler.go:263" }
+  ],
+  "focusChosen": [
+    "The routing switch in Submit: early refusals, then defer, priority write, shed or enqueue.",
+    "The pending-bytes budget: soft limit starts sticky ModeShedding, hard limit starts ModeStopped.",
+    "Batching and flush: maxBatch, the 2s flushLoop, and a failed flush keeping the batch."
+  ],
+  "illustrative": [
+    "Packet counts in the bins and the pending-bytes level are sample values.",
+    "The hard mark on the tank is drawn near the top, not at an exact 8 MiB scale position.",
+    "The gauge shows a sample batch length against maxBatch."
+  ],
+  "omitted": [
+    { "what": "counts / Snapshot / tally", "why": "bookkeeping; every outcome is counted, which a bubble mentions" },
+    { "what": "Limiter.Forget on each tick", "why": "limiter internals are outside this file" },
+    { "what": "sizeBytes arithmetic and Outcome.String", "why": "detail that does not change behaviour" },
+    { "what": "Close ordering with closeOnce", "why": "end of life is mentioned but not drawn" }
+  ]
+}

@@ -1,0 +1,212 @@
+/**
+ * Styles for parts of the app that app-shell.css does not cover.
+ * Everything here uses the theme tokens; no other colours are introduced.
+ */
+
+[hidden] { display:none !important }
+button { cursor:pointer }
+button:disabled { opacity:.5; cursor:default }
+code { font-family:var(--font) }
+.grow { flex:1 }
+
+/* ---------- title bar ---------- */
+.titlebar { user-select:none; -webkit-user-select:none }
+/* Room for the window buttons that macOS draws over the left end of the bar. */
+.titlebar.mac { padding-left:82px }
+.tb-btn { width:26px; height:24px; display:grid; place-items:center; border:0; border-radius:6px; background:none; color:var(--shell-text-2); padding:0 }
+.tb-btn:hover { background:var(--shell-button); color:var(--second) }
+.tb-btn .ico { stroke:currentColor; fill:none }
+.titlebar .agent .tb-btn:first-of-type { margin-left:8px }
+
+/* ---------- layout ---------- */
+.app.theater { grid-template-rows:0 1fr 0 }
+.main.wide { grid-column:1 / -1 }
+.app { position:relative }
+/* The handle lies over the line between the sidebar and the editor area, below the title bar. */
+.splitter { position:absolute; top:36px; bottom:0; left:calc(var(--sidebar-w, 280px) - 3px); width:6px; cursor:col-resize; z-index:5 }
+.splitter:hover, .splitter.active { background:color-mix(in srgb, var(--main) 35%, transparent) }
+
+/* ---------- file tree ---------- */
+.tree { outline:none; padding:0 }
+.tree-sizer { position:relative; margin:4px 0 12px }
+.row { user-select:none; -webkit-user-select:none }
+.tree:focus-visible .row.cursor { outline:2px solid var(--main); outline-offset:-2px }
+.tabs .tab { border:0; background:none; font:inherit }
+.tabs .tab.on { background:var(--shell-button) }
+
+/* ---------- canvas, frames ---------- */
+.canvas iframe { background:transparent }
+.frame-problem { position:absolute; left:16px; bottom:16px; max-width:60%; padding:10px 14px; font-size:12px; color:var(--main);
+  background:var(--shell-bar); border:1px solid var(--main); border-radius:var(--radius-m) }
+.zoomctl { position:absolute; right:12px; bottom:12px; display:flex; gap:6px }
+.zoomctl .btn { height:30px; width:30px; padding:0; justify-content:center; font-weight:400 }
+.player.waiting { opacity:.6; pointer-events:none }
+.player .scrub { cursor:pointer; touch-action:none }
+.player .ibtn { color:var(--second) }
+.player .ibtn .ico, .btn .ico { stroke:currentColor; fill:none }
+.empty-icon { color:var(--shell-tick); display:grid }
+.empty-icon .ico { stroke-width:1.2 }
+
+/* ---------- welcome ---------- */
+.card.welcome { max-width:640px; min-width:480px }
+.recents { align-self:stretch; margin-top:18px; text-align:left }
+.recent { display:grid; grid-template-columns:16px auto 1fr auto; align-items:center; gap:10px; width:100%; height:32px; padding:0 10px; border:0;
+  border-radius:6px; background:none; font:inherit; color:var(--ink); text-align:left }
+.recent:hover { background:var(--shell-button); color:var(--second) }
+.recent .ico { stroke:currentColor; fill:none }
+.recent .name { font-weight:700; color:var(--second) }
+.recent .where { color:var(--muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:rtl; text-align:left }
+.recent .when { color:var(--shell-text-2); font-size:11px }
+
+/* ---------- source viewer ---------- */
+/* Ligatures are off so code is shown character for character, for example != and not a single glyph. */
+.source { flex:1; overflow:auto; background:var(--ground); font-size:13px; line-height:20px; font-variant-ligatures:none }
+.source-sizer { position:relative; min-width:max-content }
+.source-line { display:flex; height:20px; white-space:pre }
+.source-line.ref { background:color-mix(in srgb, var(--main) 14%, transparent); box-shadow:inset 3px 0 0 var(--main) }
+.source-num { flex:none; padding-left:1ch; padding-right:2ch; text-align:right; color:var(--shell-tick); user-select:none; -webkit-user-select:none }
+.source-text { color:var(--ink); padding-right:24px }
+.source-note { padding:24px; color:var(--muted) }
+.source-cut { position:absolute; left:0; right:0; height:40px; display:flex; align-items:center; padding-left:24px; color:var(--main) }
+.source-bar { flex:none; height:40px; display:flex; align-items:center; gap:8px; padding:0 12px; background:var(--shell-bar);
+  border-top:1px solid var(--shell-border-soft); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--shell-text-2) }
+.source-bar .btn { text-transform:none; letter-spacing:0 }
+/* Code is coloured with the palette only: structure in ink, text in cyan, values in amber. */
+.hljs-comment, .hljs-quote, .hljs-meta { color:var(--shell-tick) }
+.hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-section { color:var(--second); font-weight:700 }
+.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-char { color:var(--accent) }
+.hljs-number, .hljs-literal, .hljs-bullet, .hljs-link { color:var(--main) }
+.hljs-title, .hljs-name, .hljs-attr, .hljs-attribute, .hljs-selector-id, .hljs-selector-class { color:var(--second) }
+.hljs-type, .hljs-built_in, .hljs-class, .hljs-params, .hljs-variable, .hljs-template-variable { color:var(--ink) }
+.hljs-addition { color:var(--accent) } .hljs-deletion { color:var(--main) }
+
+/* ---------- dialogs ---------- */
+.scrim { z-index:50 }
+.scrim.top { place-items:start center; padding-top:12vh }
+.dialog { max-height:86vh; overflow:auto }
+.dialog h2 code, .dialog .lead code, .dialog .why code { font-size:.92em; padding:1px 6px; border-radius:4px; background:var(--chip); white-space:nowrap }
+.dialog .foot { align-items:center }
+.field .label, .field label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--shell-text-2) }
+.field .why { font-size:11px; color:var(--muted) }
+.check { cursor:pointer }
+.check input { margin-top:3px }
+.pill { display:inline-block; padding:1px 8px; border-radius:10px; border:1px solid var(--shell-border); font-size:11px; color:var(--shell-text-2) }
+.pill.version { margin-right:auto }
+.seg { display:flex; gap:4px } .seg .btn { height:30px; font-weight:400 } .seg .btn.on { border-color:var(--main); color:var(--main) }
+.dialog.settings .input[type=number] { width:110px }
+
+/* ---------- quick open ---------- */
+.dialog.quick { padding:12px; width:min(680px, 92vw) }
+.dialog.quick .input { width:100%; height:38px; font-size:14px }
+.quick-list { margin-top:8px; max-height:50vh; overflow:auto }
+.quick-row { display:grid; grid-template-columns:16px auto 1fr; align-items:center; gap:10px; width:100%; height:30px; padding:0 10px; border:0;
+  border-left:2px solid transparent; background:none; font:inherit; color:var(--ink); text-align:left }
+.quick-row.on { background:var(--shell-button); border-left-color:var(--main); color:var(--second) }
+.quick-row .ico { stroke:currentColor; fill:none }
+.quick-row .name { color:var(--second) }
+.quick-row .where { color:var(--muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.quick-none { padding:14px 10px; color:var(--muted) }
+
+/* ---------- toasts ---------- */
+.toasts { position:fixed; right:16px; bottom:16px; z-index:80; display:flex; flex-direction:column; gap:8px; align-items:flex-end; pointer-events:none }
+.toast { max-width:460px; padding:10px 14px; background:var(--shell-bar); border:1px solid var(--shell-border); border-left:3px solid var(--accent);
+  border-radius:var(--radius-m); box-shadow:0 12px 30px rgba(0,0,0,.45); color:var(--second) }
+.toast.error { border-left-color:var(--main) }
+
+/* ---------- agent status ---------- */
+.agent-none { display:inline-flex; align-items:center; gap:6px; border:0; background:none; font:inherit; color:inherit; padding:0 }
+.agent-none:hover { color:var(--second) }
+
+/* ---------- instructions dialog ---------- */
+.dialog textarea.input { width:100%; resize:vertical; line-height:1.5 }
+.chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:-4px }
+.chip { height:24px; padding:0 10px; border-radius:12px; border:1px solid var(--shell-border); background:none; font:inherit; font-size:11px; color:var(--shell-text-2) }
+.chip:hover { border-color:var(--accent); color:var(--second) }
+.check.off { opacity:.6 }
+.empty .hint.warn { color:var(--main) }
+
+/* ---------- job dock ---------- */
+.dock .steps { overflow:auto }
+.dock-foot { margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+.log div { min-height:1.45em }
+.log .outcome { margin-top:8px; color:var(--second) }
+.log .outcome .btn { margin-top:6px }
+
+/* ---------- inspector ---------- */
+.inspector .muted { color:var(--muted) }
+.inspector button.ref { border:0; background:none; font:inherit; text-align:left; width:100% }
+.inspector button.ref.inline { display:inline; width:auto; padding:0 0 0 6px }
+.inspector button.layer { border:0; background:none; font:inherit; color:var(--ink); width:100%; cursor:pointer }
+.inspector .problem { font-size:12px; color:var(--shell-text-2); margin:0 0 6px; overflow-wrap:anywhere }
+.inspector .problem.error { color:var(--main) }
+.insp-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px }
+
+/* ---------- library ---------- */
+.library { flex:none }
+.lib-item { position:relative; align-items:center; border-left:2px solid transparent }
+.lib-item.on { background:var(--shell-button); border-left-color:var(--main) }
+.lib-text { min-width:0 }
+.lib-item .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.lib-item .stale { color:var(--main) }
+.lib-del { position:absolute; right:6px; top:6px; opacity:0 }
+.lib-item:hover .lib-del, .lib-del:focus-visible, .lib-del.armed { opacity:1 }
+.lib-del.armed { background:var(--main); color:var(--ground) }
+/* A poster is the artifact's own page at full stage size, scaled down to the thumbnail. */
+.thumb.poster { display:block; position:relative; overflow:hidden; height:40.5px }
+.thumb.poster iframe { position:absolute; left:0; top:0; width:1920px; height:1080px; border:0; transform:scale(0.0375); transform-origin:0 0; pointer-events:none }
+
+/* ---------- validation frame ---------- */
+/* Laid out at full stage size so text can be measured, but never painted or clickable. */
+.validator { position:fixed; left:0; top:0; width:1920px; height:1080px; visibility:hidden; pointer-events:none; z-index:-1 }
+.validator iframe { width:1920px; height:1080px; border:0 }
+
+.check .why.limits { color:var(--shell-text-2); margin-top:3px }
+
+/* ---- pipelines: ticking artifacts in the library, and the pipeline inspector */
+.lib-item .lib-tick { position:absolute; right:8px; bottom:8px; margin:0; opacity:0; accent-color:var(--main) }
+.lib-item:hover .lib-tick, .lib-item .lib-tick.shown, .lib-item .lib-tick:checked, .lib-item .lib-tick:focus-visible { opacity:1 }
+.lib-item .m.ports { color:var(--shell-tick) }
+.side-head .lib-compose { height:24px; padding:0 10px; font-size:11px }
+.dialog.compose { width:min(700px, 92vw) }
+.inspector .join { margin:0 0 8px }
+.inspector .join .why { font-size:11px; color:var(--muted) }
+.inspector .part-row { display:block; width:100%; border:0; background:none; font:inherit; color:var(--accent); text-align:left; padding:2px 0; cursor:pointer }
+.inspector .part-row:hover { text-decoration:underline }
+.inspector .part-row.gone { color:var(--muted); cursor:default; text-decoration:none }
+
+/* ---- folders: the button on a folder's row that selects the folder for a visual of all of it */
+.row .folder-viz { flex:none; width:22px; height:20px; opacity:0; color:var(--shell-text-2) }
+.row:hover .folder-viz, .row.selected .folder-viz, .row .folder-viz:focus-visible { opacity:1 }
+.row .folder-viz:hover { color:var(--main) }
+.empty .warn-box { margin:14px auto 0; max-width:440px; padding:10px 14px; border:1px solid var(--amberdim); border-radius:8px; color:var(--ink); font-size:12px; line-height:1.5; text-align:left }
+.empty .warn-box b { color:var(--main); font-weight:500 }
+.dialog .warn-box { margin:0 0 14px; padding:10px 14px; border:1px solid var(--amberdim); border-radius:8px; color:var(--ink); font-size:12px; line-height:1.5 }
+.dialog .warn-box b { color:var(--main); font-weight:500 }
+
+/* ---- films: the Film tab, the outline in the dock, the feedback box */
+.tabs .tab .has { display:inline-block; width:5px; height:5px; margin-left:6px; border-radius:50%; background:var(--main); vertical-align:middle }
+.dock.with-outline { grid-template-columns:300px 1fr minmax(280px, 34%) }
+.outline-pane { padding:12px 16px; border-left:1px solid var(--shell-border-soft); overflow:auto; min-height:0 }
+.outline-list { margin:0; padding-left:22px; display:grid; gap:6px }
+.outline-list li { color:var(--accent); font-size:12px }
+.outline-list .t { display:block; color:var(--second) }
+.outline-list .s { display:block; color:var(--muted); font-size:11px }
+.outline-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px }
+.outline-actions .ready { color:var(--main) }
+.btn.small.primary { font-weight:500 }
+.dialog.animate, .dialog.outline { width:min(680px, 92vw) }
+.dialog .kicker { margin-top:14px }
+.inspector .chapter-row { display:grid; grid-template-columns:1fr auto; gap:8px; width:100%; border:0; background:none; font:inherit; color:var(--ink); text-align:left; padding:3px 0; cursor:pointer }
+.inspector .chapter-row:hover, .inspector .chapter-row.on { color:var(--main) }
+.inspector .chapter-row .at { color:var(--muted); font-variant-numeric:tabular-nums }
+.inspector .companion { margin:0 0 6px }
+.inspector .companion .why { font-size:11px; color:var(--muted) }
+.feedback textarea.input { width:100%; resize:vertical; line-height:1.5; min-height:64px }
+.feedback .attached { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 }
+.feedback .attached .pill { display:inline-flex; align-items:center; gap:6px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.feedback .attached .pill button { border:0; background:none; color:var(--muted); cursor:pointer; padding:0; font:inherit }
+.feedback .attached .pill button:hover { color:var(--second) }
+.feedback { margin-top:16px }
+.feedback .line { display:flex; gap:8px; flex-wrap:wrap }
+.feedback .picking { color:var(--accent); font-size:12px; margin:6px 0 }
+.player .scrub .pin { position:absolute; top:1px; width:0; height:0; margin-left:-5px; border-left:5px solid transparent; border-right:5px solid transparent; border-top:7px solid var(--accent) }

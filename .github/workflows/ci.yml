@@ -1,0 +1,86 @@
+name: CI
+
+# Every push and pull request builds the app on macOS, Linux and Windows and runs the Rust and
+# interface tests there. The browser-based tests of the runtime and of the interface run once,
+# on Linux.
+
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['v*']
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, ubuntu-22.04, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # libdbus is what the app talks to the Secret Service through, where API keys are kept.
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libdbus-1-dev pkg-config
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            runtime/test/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Install interface dependencies
+        working-directory: ui
+        run: npm ci
+
+      # The app crate embeds the built interface, so the interface is built before any cargo step.
+      - name: Interface check, unit tests and build
+        working-directory: ui
+        run: |
+          npm run check
+          npm test
+          npm run build
+
+      - name: Rust tests
+        run: cargo test --workspace
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Runtime unit tests
+        working-directory: runtime/test
+        run: |
+          npm ci
+          npm run unit
+
+      - name: Browser tests of the runtime and the interface (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd runtime/test
+          npx playwright install --with-deps chromium firefox webkit
+          npm run golden
+          npm run selftest
+          npm run seeded
+          npm run browsers
+          npm run pipeline
+          cd ../../ui
+          npm run e2e
+
+      - name: Build the app binary
+        working-directory: ui
+        run: npx tauri build --debug --no-bundle

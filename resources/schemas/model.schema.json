@@ -1,0 +1,361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codjiva/model.schema.json",
+  "title": "Codjiva analysis model (model.json)",
+  "description": "The agent's analysis of the subject. Language-neutral: symbols are quoted as written in the source.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "subject": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "companions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "why"
+        ]
+      }
+    },
+    "language": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "informational only; never drives behaviour"
+    },
+    "unit": {
+      "type": "object",
+      "properties": {
+        "primary": {
+          "type": "string",
+          "description": "the main unit of work, in plain words"
+        },
+        "secondary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "primary"
+      ]
+    },
+    "entryPoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "symbol",
+          "ref"
+        ]
+      }
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "when": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "when",
+          "to",
+          "ref"
+        ]
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "adds": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "ref"
+        ]
+      }
+    },
+    "accumulators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "ref"
+        ]
+      }
+    },
+    "modes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "sticky": {
+            "type": "boolean"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "trigger",
+          "ref"
+        ]
+      }
+    },
+    "limits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "effect",
+          "ref"
+        ]
+      }
+    },
+    "flushTriggers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "when": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "when",
+          "ref"
+        ]
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "raised": {
+            "type": "string"
+          },
+          "caughtBy": {
+            "type": "string"
+          },
+          "cleanup": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "raised",
+          "outcome",
+          "ref"
+        ]
+      }
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(in|out):[A-Za-z0-9_.\\-]+$"
+          },
+          "dir": {
+            "enum": [
+              "in",
+              "out"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "carries": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "call",
+              "message",
+              "queue",
+              "write",
+              "read",
+              "http",
+              "rpc",
+              "event",
+              "file"
+            ]
+          },
+          "anchor": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "dir",
+          "symbol",
+          "ref"
+        ]
+      }
+    },
+    "focusChosen": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "illustrative": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "omitted": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "what": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "what",
+          "why"
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "subject",
+    "unit",
+    "entryPoints",
+    "steps"
+  ]
+}

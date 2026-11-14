@@ -1,0 +1,47 @@
+{
+  "id": "pi",
+  "name": "Pi",
+  "program": "pi",
+  "versionArgs": [
+    "--version"
+  ],
+  "helpArgs": [
+    "--help"
+  ],
+  "args": [
+    "-p",
+    "--mode",
+    "json",
+    "--tools",
+    "read,grep,find,ls,edit,write",
+    "--append-system-prompt",
+    "{systemPromptPath}",
+    "Read the file {userPromptPath} and carry out the task it describes. Write files only inside {artifactDirAbs}."
+  ],
+  "modelArgs": [
+    "--model",
+    "{model}"
+  ],
+  "effortArgs": [
+    "--thinking",
+    "{effort}"
+  ],
+  "resumeArgs": [
+    "--session",
+    "{sessionId}"
+  ],
+  "cwd": "{workspaceRoot}",
+  "parser": "pi-json",
+  "env": {},
+  "checkFlags": [
+    "--mode",
+    "--tools",
+    "--append-system-prompt",
+    "--session"
+  ],
+  "supportsResume": true,
+  "verified": false,
+  "limits": "Pi is given its file tools and no shell. It has no setting that confines it to one folder, so it could edit any file of the workspace. Codjiva checks the workspace after every run and discards the result if a file outside its own folder was changed.",
+  "installHint": "Install Pi from https://pi.dev, then run `pi` once in a terminal to choose a provider and sign in.",
+  "loginHint": "Run `pi` once in a terminal and sign in to a provider."
+}

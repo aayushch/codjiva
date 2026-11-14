@@ -1,0 +1,33 @@
+[package]
+name = "codjiva-core"
+description = "Everything Codjiva does that is not user interface: workspaces, storage, agents and jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+codjiva-build.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ignore.workspace = true
+notify.workspace = true
+notify-debouncer-mini.workspace = true
+sha2.workspace = true
+directories.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+async-trait.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+futures-util.workspace = true
+keyring.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+# Lets tests run timers on a paused clock, so retry waits take no real time.
+tokio = { workspace = true, features = ["test-util"] }

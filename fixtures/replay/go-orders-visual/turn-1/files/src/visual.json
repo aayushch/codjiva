@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "title": "Handler.Submit · shedding mode, batch filling",
+  "camera": { "cx": 960, "cy": 560, "z": 1 },
+  "state": { "level": 0.58, "lamps": [1, 0], "mode": [0, 1, 0], "gauge": 0.72, "press": [0, 0, 0], "wires": [1, 0, 0] },
+  "legend": [
+    { "kind": "primary", "html": "Order · <code>Order</code> that will be queued or deferred" },
+    { "kind": "secondary", "html": "Priority order · <code>KindPriority</code>, written at once" },
+    { "kind": "transient", "html": "Shed order · counted, never stored" },
+    { "kind": "batch", "html": "Batch · the <code>[]Order</code> given to <code>WriteBatch</code>" }
+  ],
+  "layers": {
+    "data": ["pipe*", "belt", "gbin", "gdbin", "drum", "pk*", "mp", "arr*"],
+    "control": ["w*", "gmode", "gtank", "ggauge", "gear*", "g1", "g2"],
+    "errors": ["dropbin1", "dropbin2", "warn"],
+    "labels": [".pl", ".plt"]
+  },
+  "nodes": [
+    { "id": "submit", "label": "Submit()", "role": "Entry point. Refuses, de-duplicates and asks the limiter about each order", "refs": [{ "path": "internal/orders/handler.go", "line": 119 }], "select": ["submit"] },
+    { "id": "limiter", "label": "Limiter.Allow()", "role": "External rate limiter. Returns allow, defer or blocked per customer", "refs": [{ "path": "internal/orders/handler.go", "line": 134 }], "select": ["limiter"] },
+    { "id": "process", "label": "process()", "role": "Runs validateLines, price and stamp in that order", "refs": [{ "path": "internal/orders/handler.go", "line": 162 }], "select": ["process"] },
+    { "id": "sw", "label": "Submit switch", "role": "Routes a processed order: defer, write now, shed or enqueue", "refs": [{ "path": "internal/orders/handler.go", "line": 142 }], "select": ["sw"] },
+    { "id": "deferred", "label": "h.deferred", "role": "Orders held by the soft rate limit until the next tick", "refs": [{ "path": "internal/orders/handler.go", "line": 91 }], "select": ["gdbin"] },
+    { "id": "flushloop", "label": "flushLoop()", "role": "Every 2 seconds moves deferred orders to the batch and flushes", "refs": [{ "path": "internal/orders/handler.go", "line": 231 }], "select": ["flushloop"] },
+    { "id": "batch", "label": "h.batch", "role": "Processed orders waiting for a flush; flushed at 64 orders", "refs": [{ "path": "internal/orders/handler.go", "line": 201 }], "select": ["gbin"] },
+    { "id": "flush", "label": "flushLocked()", "role": "Writes the batch to the Store; keeps it in memory if the write fails", "refs": [{ "path": "internal/orders/handler.go", "line": 259 }], "select": ["flush"] },
+    { "id": "mode", "label": "Handler.mode", "role": "Load mode. Normal, then Shedding at the soft limit, then Stopped at the hard limit", "refs": [{ "path": "internal/orders/handler.go", "line": 216 }], "select": ["gmode"] },
+    { "id": "tank", "label": "pendingBytes", "role": "Estimated bytes of batch plus deferred, checked in reserve()", "refs": [{ "path": "internal/orders/handler.go", "line": 216 }], "select": ["gtank"] },
+    { "id": "store", "label": "Store", "role": "The Store interface that receives WriteBatch calls", "refs": [{ "path": "internal/orders/handler.go", "line": 263 }], "select": ["drum"] }
+  ],
+  "markers": [
+    { "x": 200, "y": 680, "n": 1, "bubble": { "kicker": "EARLY REFUSALS · Submit", "html": "Before any work, <code>Submit</code> refuses when stopped, malformed, a repeated ID, or <code>VerdictBlocked</code>. Each outcome is still counted per customer.", "tail": "u", "alarm": true } },
+    { "x": 840, "y": 380, "n": 2, "bubble": { "kicker": "THREE ORDERED STEPS", "html": "<code>validateLines</code>, then <code>price</code>, then <code>stamp</code> run in order. A bad line stops the order as <code>ErrInvalid</code>.", "tail": "u" } },
+    { "x": 1140, "y": 650, "n": 3, "bubble": { "kicker": "ROUTING SWITCH", "html": "A deferred verdict holds the order; <code>KindPriority</code> writes it at once; in shedding, totals under <code>lowValueCents</code> are only counted. Else it is queued.", "tail": "u" } },
+    { "x": 1400, "y": 440, "n": 4, "bubble": { "kicker": "FLUSH TRIGGERS", "html": "The batch flushes when it reaches <code>maxBatch</code>, on each 2 second tick of <code>flushLoop</code>, and once more in <code>Close</code>.", "tail": "l" } },
+    { "x": 1470, "y": 335, "n": 5, "bubble": { "kicker": "MODE NEVER RESETS", "html": "Once <code>ModeShedding</code> starts, nothing sets the mode back to <code>ModeNormal</code>. <code>ModeStopped</code> is just as permanent.", "tail": "d", "alarm": true } },
+    { "x": 1706, "y": 746, "n": 6, "bubble": { "kicker": "PENDING BYTES BUDGET", "html": "<code>reserve</code> switches to shedding at 4 MiB. At 8 MiB it stops intake and returns <code>ErrOverloaded</code>.", "tail": "r", "alarm": true } },
+    { "x": 1630, "y": 640, "n": 7, "bubble": { "kicker": "FAILED FLUSH", "html": "If <code>WriteBatch</code> fails, <code>flushLocked</code> keeps the batch and its bytes. The next flush writes it again.", "tail": "d", "alarm": true } }
+  ]
+}

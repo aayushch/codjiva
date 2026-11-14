@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codjiva/film.schema.json",
+  "title": "Film definition (film.json)",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "title": {
+      "type": "string"
+    },
+    "legend": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "primary",
+              "secondary",
+              "transient",
+              "batch",
+              "tally"
+            ]
+          },
+          "html": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "html"
+        ]
+      }
+    },
+    "speed": {
+      "type": "object",
+      "properties": {
+        "base": {
+          "type": "number"
+        },
+        "slow": {
+          "type": "number"
+        },
+        "ramp": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "desc": {
+            "type": "string",
+            "description": "one line shown in the app's chapter list; not drawn in the film"
+          },
+          "animLength": {
+            "type": "number",
+            "minimum": 2,
+            "maximum": 60
+          },
+          "camera": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "number",
+                  "description": "animation time the move starts"
+                },
+                "dur": {
+                  "type": "number",
+                  "description": "animation seconds the move lasts"
+                },
+                "cx": {
+                  "type": "number"
+                },
+                "cy": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number",
+                  "minimum": 0.5,
+                  "maximum": 6
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "cx",
+                "cy",
+                "z"
+              ]
+            }
+          },
+          "bubbles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "at": {
+                  "type": "number"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "tail": {
+                  "enum": [
+                    "u",
+                    "d",
+                    "l",
+                    "r"
+                  ]
+                },
+                "tx": {
+                  "type": "number",
+                  "description": "for tail u or d: distance of the tail from the bubble's left edge"
+                },
+                "maxWidth": {
+                  "type": "number",
+                  "maximum": 560
+                },
+                "kicker": {
+                  "type": "string",
+                  "maxLength": 48
+                },
+                "html": {
+                  "type": "string",
+                  "description": "one or two sentences; identifiers in <code>"
+                },
+                "alarm": {
+                  "type": "boolean"
+                },
+                "hold": {
+                  "type": "number",
+                  "minimum": 3,
+                  "maximum": 8,
+                  "description": "real seconds on screen; computed from the word count when omitted"
+                },
+                "ty": {
+                  "type": "number",
+                  "description": "for tail l or r: distance of the tail from the bubble's top edge"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "at",
+                "x",
+                "y",
+                "kicker",
+                "html"
+              ]
+            }
+          },
+          "cues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "at": {
+                  "type": "number"
+                },
+                "fx": {
+                  "enum": [
+                    "pop",
+                    "click",
+                    "tick",
+                    "thud",
+                    "ding",
+                    "chime",
+                    "boing",
+                    "whoosh",
+                    "crash"
+                  ]
+                },
+                "vel": {
+                  "type": "number"
+                },
+                "into": {
+                  "type": "boolean"
+                },
+                "dur": {
+                  "type": "number",
+                  "maximum": 2,
+                  "description": "whoosh only: length in seconds"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "at",
+                "fx"
+              ]
+            }
+          },
+          "rewind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "until": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "until"
+                ]
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "animLength",
+          "bubbles"
+        ]
+      },
+      "minItems": 1
+    },
+    "bed": {
+      "type": "object",
+      "properties": {
+        "progression": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "bpm": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "thumbT": {
+      "type": "number"
+    },
+    "legendAt": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "top-left corner of the legend card on the stage; centred when omitted"
+    },
+    "legendHold": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "animation seconds the legend card stays up at the start of the first scene; default 3.4"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "title",
+    "legend",
+    "scenes"
+  ]
+}

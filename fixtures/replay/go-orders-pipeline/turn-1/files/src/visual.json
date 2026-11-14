@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "title": "Orders pipeline · one batch from the Handler to the file",
+  "camera": { "cx": 960, "cy": 580, "z": 1 },
+  "layers": { "data": ["join1"], "labels": [".pl", ".plt"] },
+  "nodes": [
+    { "id": "handler", "label": "Handler.Submit", "role": "Validates, prices and stamps orders, collects them in h.batch and flushes the batch to the Store", "select": ["bay-handler"] },
+    { "id": "store", "label": "FileStore.WriteBatch", "role": "Encodes the batch as JSON lines, then appends and syncs it to the file", "select": ["bay-store"] },
+    { "id": "join", "label": "WriteBatch(orders)", "role": "The call where the Handler's batch leaves h.batch and enters FileStore", "refs": [{ "path": "internal/orders/handler.go", "line": 263 }], "select": ["join1"] }
+  ],
+  "markers": [
+    { "x": 763, "y": 605, "n": 1, "bubble": { "kicker": "FLUSH · flushLocked()", "html": "A full batch of 64 orders, the 2 second tick or <code>Close()</code> calls <code>flushLocked()</code>, which hands the whole <code>h.batch</code> to the Store.", "tail": "u" } },
+    { "x": 946, "y": 676, "n": 2, "bubble": { "kicker": "CROSSING · WriteBatch", "html": "The same <code>[]Order</code> slice leaves the Handler and arrives as <code>orders</code> in <code>FileStore.WriteBatch</code>. On error the Handler keeps the batch.", "tail": "u" } },
+    { "x": 1210, "y": 605, "n": 3, "bubble": { "kicker": "ENCODE · one buffer", "html": "Each order becomes one JSON line in a <code>bytes.Buffer</code>. An order that fails to encode rejects the whole batch before the file is touched.", "tail": "u", "alarm": true } },
+    { "x": 1523, "y": 605, "n": 4, "bubble": { "kicker": "WRITE + SYNC · mu.Lock", "html": "Under <code>mu</code>, one <code>Write</code> appends the buffer and <code>Sync</code> forces it to disk. Only then does <code>written</code> grow.", "tail": "u" } }
+  ]
+}

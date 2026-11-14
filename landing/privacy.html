@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Codjiva</title>
+<meta name="description" content="What the Codjiva desktop app stores, where it stores it, and what it sends to the coding agent or model provider you choose.">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="stylesheet" href="styles.css">
+<script>
+// Sets the theme before the page is first drawn, so it does not flash in the other theme.
+(function () {
+	var saved = null;
+	try { saved = localStorage.getItem('codjiva-mode'); } catch (e) {}
+	var light = saved ? saved === 'light' : matchMedia('(prefers-color-scheme: light)').matches;
+	if (light) document.documentElement.setAttribute('data-mode', 'light');
+})();
+</script>
+</head>
+<body>
+
+<nav class="nav">
+	<div class="wrap">
+		<a href="./" class="brand">
+			<svg width="27" height="24" viewBox="0 0 18 16" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3.5 2 8l3.5 4.5" stroke="var(--accent)"/><path d="M12.5 3.5 16 8l-3.5 4.5" stroke="var(--ink)"/><rect x="6.6" y="5.9" width="4.8" height="4.2" rx="1" fill="var(--main)"/></svg>
+			Codjiva
+		</a>
+		<span class="grow"></span>
+		<a href="./" class="btn small">Home</a>
+	</div>
+</nav>
+
+<main class="wrap doc">
+	<h1>Privacy Policy</h1>
+	<p class="updated">Last updated: 14 November 2026</p>
+	<p>This policy covers the Codjiva desktop app (macOS, Windows and Linux) and this website. Codjiva is free, open-source software made by Aayush Chawla. Its source code is public at <a href="https://github.com/aayushch/codjiva">github.com/aayushch/codjiva</a>, so every statement below can be checked against the code.</p>
+	<p class="short"><b>In short:</b> Codjiva has no servers and no accounts, and it collects no analytics, telemetry or crash reports. What it makes is stored only on your computer, in the folder you opened. Your code is read by the coding agent you chose, or sent to the model provider whose API key you entered, under your own account with them.</p>
+
+	<h2>1. What Codjiva stores, and where</h2>
+	<ul>
+		<li><b>In the folder you open:</b> a <code>.codjiva</code> folder that holds the visuals, films and pipelines made for that folder, each of their versions, and the prompts and logs of recent jobs. When you send feedback with a picture of the film, that picture is saved there too.</li>
+		<li><b>In your system's settings folder for the app:</b> your settings and the list of folders you opened recently.</li>
+		<li><b>In your system's credential store</b> (Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux): any API key you enter. Keys are never written to a file.</li>
+	</ul>
+	<p>None of this is sent to the maker of Codjiva or to any server operated for Codjiva. There is no such server.</p>
+
+	<h2>2. The coding agent or provider you use</h2>
+	<p>Codjiva does not contain an AI model. A job is done in one of two ways, and you choose which in Settings.</p>
+	<ul>
+		<li><b>A coding agent on your computer</b> (Claude Code, Cursor Agent, Codex CLI, Gemini CLI, Antigravity or Pi). Codjiva starts the agent you installed, under your own account with its provider, in the folder you opened. The agent reads the file you picked and the companion files you ticked, and it can read other files in that folder. It sends what it reads to its provider to do its work.</li>
+		<li><b>An API key</b> (Anthropic, OpenAI, Google Gemini, or a server you name that speaks the OpenAI chat format). Codjiva then sends the request itself, to that provider's address. The request holds Codjiva's instructions, what you wrote, and the contents of the files in the opened folder that the model asks to read.</li>
+	</ul>
+	<p>What the provider does with that data is governed by your agreement with them, not by this policy. To limit what reaches them, open only the folder you mean to work on, and tick only the companion files a film needs.</p>
+
+	<h2>3. Network connections Codjiva makes</h2>
+	<ul>
+		<li><b>Requests to a model provider</b>, only when you have set up an API key and run a job with it, as described in section 2.</li>
+		<li><b>The agents.</b> Agent programs connect to their own providers. Codjiva does not see or change those connections.</li>
+	</ul>
+	<p>Codjiva makes no other connections. It does not check for updates, and it sends no analytics, telemetry, usage statistics or crash reports, to its maker or to anyone else.</p>
+	<p>The visuals and films themselves are shown in a sandboxed frame that cannot reach the network, your files or the rest of the app. An exported film is a single file that loads nothing from the internet.</p>
+
+	<h2>4. This website</h2>
+	<p>This site is hosted on GitHub Pages and has no analytics, cookies or trackers. Its fonts are served from the site itself. The download list asks GitHub for the latest release, so GitHub receives your IP address when you visit, under its own privacy policy. The site remembers your light or dark theme choice in your browser's local storage.</p>
+
+	<h2>5. Keeping and deleting your data</h2>
+	<p>You control all of it. Delete an artifact in the app's library to remove it. To remove everything Codjiva made for a folder, delete the <code>.codjiva</code> folder inside it. Remove an API key in Settings to delete it from the credential store. Data an agent or provider received is kept under that provider's policy; contact them to delete it.</p>
+
+	<h2>6. Children</h2>
+	<p>Codjiva is a tool for software developers and is not directed at children under 13. It collects no personal information from anyone.</p>
+
+	<h2>7. Changes to this policy</h2>
+	<p>If Codjiva starts handling data differently, this page will be updated with the release that makes the change, and the date at the top will change. The history of this page is public in the repository.</p>
+
+	<h2>8. Contact</h2>
+	<p>For questions about privacy in Codjiva, open an issue at <a href="https://github.com/aayushch/codjiva/issues">github.com/aayushch/codjiva/issues</a>.</p>
+</main>
+
+<footer class="footer">
+	<div class="wrap">
+		<span>Codjiva · open source · Apache 2.0</span>
+		<span class="grow"></span>
+		<a href="./">Home</a>
+		<a href="terms.html">Terms</a>
+		<a href="https://github.com/aayushch/codjiva" target="_blank" rel="noopener">GitHub</a>
+		<a href="https://aay.sh">aay.sh</a>
+	</div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "id": "claude-code",
+  "name": "Claude Code",
+  "program": "claude",
+  "versionArgs": ["--version"],
+  "helpArgs": ["--help"],
+  "args": [
+    "-p",
+    "--output-format", "stream-json",
+    "--verbose",
+    "--permission-mode", "dontAsk",
+    "--permission-prompts", "none",
+    "--strict-mcp-config",
+    "--disable-slash-commands",
+    "--tools", "Read,Glob,Grep,Edit,Write",
+    "--allowedTools", "Read", "Glob", "Grep", "Edit(/{artifactDirAbs}/**)", "Write(/{artifactDirAbs}/**)",
+    "--append-system-prompt-file", "{systemPromptPath}"
+  ],
+  "modelArgs": ["--model", "{model}"],
+  "defaultModel": "sonnet",
+  "effortArgs": ["--effort", "{effort}"],
+  "resumeArgs": ["--resume", "{sessionId}"],
+  "budgetArgs": ["--max-budget-usd", "{maxBudgetUsd}"],
+  "stdin": "{userPromptText}",
+  "cwd": "{workspaceRoot}",
+  "parser": "claude-stream-json",
+  "env": {},
+  "checkFlags": ["--output-format", "--permission-mode", "--permission-prompts", "--tools", "--allowedTools", "--strict-mcp-config", "--disable-slash-commands", "--effort", "--resume"],
+  "supportsResume": true,
+  "verified": true,
+  "installHint": "Install Claude Code from https://claude.com/claude-code, then run `claude` once in a terminal to sign in.",
+  "loginHint": "Run `claude` once in a terminal and sign in."
+}

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Codjiva app icon: code brackets with a packet of work between them, in the blueprint palette. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1B212B"/><stop offset="1" stop-color="#10131A"/></linearGradient>
+    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+    <pattern id="grid" width="103" height="103" patternUnits="userSpaceOnUse" x="100" y="100"><path d="M103 0H0V103" fill="none" stroke="#E8ECF1" stroke-opacity=".07" stroke-width="3"/></pattern>
+    <radialGradient id="glow"><stop offset="0" stop-color="#F2B33D" stop-opacity=".44"/><stop offset="1" stop-color="#F2B33D" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  <g clip-path="url(#tile)"><rect x="100" y="100" width="824" height="824" fill="url(#grid)"/></g>
+  <rect x="102" y="102" width="820" height="820" rx="184" fill="none" stroke="#E8ECF1" stroke-opacity=".14" stroke-width="4"/>
+  <path d="M262 512 H762" fill="none" stroke="#E8ECF1" stroke-opacity=".22" stroke-width="6" stroke-dasharray="12 26"/>
+  <g fill="none" stroke-width="56" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M356 344 L228 512 L356 680" stroke="#4FB0C6"/>
+    <path d="M668 344 L796 512 L668 680" stroke="#ADB1B6"/>
+  </g>
+  <circle cx="512" cy="512" r="220" fill="url(#glow)"/>
+  <g transform="translate(512 512) scale(1.55)">
+    <rect x="-64" y="-42" width="128" height="84" rx="16" fill="#F2B33D"/>
+    <path d="M-64 -14H64" stroke="#14181F" stroke-opacity=".45" stroke-width="7"/>
+    <rect x="-40" y="2" width="44" height="24" rx="5" fill="#14181F" fill-opacity=".35"/>
+  </g>
+</svg>

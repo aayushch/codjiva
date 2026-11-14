@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of Use — Codjiva</title>
+<meta name="description" content="The terms for using the Codjiva desktop app and this website.">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="stylesheet" href="styles.css">
+<script>
+// Sets the theme before the page is first drawn, so it does not flash in the other theme.
+(function () {
+	var saved = null;
+	try { saved = localStorage.getItem('codjiva-mode'); } catch (e) {}
+	var light = saved ? saved === 'light' : matchMedia('(prefers-color-scheme: light)').matches;
+	if (light) document.documentElement.setAttribute('data-mode', 'light');
+})();
+</script>
+</head>
+<body>
+
+<nav class="nav">
+	<div class="wrap">
+		<a href="./" class="brand">
+			<svg width="27" height="24" viewBox="0 0 18 16" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3.5 2 8l3.5 4.5" stroke="var(--accent)"/><path d="M12.5 3.5 16 8l-3.5 4.5" stroke="var(--ink)"/><rect x="6.6" y="5.9" width="4.8" height="4.2" rx="1" fill="var(--main)"/></svg>
+			Codjiva
+		</a>
+		<span class="grow"></span>
+		<a href="./" class="btn small">Home</a>
+	</div>
+</nav>
+
+<main class="wrap doc">
+	<h1>Terms of Use</h1>
+	<p class="updated">Last updated: 14 November 2026</p>
+	<p>These terms cover the Codjiva desktop app (macOS, Windows and Linux) and this website. Codjiva is free, open-source software made by Aayush Chawla. By installing or using Codjiva you agree to these terms. If you do not agree, do not use it.</p>
+	<p class="short"><b>In short:</b> Codjiva is free and comes with no warranty. You use the coding agents and model providers through your own accounts and under their terms, and you pay them for what a job costs. The pictures and films are made by AI models and can be wrong, so check them against the code before you rely on them. How Codjiva handles your data is described in the <a href="privacy.html">Privacy Policy</a>.</p>
+
+	<h2>1. License</h2>
+	<p>Codjiva is released under the Apache License, Version 2.0. You may use, copy, modify and distribute it under that license. Where these terms and the license differ about the software itself, the license applies.</p>
+
+	<h2>2. The agents and their providers</h2>
+	<p>Codjiva works by running a coding agent you install yourself (Claude Code, Cursor Agent, Codex CLI, Gemini CLI, Antigravity or Pi), or by calling a model provider with an API key you enter. Codjiva is not made by, affiliated with or endorsed by Anthropic, Cursor, OpenAI, Google or any other provider. Your use of each agent or provider, including what it costs and what it does with your data, is governed by your own account and agreement with them. You are responsible for following their terms and usage policies.</p>
+
+	<h2>3. Pictures and films can be wrong</h2>
+	<p>A visual or a film is a model's reading of your code. It can leave things out, simplify, or state something the code does not do, even when it looks precise. Use it to find your way around the code, and check anything important against the code itself. Each part links to the lines it stands for so that you can.</p>
+
+	<h2>4. Your code and your responsibility</h2>
+	<p>You keep all rights to your code and to what Codjiva makes from it. You are responsible for having the right to give the code in the folder you open to the agent or provider you chose. Do not use Codjiva on code you are not allowed to share with them.</p>
+	<p>An agent runs on your computer in the folder you open. Codjiva tells it to write only inside the <code>.codjiva</code> folder and checks afterwards that nothing else changed, but how firmly an agent can be confined differs from agent to agent, and Settings says what applies to each. You are responsible for the folders you open and for reviewing anything the check reports.</p>
+
+	<h2>5. Costs</h2>
+	<p>A job uses your subscription or your API credits with the provider. Codjiva shows the cost a provider reports when it reports one, and a spending limit in Settings applies only to agents that can enforce it. The amounts are the provider's, and they bill you directly.</p>
+
+	<h2>6. Updates</h2>
+	<p>New versions are published on GitHub, and you choose whether to install them. Features can change or be removed in any release. There is no commitment to keep Codjiva maintained or available.</p>
+
+	<h2>7. No warranty</h2>
+	<p>Codjiva is provided &ldquo;as is&rdquo;, without warranty of any kind, express or implied, including warranties of merchantability, fitness for a particular purpose and non-infringement.</p>
+
+	<h2>8. Limitation of liability</h2>
+	<p>To the fullest extent the law allows, the authors and contributors of Codjiva are not liable for any claim, damages or other liability arising from the software or its use, including lost data, changes an agent makes to your files, charges from an agent's provider, or decisions made from a picture or a film. Some places do not allow these limits, so they apply only as far as your local law permits.</p>
+
+	<h2>9. Changes to these terms</h2>
+	<p>These terms may be updated with new releases. The date at the top shows the current version, and the history of this page is public in the repository. Continuing to use Codjiva after a change means you accept the new terms.</p>
+
+	<h2>10. Contact</h2>
+	<p>For questions about these terms, open an issue at <a href="https://github.com/aayushch/codjiva/issues">github.com/aayushch/codjiva/issues</a>.</p>
+</main>
+
+<footer class="footer">
+	<div class="wrap">
+		<span>Codjiva · open source · Apache 2.0</span>
+		<span class="grow"></span>
+		<a href="./">Home</a>
+		<a href="privacy.html">Privacy</a>
+		<a href="https://github.com/aayushch/codjiva" target="_blank" rel="noopener">GitHub</a>
+		<a href="https://aay.sh">aay.sh</a>
+	</div>
+</footer>
+
+</body>
+</html>

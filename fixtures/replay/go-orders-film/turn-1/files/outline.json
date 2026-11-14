@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "title": "How an order moves through the orders Handler",
+  "targetSeconds": 60,
+  "chapters": [
+    { "id": "overview", "title": "How an order moves through the orders Handler", "summary": "One order enters Submit, is processed and waits in the batch.",
+      "beats": [{ "t": 4.2, "what": "order enters and passes three presses" }, { "t": 7.2, "what": "lands in h.batch" }] },
+    { "id": "routing", "title": "1 · Submit routes each order", "summary": "A malformed order is refused; a priority order is written at once.",
+      "beats": [{ "t": 1.5, "what": "invalid order dropped" }, { "t": 3.6, "what": "priority order skips the batch" }] },
+    { "id": "budget", "title": "2 · The pending-bytes budget", "summary": "Soft limit starts shedding; the hard limit stops intake.",
+      "beats": [{ "t": 2, "what": "soft limit, ModeShedding, low-value order shed" }, { "t": 5.4, "what": "hard limit, ErrOverloaded travels to intake" }] },
+    { "id": "flush", "title": "3 · Rewind, then the flush", "summary": "Back before the hard limit: the tick writes the batch.", "rewind": true,
+      "beats": [{ "t": 1.6, "what": "rewind to before the fork" }, { "t": 3.8, "what": "batch flushed, bytes released" }, { "t": 5.8, "what": "Close repeats the flush at the end" }] }
+  ]
+}

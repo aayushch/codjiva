@@ -1,0 +1,49 @@
+name: Deploy landing page
+
+# Publishes landing/ to GitHub Pages. The page's live examples are built here from the
+# reference sources in runtime/reference, so the workflow also runs when the runtime, the
+# builder or those sources change.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'landing/**'
+      - 'runtime/**'
+      - 'resources/**'
+      - 'crates/codjiva-build/**'
+      - 'scripts/landing.sh'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the live examples and copy the fonts
+        run: scripts/landing.sh
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: landing
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

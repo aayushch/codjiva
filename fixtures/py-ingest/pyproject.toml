@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tenant-ingest"
+version = "2.3.0"
+description = "Loads tenant billing CSV exports, cleans the rows and writes them out in batches."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+tenant-ingest = "ingest.cli:main"
+
+[tool.setuptools]
+packages = ["ingest"]
