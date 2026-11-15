@@ -31,6 +31,8 @@ is no timeline and nothing moves.
   its `role` says in one sentence what it does, its `refs` name its line, and its `select` names the plate. A
   click on a plate then selects that case, and a click beside it selects the machine. These nodes are in
   addition to the 6 to 12.
+- A **rationale** on the 2 to 6 nodes where the code shows why it is built that way (core guide §6). Leave
+  it out of every other node.
 - **Layers** so the user can declutter. Provide all four: `data` (pipes, bins, drums, packets), `control`
   (wires, lamps, gauges, tanks, tally boards), `errors` (drop bins, warnings) and `labels` (`[".pl", ".plt"]`).
 - **3 to 8 markers**, numbered in reading order along the flow. Each opens one bubble (§6 of the core guide).

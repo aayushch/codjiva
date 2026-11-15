@@ -33,7 +33,7 @@
       "camera": [{ "t": 0.05, "dur": 1, "cx": 800, "cy": 560, "z": 1.2 }],
       "bubbles": [
         { "at": 1.5, "x": 480, "y": 760, "alarm": true, "tail": "l", "ty": 70, "maxWidth": 370, "kicker": "REFUSED · ErrInvalid", "html": "No ID, customer or lines: <code>Submit()</code> returns <code>ErrInvalid</code> and nothing is stored. <code>intake</code> logs it and reads on." },
-        { "at": 3.6, "x": 690, "y": 190, "tail": "d", "tx": 280, "maxWidth": 340, "kicker": "ROUTING · PRIORITY", "html": "A <code>KindPriority</code> order skips the batch: <code>Store.WriteBatch</code> writes it at once as <code>WrittenNow</code>." }
+        { "at": 3.6, "x": 690, "y": 190, "tail": "d", "tx": 280, "maxWidth": 340, "kicker": "ROUTING · PRIORITY", "html": "A <code>KindPriority</code> order skips the batch: <code>Store.WriteBatch</code> writes it at once as <code>WrittenNow</code>.", "rationale": {"text": "A priority order whose write fails is taken out of `seen` again, so the client may submit the same order once more.", "basis": "stated", "refs": [{"path": "internal/orders/handler.go", "line": 151}]} }
       ],
       "cues": [
         { "at": 1.9, "fx": "thud", "vel": 34 },
@@ -70,8 +70,8 @@
       "animLength": 6.8,
       "camera": [{ "t": 1.7, "dur": 1, "cx": 1480, "cy": 600, "z": 1.3 }],
       "bubbles": [
-        { "at": 4.0, "x": 1925, "y": 300, "tail": "l", "ty": 190, "maxWidth": 280, "kicker": "FLUSH · flushLocked()", "html": "The tick writes the whole batch in one <code>WriteBatch</code> call. Bytes leave <code>pendingBytes</code> only on success; a failure keeps the batch." },
-        { "at": 5.9, "x": 1810, "y": 560, "tail": "l", "ty": 40, "maxWidth": 300, "kicker": "THE END · Close()", "html": "Pending bytes fall, but <code>ModeShedding</code> stays on. <code>Close()</code> flushes once more when intake ends, even after <code>ErrOverloaded</code>." }
+        { "at": 4.0, "x": 1925, "y": 300, "tail": "l", "ty": 190, "maxWidth": 280, "kicker": "FLUSH · flushLocked()", "html": "The tick writes the whole batch in one <code>WriteBatch</code> call. Bytes leave <code>pendingBytes</code> only on success; a failure keeps the batch.", "rationale": {"text": "After a failed write the batch stays in memory, so the next flush writes it again and no order is lost.", "basis": "stated", "refs": [{"path": "internal/orders/handler.go", "line": 257}]} },
+        { "at": 5.9, "x": 1810, "y": 560, "tail": "l", "ty": 40, "maxWidth": 300, "kicker": "THE END · Close()", "html": "Pending bytes fall, but <code>ModeShedding</code> stays on. <code>Close()</code> flushes once more when intake ends, even after <code>ErrOverloaded</code>.", "rationale": {"text": "`Close()` also runs after `ErrOverloaded`, so the orders that were accepted before the error still reach the Store.", "basis": "stated", "refs": [{"path": "internal/orders/handler.go", "line": 274}]} }
       ],
       "cues": [
         { "at": 0.03, "fx": "whoosh", "vel": 28, "dur": 1.6, "into": true },

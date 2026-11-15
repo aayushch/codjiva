@@ -1020,6 +1020,33 @@ html.dragging-handle iframe {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+/* One rationale of a film in the inspector: the heading of its bubble, which
+   goes to the chapter when clicked, and the reason under it. The rationales
+   of the chapter that is playing have a line on their left. */
+.inspector .rationale-item {
+  margin: 0 0 12px;
+  padding-left: 8px;
+  border-left: 2px solid transparent;
+}
+.inspector .rationale-item.on {
+  border-left-color: var(--main);
+}
+.inspector .rationale-head {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0 0 2px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  text-align: left;
+  cursor: pointer;
+}
+.inspector .rationale-head:hover {
+  color: var(--main);
+}
 .inspector .companion {
   margin: 0 0 6px;
 }

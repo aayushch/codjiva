@@ -12,7 +12,8 @@
     "browsers": "node browsers.mjs",
     "legend": "node legend.mjs",
     "highlight": "node highlight.mjs",
-    "test": "node --test unit/*.test.mjs && node golden.mjs && node selftest.mjs && node seeded.mjs && node browsers.mjs && node pipeline.mjs && node legend.mjs && node highlight.mjs"
+    "rationale": "node rationale.mjs",
+    "test": "node --test unit/*.test.mjs && node golden.mjs && node selftest.mjs && node seeded.mjs && node browsers.mjs && node pipeline.mjs && node legend.mjs && node highlight.mjs && node rationale.mjs"
   },
   "devDependencies": {
     "pixelmatch": "^6.0.0",

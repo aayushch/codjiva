@@ -157,6 +157,48 @@
                 "ty": {
                   "type": "number",
                   "description": "for tail l or r: distance of the tail from the bubble's top edge"
+                },
+                "rationale": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 280
+                    },
+                    "basis": {
+                      "enum": [
+                        "stated",
+                        "inferred"
+                      ]
+                    },
+                    "refs": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "line": {
+                            "type": "integer"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "path",
+                          "line"
+                        ]
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "text",
+                    "basis",
+                    "refs"
+                  ]
                 }
               },
               "additionalProperties": false,

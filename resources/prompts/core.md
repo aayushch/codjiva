@@ -130,6 +130,27 @@ instruction would break a hard rule in §1, keep the rule and say so in `progres
 - Write for an engineer who has not read this code. Say what happens and why it matters. Do not describe the
   motion they can already see.
 
+### Rationale: why the code is the way it is
+
+An engineer who has followed what the code does asks next why it does it that way. Where the code answers
+that, record the answer as a `rationale` (see "Rationale" in the runtime API): on the node of a visual, or on
+the bubble of a film that explains that step. The viewer opens a rationale when they want it, so it adds
+nothing to the drawing.
+
+- **Only a reason the code shows.** Either a comment gives the reason (`basis: "stated"`), or other code makes
+  it necessary (`basis: "inferred"`): a store that writes a batch completely or not at all is the reason the
+  caller keeps the batch after a failed write. `refs` name that comment or that code, not the step itself.
+- **No guessing.** If the code does not show a reason, write no rationale. Do not write about history, about
+  what the author meant or about good practice in general ("for performance", "for safety") without the line
+  that shows it.
+- **Give the reason, not the behaviour.** The bubble or the node's `role` already says what happens. "The batch
+  stays in memory after a failed write, so the next flush writes it again and no order is lost" is a
+  rationale. "The batch is kept" is not.
+- **Few, and where an engineer would stop and ask.** 2 to 6 in a visual, and 2 to 6 across a whole film. Good
+  places are a check that looks redundant, an order of steps that matters, a limit with a particular value,
+  and state that is kept when something fails.
+- One or two sentences, at most 280 characters, with every identifier between backticks.
+
 ## 7. Layout, by numbers
 
 You place everything by coordinates, so use these numbers.
@@ -154,6 +175,7 @@ You place everything by coordinates, so use these numbers.
 ## 8. Before you finish
 
 - [ ] Every claim has a `ref` in `model.json`, and every `ref` points at a real line.
+- [ ] Every `rationale` names the line that shows its reason, and none is a guess.
 - [ ] No forbidden construct; no `index.html`; nothing written outside `{{artifactDir}}`.
 - [ ] Every class and id is built with `c()`, and every name is used once.
 - [ ] You recomputed the box of every plate and label and none overlaps another or crosses a machine edge.

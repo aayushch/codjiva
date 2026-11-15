@@ -617,6 +617,73 @@ const hidden = await visual
   );
 check(hidden, 'switching a layer off in the inspector hides it in the visual');
 await page.getByRole('switch', { name: 'Data flow' }).click();
+
+// ---- rationale: why a part is built the way it is
+const flushMachine = await visual.locator('.v-flush').boundingBox();
+await page.mouse.click(
+  flushMachine.x + 14,
+  flushMachine.y + flushMachine.height - 14,
+);
+await page.locator('.inspector h3', { hasText: 'flushLocked()' }).waitFor();
+const nodeRationale = page.locator('.inspector .rationale');
+check(
+  (await page
+    .locator('.inspector .kicker', { hasText: 'Rationale' })
+    .count()) === 1 &&
+    /the next flush writes it again/.test(await nodeRationale.textContent()) &&
+    (await nodeRationale.locator('code').textContent()) === 'flushLocked' &&
+    (await nodeRationale.locator('.basis').textContent()) ===
+      'Stated in the code' &&
+    (await nodeRationale.locator('button.ref').textContent()) ===
+      'handler.go:33',
+  'a selected part shows its rationale, where the reason comes from and the line that shows it',
+  await nodeRationale.textContent(),
+);
+await shot('03e-rationale');
+const whyShown = () =>
+  visual
+    .locator('.cj-marker.cj-why')
+    .evaluateAll(
+      (els) =>
+        els.filter((el) => getComputedStyle(el).display !== 'none').length,
+    );
+check(
+  (await whyShown()) === 0,
+  'the "?" markers of a visual are hidden at first',
+);
+await page.getByRole('switch', { name: 'Rationale' }).click();
+await page.waitForTimeout(300);
+check(
+  (await whyShown()) === 4 &&
+    (await page
+      .getByRole('switch', { name: 'Rationale' })
+      .getAttribute('aria-checked')) === 'true',
+  'the Rationale switch shows a "?" marker on each part that has a rationale',
+  String(await whyShown()),
+);
+await shot('03f-rationale-markers');
+await page.getByRole('switch', { name: 'Rationale' }).click();
+await page.waitForTimeout(300);
+check((await whyShown()) === 0, 'switching it off hides the markers again');
+await nodeRationale.locator('button.ref').click();
+await page.locator('.source-line.ref').waitFor({ timeout: 5000 });
+check(
+  (await page.locator('.source-line.ref .source-num').textContent()).trim() ===
+    '33',
+  "the reference of a rationale opens the source at the reason's line",
+);
+await page.locator('.tab', { hasText: 'Visual' }).click();
+await visual.locator('.v-submit').waitFor({ timeout: 15000 });
+const gateAgain = await visual.locator('.v-submit').boundingBox();
+await page.mouse.click(
+  gateAgain.x + gateAgain.width / 2,
+  gateAgain.y + gateAgain.height / 2,
+);
+await page.locator('.inspector h3', { hasText: 'Submit()' }).waitFor();
+check(
+  (await page.locator('.inspector .rationale').count()) === 0,
+  'a part without a rationale shows none',
+);
 await page.locator('.inspector button.ref').first().click();
 await page.locator('.source-line.ref').waitFor({ timeout: 5000 });
 check(
@@ -896,6 +963,39 @@ await page.waitForFunction(() =>
   /^3 \/ 4/.test(document.querySelector('.player .chap').textContent),
 );
 check(true, 'clicking a chapter in the inspector seeks the film to it');
+// The film's rationales are listed in the inspector, each under the heading
+// of its bubble. A click on a heading goes to the chapter of that bubble.
+const filmRationales = page.locator('.inspector .rationale-item');
+check(
+  (await filmRationales.count()) === 2 &&
+    (await filmRationales.locator('.rationale-head').allTextContents()).join(
+      ' | ',
+    ) === 'ROUTING · PRIORITY | FLUSH · flushLocked()' &&
+    (await filmRationales.locator('.basis.inferred').count()) === 1 &&
+    (await filmRationales.locator('.on').count()) === 0,
+  'the inspector lists the rationales of a film and says which are inferred',
+  await filmRationales.allTextContents().then((all) => all.join(' | ')),
+);
+await filmRationales.nth(1).locator('.rationale-head').click();
+await page.waitForFunction(() =>
+  /^4 \/ 4/.test(document.querySelector('.player .chap').textContent),
+);
+check(
+  await filmRationales.nth(1).evaluate((el) => el.classList.contains('on')),
+  'a click on the heading of a rationale goes to its chapter, and the rationale is marked',
+);
+check(
+  (await page
+    .frameLocator('.canvas iframe')
+    .locator('.cj-why-chip')
+    .count()) === 3,
+  'the bubbles of the film that have a rationale carry a chip',
+);
+await shot('09f-film-rationale');
+await page.locator('.chapter-row').nth(2).click();
+await page.waitForFunction(() =>
+  /^3 \/ 4/.test(document.querySelector('.player .chap').textContent),
+);
 const speed = page.getByLabel('Speed');
 check(
   (await speed.locator('option').allTextContents()).join(' ') ===

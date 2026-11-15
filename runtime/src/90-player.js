@@ -49,7 +49,7 @@ const formatTime = (x) => {
   return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 };
 
-CJ.version = '1.1.1';
+CJ.version = '1.2.0';
 
 CJ.boot = async (data) => {
   const params = new URLSearchParams(window.location.search);
@@ -289,6 +289,15 @@ CJ.boot = async (data) => {
       );
       layerBox.append(button);
     }
+    if (visual.hasRationale) {
+      const button = document.createElement('button');
+      button.className = 'text';
+      button.textContent = 'rationale';
+      button.addEventListener('click', () =>
+        button.classList.toggle('on', visual.setRationale()),
+      );
+      layerBox.append(button);
+    }
     window.addEventListener('message', (ev) => {
       if (ev.source !== host || !ev.data || !ev.data.cj) return;
       const msg = ev.data;
@@ -301,6 +310,7 @@ CJ.boot = async (data) => {
         setTheme(msg.mode);
         post({ cj: 'theme', mode: theme() });
       } else if (msg.cj === 'legend') visual.setLegend(msg.on);
+      else if (msg.cj === 'rationale') visual.setRationale(msg.on);
       else if (msg.cj === 'layers') visual.setLayers(msg.on || {});
       else if (msg.cj === 'fit') visual.fit();
       else if (msg.cj === 'zoom') visual.zoomBy(msg.factor || 1);
@@ -320,6 +330,7 @@ CJ.boot = async (data) => {
         layers: visual.layers(),
         nodes: (data.visual.nodes || []).map((n) => n.id),
         legend: visual.hasLegend,
+        rationale: visual.hasRationale,
         runtime: CJ.version,
         theme: theme(),
       });
@@ -423,6 +434,11 @@ CJ.boot = async (data) => {
 
   const play = () => {
     if (t >= total - 0.01) t = 0;
+    // A rationale that was opened while the film was paused closes when the
+    // film goes on.
+    document
+      .querySelectorAll('.bub.cj-why-open')
+      .forEach((bubble) => setRationaleOpen(bubble, false));
     playing = true;
     restartClock();
     if (!muted) audio.start(t, rate);
@@ -491,6 +507,31 @@ CJ.boot = async (data) => {
     requestAnimationFrame(tick);
   };
 
+  // Opens or closes the rationale of a bubble. An open rationale makes the
+  // bubble taller, so the film measures the bubble again and draws the
+  // moment again, which keeps the taller bubble inside the view.
+  const setRationaleOpen = (bubble, open) => {
+    bubble.classList.toggle('cj-why-open', open);
+    film.remeasureBubble(bubble);
+    draw(t);
+  };
+  // A click on the "rationale" chip of a bubble pauses the film and opens or
+  // closes the rationale. The click does not also start or stop the film,
+  // which a click anywhere else on the stage does. This listener runs before
+  // that one because it listens while the click travels down to the chip. A
+  // chip of a bubble that is not on screen is ignored.
+  frame.addEventListener(
+    'click',
+    (ev) => {
+      const chip = ev.target.closest && ev.target.closest('.cj-why-chip');
+      const bubble = chip && chip.closest('.bub');
+      if (!bubble || Number(bubble.style.opacity) < 0.5) return;
+      ev.stopPropagation();
+      if (playing) pause();
+      setRationaleOpen(bubble, !bubble.classList.contains('cj-why-open'));
+    },
+    true,
+  );
   playBtn.addEventListener('click', toggle);
   frame.addEventListener('click', toggle);
   muteBtn.addEventListener('click', () => setMuted(!muted));

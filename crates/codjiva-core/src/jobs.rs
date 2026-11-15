@@ -371,6 +371,90 @@ fn check_model(
     (model, found)
 }
 
+/// Collects the code references of every `rationale` object in a visual or a
+/// film, however deeply nested. A rationale holds them as
+/// `"refs": [{ "path": ..., "line": ... }]`.
+fn collect_rationale_refs(value: &Value, out: &mut Vec<(String, u64)>) {
+    match value {
+        Value::Object(map) => {
+            for (key, inner) in map {
+                if key == "rationale" {
+                    for reference in
+                        inner["refs"].as_array().into_iter().flatten()
+                    {
+                        if let (Some(path), Some(line)) = (
+                            reference["path"].as_str(),
+                            reference["line"].as_u64(),
+                        ) {
+                            out.push((path.to_string(), line));
+                        }
+                    }
+                } else {
+                    collect_rationale_refs(inner, out);
+                }
+            }
+        }
+        Value::Array(items) => items
+            .iter()
+            .for_each(|item| collect_rationale_refs(item, out)),
+        _ => {}
+    }
+}
+
+/// Checks the rationales of a visual or a film. A rationale says why the code
+/// does something, and it is only worth showing if the reader can go to the
+/// code that gives the reason. So a reference of a rationale that names a
+/// file or a line that does not exist is an error, which is sent back to the
+/// agent to correct.
+///
+/// The file that is read is `src/film.json` for a film and `src/visual.json`
+/// otherwise. A file that is missing or is not JSON is reported by the build
+/// and gives no problems here.
+fn check_rationales(
+    ws: &Workspace,
+    version_dir: &Path,
+    film: bool,
+) -> Vec<Diagnostic> {
+    let file = if film { "film.json" } else { "visual.json" };
+    let Some(definition) =
+        std::fs::read_to_string(version_dir.join("src").join(file))
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+    else {
+        return Vec::new();
+    };
+    let mut refs = Vec::new();
+    collect_rationale_refs(&definition, &mut refs);
+    let mut line_counts: BTreeMap<String, Option<u64>> = BTreeMap::new();
+    let mut found = Vec::new();
+    for (path, line) in refs {
+        let lines = *line_counts.entry(path.clone()).or_insert_with(|| {
+            ws.file_info(&path).ok().and_then(|info| info.lines)
+        });
+        let problem = match lines {
+            None => Some(format!(
+                "a rationale refers to {path}, which is not a file of the                  workspace"
+            )),
+            Some(count) if line == 0 || line > count => Some(format!(
+                "a rationale refers to {path}:{line}, but the file has                  {count} lines"
+            )),
+            Some(_) => None,
+        };
+        if let Some(message) = problem {
+            found.push(Diagnostic {
+                check: "rationale-refs".into(),
+                severity: Severity::Error,
+                file: file.into(),
+                line: None,
+                message: format!(
+                    "{message}. Point the rationale at the line that gives                      the reason, or remove the rationale."
+                ),
+            });
+        }
+    }
+    found
+}
+
 /// Checks a film's outline. A missing or malformed outline is a warning, not an
 /// error: the user is shown the outline while the film is made, but the film
 /// itself does not depend on it.
@@ -460,6 +544,7 @@ async fn build_and_check(
     let mut sources =
         Sources::read_dir(&version_dir.join("src")).unwrap_or_default();
     let (model, mut problems) = check_model(&ctx.workspace, version_dir);
+    problems.extend(check_rationales(&ctx.workspace, version_dir, plan.film));
     // The job decides what is built. A film job that produced only a still
     // visual has not produced its film, and the other way round.
     let declared = if plan.film {
@@ -1796,6 +1881,64 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_rationale_must_point_at_a_real_line_of_the_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = dir.path().join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "src/handler.go",
+            "package a\n// kept for the retry\nvar x = 1\n",
+        );
+        let ws = Workspace::open(dir.path()).unwrap();
+        let version = dir.path().join("version");
+        let rationale = |path: &str, line: u32| {
+            json!({
+                "text": "The batch is kept so that the next flush retries it.",
+                "basis": "stated",
+                "refs": [{ "path": path, "line": line }],
+            })
+        };
+
+        // A node of a visual whose rationale names a real line passes. One
+        // that names a line after the end of the file, and one that names a
+        // file that does not exist, are errors.
+        let visual = json!({ "nodes": [
+            { "id": "a", "rationale": rationale("src/handler.go", 2) },
+            { "id": "b", "rationale": rationale("src/handler.go", 9) },
+            { "id": "c", "rationale": rationale("src/gone.go", 1) },
+            { "id": "d" },
+        ]});
+        write("version/src/visual.json", &visual.to_string());
+        let found = check_rationales(&ws, &version, false);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found.iter().all(|d| {
+            d.check == "rationale-refs"
+                && d.severity == Severity::Error
+                && d.file == "visual.json"
+        }));
+        assert!(found[0].message.contains("src/handler.go:9"));
+        assert!(found[0].message.contains("3 lines"));
+        assert!(found[1].message.contains("src/gone.go"));
+
+        // In a film, a rationale belongs to a bubble of a scene.
+        let film = json!({ "scenes": [{ "id": "one", "bubbles": [
+            { "kicker": "A", "rationale": rationale("src/handler.go", 0) },
+            { "kicker": "B", "rationale": rationale("src/handler.go", 3) },
+        ]}]});
+        write("version/src/film.json", &film.to_string());
+        let found = check_rationales(&ws, &version, true);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].file, "film.json");
+
+        // A version without the file has nothing to check.
+        let empty = dir.path().join("empty");
+        assert!(check_rationales(&ws, &empty, true).is_empty());
+    }
+
     const PLANT: &str = "CJ.definePlant({ draw({ c, extraSvg, extraHtml }) { \
                          return '<svg class=\"art\" viewBox=\"0 0 1920 \
                          1080\">' + CJ.grid(c('grid')) + CJ.machine(c('h'), \
@@ -2430,6 +2573,18 @@ mod tests {
     #[tokio::test]
     async fn an_animate_job_makes_a_film_with_its_outline_and_chapters() {
         let s = setup(GOOD, &[]);
+        // The film this job receives is the reference film, whose rationales
+        // name lines of the file it was made from. That file is put where
+        // they name it, so that the check of those lines passes.
+        let fixture = s._dir.path().join("ws/internal/orders");
+        std::fs::create_dir_all(&fixture).unwrap();
+        std::fs::write(
+            fixture.join("handler.go"),
+            include_str!(
+                "../../../fixtures/go-orders/internal/orders/handler.go"
+            ),
+        )
+        .unwrap();
         // A visual of the same file exists first, so the film job is told to
         // start from it.
         let events = run_job(&s, vec![ok_report()], 3).await;

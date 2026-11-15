@@ -20,6 +20,9 @@ in {{srcDir}}/ and, if the feedback corrects a fact, in {{artifactDir}}/model.js
 - Feedback about pace changes the `animLength`, the bubble times or the camera move durations of that chapter
   only.
 - After the change, recompute the boxes of everything within 200 px and make sure nothing is crowded.
+- Feedback that asks why the code does something is answered with a `rationale` on the node or the bubble it
+  is about, under the rules of the core guide: only a reason the code shows, with the line that shows it. If
+  the code shows no reason, say so in the `note` and add none.
 - Feedback that asks for more detail about a part of a visual ("go deeper into this", "show the cases") adds
   boxes inside that part. Draw each as a `CJ.plate` with its own class name, and add a node for each to
   `visual.json` with its real name as `label`, what it does as `role`, its line in `refs` and the plate's name

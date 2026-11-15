@@ -3,14 +3,21 @@
   import { formatBytes, formatTime } from '$lib/tree';
   import { app } from '$lib/state/app.svelte';
   import FeedbackBox from './FeedbackBox.svelte';
+  import RationaleNote from './RationaleNote.svelte';
 
   // The right-hand panel beside a visual or a film.
   //
   // For a visual with a part selected, it explains that part and links to its
   // code. For a film, it lists the chapters, which seek the film when clicked,
-  // and the companion files the film was made from. For both it shows the modes
-  // and limits the agent found, the outcome of the checks and the feedback box.
-  // The actions on the version, such as Regenerate and Export, are in
+  // and the companion files the film was made from.
+  //
+  // It is also where a rationale is read: why the code does what a part or a
+  // step describes. A selected part shows its rationale under its role. A film
+  // lists the rationales of its bubbles, each under the bubble's heading, which
+  // goes to its chapter when clicked. A visual with a rationale has a switch
+  // that shows a "?" marker on each such part. For both it shows the modes and
+  // limits the agent found, the outcome of the checks and the feedback box. The
+  // actions on the version, such as Regenerate and Export, are in
   // Toolbar.svelte.
   const detail = $derived(app.detail);
   const artifact = $derived(app.currentArtifact);
@@ -70,6 +77,20 @@
   const partKey = (artifactId: string) =>
     detail?.manifest.parts?.find((p) => p.artifact === artifactId)?.key ?? '';
   const chapters = $derived(detail?.manifest.chapters ?? []);
+  // The rationales of a film, in the order of its bubbles. `chapter` is the
+  // position of the chapter the bubble belongs to.
+  const filmRationales = $derived(
+    (detail?.definition?.scenes ?? []).flatMap((scene, chapter) =>
+      scene.bubbles.flatMap((bubble) =>
+        bubble.rationale
+          ? [{ chapter, kicker: bubble.kicker, rationale: bubble.rationale }]
+          : [],
+      ),
+    ),
+  );
+  const hasNodeRationale = $derived(
+    !!detail?.definition?.nodes?.some((n) => n.rationale),
+  );
 
   const LAYER_NAMES: Record<string, string> = {
     data: 'Data flow',
@@ -103,6 +124,10 @@
       <div class="kicker">Selected</div>
       <h3>{node.label}</h3>
       <p>{node.role}</p>
+      {#if node.rationale}
+        <div class="kicker">Rationale</div>
+        <RationaleNote rationale={node.rationale} />
+      {/if}
       {#if node.refs?.length}
         <div class="kicker">Code</div>
         {#each node.refs as ref}
@@ -209,6 +234,26 @@
         </button>
       {/each}
     {/if}
+    {#if isFilm && filmRationales.length}
+      <div class="kicker">Rationale</div>
+      {#each filmRationales as item}
+        <div
+          class="rationale-item"
+          class:on={app.filmMoment?.chapter === item.chapter}
+        >
+          <button
+            class="rationale-head"
+            title="Go to the chapter this is about"
+            onclick={() => {
+              const chapter = chapters[item.chapter];
+              if (chapter)
+                app.frameSend?.({ cj: 'seek', t: chapter.start + 0.01 });
+            }}>{item.kicker}</button
+          >
+          <RationaleNote rationale={item.rationale} />
+        </div>
+      {/each}
+    {/if}
     {#if isFilm && !isPipeline && detail.manifest.companions.length}
       <div class="kicker">Companion files</div>
       {#each detail.manifest.companions as companion (companion.path)}
@@ -251,7 +296,7 @@
       {/each}
     {/if}
 
-    {#if !isFilm && (Object.keys(app.layers).length || detail.definition?.legend?.length)}
+    {#if !isFilm && (Object.keys(app.layers).length || detail.definition?.legend?.length || hasNodeRationale)}
       <div class="kicker">Layers</div>
       {#each Object.keys(app.layers) as layer}
         <button
@@ -276,6 +321,20 @@
           }}
         >
           <span class="switch" class:on={app.legendOn}></span>Legend
+        </button>
+      {/if}
+      {#if hasNodeRationale}
+        <button
+          class="layer"
+          role="switch"
+          aria-checked={app.rationaleOn}
+          title="Show a ? on each part that says why the code is built that way"
+          onclick={() => {
+            app.rationaleOn = !app.rationaleOn;
+            app.frameSend?.({ cj: 'rationale', on: app.rationaleOn });
+          }}
+        >
+          <span class="switch" class:on={app.rationaleOn}></span>Rationale
         </button>
       {/if}
     {/if}

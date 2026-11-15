@@ -273,6 +273,7 @@ Each bubble:
 | `html` | One or two sentences, 12 to 24 words. Wrap every identifier in `<code>`. Say what happens and why it matters. |
 | `alarm` | `true` for a limit hit, a forced mode switch, an error raised or work dropped. |
 | `hold` | Leave it out. The runtime holds the bubble for a time computed from its word count. |
+| `rationale` | Optional. Why the code does what this bubble describes (see Rationale below). |
 
 A plant may carry its own constants for scenes to share, for example `CJ.definePlant({ stepXs: [880, 980], ... })`
 read in a scene as `ctx.P.stepXs`. Each file is separate, so a `const` in `plant.js` is not visible in a scene.
@@ -303,6 +304,52 @@ const cleanInline = (html) =>
         : '',
   );
 
+/*@api
+### Rationale
+
+A bubble of a film and a node of a visual may carry a `rationale`: the reason why the code does what the
+bubble or the node describes. It is for the reader who understands what happens and asks why it was built
+that way. The film shows a small "rationale" chip on the bubble, which the viewer can open. The visual shows a
+"?" marker on the node when the viewer switches the rationale layer on. Neither adds anything to the drawing
+until the viewer asks.
+
+| Field | Meaning |
+|-------|---------|
+| `text` | One or two sentences, at most 280 characters, in plain words. Write an identifier between backticks. |
+| `basis` | `"stated"` when a comment or a name in the code gives the reason. `"inferred"` when you conclude it from how the code works. |
+| `refs` | `[{ path, line }]`, at least one: the comment that states the reason, or the code that makes it necessary. |
+
+Give a rationale only where the code shows the reason. Leave it out everywhere else. Do not guess at history,
+at what the author intended or at what a team decided.
+*/
+
+// The text of a rationale as HTML. An identifier written between backticks
+// becomes a code chip.
+const rationaleHtml = (rationale) =>
+  CJ.esc(rationale.text).replace(/`([^`]+)`/g, '<code>$1</code>');
+
+// Where the reason of a rationale comes from, with the first place in the
+// code that shows it: "Stated in the code · handler.go:257".
+const rationaleSource = (rationale) => {
+  const basis =
+    rationale.basis === 'stated'
+      ? 'Stated in the code'
+      : 'Inferred from the code';
+  const ref = (rationale.refs || [])[0];
+  if (!ref) return basis;
+  return basis + ' · ' + String(ref.path).split('/').pop() + ':' + ref.line;
+};
+
+// The part of a film bubble that holds its rationale: the chip that opens
+// it, and the reason itself, which is hidden until the chip is clicked.
+const rationaleMarkup = (rationale) =>
+  '<button type="button" class="cj-why-chip">rationale</button>' +
+  '<div class="cj-why-text"><span class="k">RATIONALE</span>' +
+  rationaleHtml(rationale) +
+  '<span class="cj-why-source">' +
+  CJ.esc(rationaleSource(rationale)) +
+  '</span></div>';
+
 const bubbleMarkup = (bubble, cls) => {
   let style = 'left:' + bubble.x + 'px;top:' + bubble.y + 'px';
   if (bubble.maxWidth != null) style += ';max-width:' + bubble.maxWidth + 'px';
@@ -321,6 +368,9 @@ const bubbleMarkup = (bubble, cls) => {
     CJ.esc(bubble.kicker) +
     '</span>' +
     cleanInline(bubble.html) +
+    (bubble.rationale && bubble.rationale.text
+      ? rationaleMarkup(bubble.rationale)
+      : '') +
     '</div>'
   );
 };
@@ -753,6 +803,15 @@ const buildFilm = (film, stage, onError) => {
       return i;
     },
     drawScene,
+    // Makes the film measure the bubble `el` again the next time it is drawn.
+    // The size of a bubble is measured once and kept, so this must be called
+    // when a bubble changes its size, as it does when its rationale opens.
+    remeasureBubble(el) {
+      scenes.forEach((scene) => {
+        const i = scene.mounted ? scene.mounted.bubbleEls.indexOf(el) : -1;
+        if (i >= 0) scene.bubbleSizes[i] = {};
+      });
+    },
     // Shows one scene's box and hides the others, without drawing. The
     // self-test uses it.
     show(i) {

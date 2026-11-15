@@ -37,3 +37,21 @@ export function portCount(artifact: Pick<ArtifactSummary, 'ports'>): string {
   const outs = artifact.ports.filter((p) => p.dir === 'out').length;
   return ins + outs === 0 ? '' : `${ins} in · ${outs} out`;
 }
+
+// Splits the text of a rationale into plain words and identifiers. An
+// identifier is written between backticks in the text, and is shown as a code
+// chip. A backtick without a partner stays in the plain words.
+export function rationaleParts(
+  text: string,
+): { text: string; code: boolean }[] {
+  const parts: { text: string; code: boolean }[] = [];
+  let at = 0;
+  for (const found of text.matchAll(/`([^`]+)`/g)) {
+    if (found.index > at)
+      parts.push({ text: text.slice(at, found.index), code: false });
+    parts.push({ text: found[1], code: true });
+    at = found.index + found[0].length;
+  }
+  if (at < text.length) parts.push({ text: text.slice(at), code: false });
+  return parts;
+}

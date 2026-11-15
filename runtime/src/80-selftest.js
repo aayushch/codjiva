@@ -155,8 +155,14 @@ const selfTest = async (env, opts) => {
   // The box of the words inside an element, in stage pixels, measured from the
   // text itself.
   const range = document.createRange();
+  //
+  // A bubble with a rationale ends with a chip, which lies on the bubble's top
+  // edge on purpose, and with the rationale itself, which is hidden. The words
+  // of such a bubble are measured up to the chip.
   const textBoxOf = (el) => {
     range.selectNodeContents(el);
+    const chip = el.querySelector(':scope > .cj-why-chip');
+    if (chip) range.setEndBefore(chip);
     const r = range.getBoundingClientRect();
     const f = (v) => Math.round(v * 10) / 10;
     return [

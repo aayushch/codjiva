@@ -342,7 +342,48 @@ const mockDetail = (
           { path: 'internal/orders/handler.go', line: 34 },
           { path: 'internal/orders/store.go', line: 5 },
         ],
+        rationale: {
+          text: 'After a failed write the batch stays in memory, so the next flush writes it again and no order is lost. See `flushLocked`.',
+          basis: 'stated',
+          refs: [{ path: 'internal/orders/handler.go', line: 33 }],
+        },
         select: ['flush'],
+      },
+    ],
+    // The chapters of the reference film, which the mock shows for every
+    // film, with the two rationales the inspector lists for it.
+    scenes: [
+      { id: 'overview', title: 'How an order moves', bubbles: [] },
+      {
+        id: 'routing',
+        title: '2 · Routing',
+        bubbles: [
+          {
+            kicker: 'ROUTING · PRIORITY',
+            html: 'A priority order is written at once.',
+            rationale: {
+              text: 'A priority order whose write fails is taken out of `seen` again, so the client may submit the same order once more.',
+              basis: 'inferred',
+              refs: [{ path: 'internal/orders/handler.go', line: 20 }],
+            },
+          },
+        ],
+      },
+      { id: 'budget', title: '3 · The budget', bubbles: [] },
+      {
+        id: 'flush',
+        title: '4 · The flush',
+        bubbles: [
+          {
+            kicker: 'FLUSH · flushLocked()',
+            html: 'The tick writes the whole batch.',
+            rationale: {
+              text: 'After a failed write the batch stays in memory, so the next flush writes it again and no order is lost.',
+              basis: 'stated',
+              refs: [{ path: 'internal/orders/handler.go', line: 33 }],
+            },
+          },
+        ],
       },
     ],
   },

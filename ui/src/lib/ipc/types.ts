@@ -408,12 +408,30 @@ export type ArtifactSummary = {
 };
 
 export type CodeRef = { path: string; line: number };
+// Why the code does what a node of a visual or a bubble of a film describes.
+// `text` is plain words with identifiers between backticks. `basis` says
+// where the reason comes from: "stated" when a comment or a name in the code
+// gives it, "inferred" when the agent concluded it from how the code works.
+// `refs` are the places in the code that show the reason.
+export type Rationale = {
+  text: string;
+  basis: 'stated' | 'inferred';
+  refs: CodeRef[];
+};
 export type VisualNode = {
   id: string;
   label: string;
   role: string;
   refs?: CodeRef[];
+  rationale?: Rationale;
   select: string[];
+};
+// One chapter of a film as film.json holds it, as far as the app reads it.
+export type FilmScene = {
+  id: string;
+  title: string;
+  name?: string;
+  bubbles: { kicker: string; html: string; rationale?: Rationale }[];
 };
 
 export type Manifest = {
@@ -462,6 +480,8 @@ export type ArtifactDetail = {
     nodes?: VisualNode[];
     layers?: Record<string, string[]>;
     legend?: unknown[];
+    // The chapters of a film. A visual has none.
+    scenes?: FilmScene[];
   } | null;
   // The agent's analysis of the code, model.json.
   model: Record<string, any> | null;

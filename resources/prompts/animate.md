@@ -56,6 +56,9 @@ Report progress in `{{artifactDir}}/progress.json` with these phases, in order: 
   the part, with the tail pointing at it.
 - One bubble at a time. Space bubbles at least 1.5 animation seconds apart.
 - Alarm bubbles are for limits hit, data dropped, errors and forced ends.
+- Give a bubble a `rationale` where the code shows why it does what the bubble describes (core guide §6): 2
+  to 6 in the whole film. The viewer opens it from a chip on the bubble while the film is paused, so it takes
+  no time from the film and changes nothing in your timing.
 
 ## Motion
 

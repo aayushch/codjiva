@@ -217,6 +217,9 @@ class AppState {
   selectedNode = $state<string | null>(null);
   layers = $state<Record<string, boolean>>({});
   legendOn = $state(false);
+  // True while the visual on screen shows the "?" markers of the parts that
+  // have a rationale.
+  rationaleOn = $state(false);
   // Sends a message to the artifact on screen. The frame that shows it sets
   // this.
   frameSend: ((message: Record<string, unknown>) => void) | null = null;
@@ -540,6 +543,7 @@ class AppState {
       this.detail = detail;
       this.selectedNode = null;
       this.legendOn = false;
+      this.rationaleOn = false;
       this.layers = Object.fromEntries(
         Object.keys(detail.definition?.layers ?? {}).map((layer) => [
           layer,

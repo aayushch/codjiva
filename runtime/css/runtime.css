@@ -542,6 +542,59 @@ html.embed #app {
 .cj-marker.open {
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--second) 45%, transparent);
 }
+/* ---------- rationale ----------
+   A node of a visual that has a rationale gets a "?" marker, drawn as a ring
+   so that it is told apart from the numbered markers. A bubble of a film that
+   has a rationale gets a chip on its top edge. The reason itself is hidden in
+   the bubble until the chip is clicked, which adds the class `cj-why-open`. */
+.cj-marker.cj-why {
+  box-sizing: border-box;
+  color: var(--accent);
+  background: var(--ground);
+  border: 2px solid var(--accent);
+}
+.cj-why-chip {
+  position: absolute;
+  top: -15px;
+  right: 14px;
+  height: 26px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  background: var(--ground);
+  border: 2px solid var(--accent);
+  border-radius: 13px;
+  cursor: pointer;
+}
+.bub.alarm .cj-why-chip {
+  color: var(--main);
+  border-color: var(--main);
+}
+.bub.cj-why-open .cj-why-chip {
+  color: var(--ground);
+  background: var(--accent);
+}
+.bub.alarm.cj-why-open .cj-why-chip {
+  background: var(--main);
+}
+.cj-why-text {
+  display: none;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.bub.cj-why-open .cj-why-text {
+  display: block;
+}
+.cj-why-source {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  color: var(--muted);
+}
 .cj-layer-off {
   display: none !important;
 }

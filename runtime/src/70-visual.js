@@ -18,6 +18,8 @@ hover highlight, click to select, layer toggles and numbered markers. You only d
 | `layers` | `{ data: [...], control: [...], errors: [...], labels: [...] }`. Each entry is an unprefixed element name, a name ending in `*` (matches `pipe1`, `pipe2`, ...), or a class selector starting with `.` (such as `.pl` and `.plt` for all labels and plates). |
 | `markers` | 3 to 8 points of interest: `{ x, y, n, bubble: { kicker, html, tail, alarm } }`. `n` is the number shown, in reading order along the flow. Clicking a marker opens its bubble beside it. |
 | `legend` | Optional rows `{ kind, html }`, one per packet kind used. |
+
+A node may also have a `rationale`: why the code does what the node stands for (see Rationale).
 */
 
 const buildVisual = (visual, stage, post) => {
@@ -31,7 +33,30 @@ const buildVisual = (visual, stage, post) => {
   box.dataset.scene = 'v';
   stage.append(box);
 
-  const markers = visual.markers || [];
+  // The markers of the visual. After the numbered markers of visual.json comes
+  // one marker for each node that has a rationale. Such a marker shows "?",
+  // has `why` set to the id of its node, and is placed on a corner of the node
+  // once the plant is drawn (see `placeWhyMarkers`). These markers are hidden
+  // until the viewer switches the rationale layer on.
+  const whyNodes = (visual.nodes || []).filter(
+    (node) => node.rationale && node.rationale.text,
+  );
+  const markers = (visual.markers || []).concat(
+    whyNodes.map((node) => ({
+      x: 0,
+      y: 0,
+      n: '?',
+      why: node.id,
+      bubble: {
+        kicker: 'RATIONALE · ' + node.label,
+        html:
+          rationaleHtml(node.rationale) +
+          '<br><i>' +
+          CJ.esc(rationaleSource(node.rationale)) +
+          '</i>',
+      },
+    })),
+  );
   const bubbles = markers.map((m) =>
     Object.assign({ x: m.x, y: m.y, maxWidth: 420 }, m.bubble),
   );
@@ -53,6 +78,7 @@ const buildVisual = (visual, stage, post) => {
   const markerEls = markers.map((marker, i) => {
     const el = elementFromHtml(
       '<div class="cj-marker' +
+        (marker.why ? ' cj-why cj-layer-off' : '') +
         (marker.bubble && marker.bubble.alarm ? ' alarm' : '') +
         '" style="left:' +
         marker.x +
@@ -86,6 +112,47 @@ const buildVisual = (visual, stage, post) => {
   nodes.forEach((entry) => {
     nodeById[entry.node.id] = entry;
   });
+
+  // Puts the "?" marker of each node that has a rationale on a corner of the
+  // node's first element. The corners are tried in the order top left, top
+  // right, bottom left, bottom right, and the first one that is at least 40 px
+  // away from every marker placed so far is taken. If none is, the top left
+  // corner is used. The bubble of a marker in the lower part of the sheet
+  // opens above it, and every other bubble below it.
+  const placeWhyMarkers = () => {
+    const frame = world.getBoundingClientRect();
+    const scale = frame.width / STAGE_W || 1;
+    const placed = markers.filter((marker) => !marker.why);
+    markers.forEach((marker, i) => {
+      const entry = marker.why && nodeById[marker.why];
+      if (!entry || !entry.els.length) return;
+      const box = entry.els[0].getBoundingClientRect();
+      const left = (box.left - frame.left) / scale;
+      const top = (box.top - frame.top) / scale;
+      const right = (box.right - frame.left) / scale;
+      const bottom = (box.bottom - frame.top) / scale;
+      const corners = [
+        [left, top],
+        [right, top],
+        [left, bottom],
+        [right, bottom],
+      ];
+      const free = corners.find((corner) =>
+        placed.every(
+          (other) => Math.hypot(other.x - corner[0], other.y - corner[1]) >= 40,
+        ),
+      );
+      const at = free || corners[0];
+      marker.x = Math.round(at[0]);
+      marker.y = Math.round(at[1]);
+      marker.bubble.tail = marker.y > STAGE_H * 0.62 ? 'd' : 'u';
+      markerEls[i].style.left = marker.x + 'px';
+      markerEls[i].style.top = marker.y + 'px';
+      placed.push(marker);
+    });
+  };
+  placeWhyMarkers();
+  let rationaleOn = false;
 
   // The elements each layer switches, resolved once from the layer's patterns.
   const layerEls = {};
@@ -376,7 +443,11 @@ const buildVisual = (visual, stage, post) => {
     if (markerIndex >= 0) {
       openMarker = openMarker === markerIndex ? -1 : markerIndex;
       if (openMarker >= 0) placeBubble(openMarker);
-      draw();
+      // A "?" marker belongs to a node, so opening it also selects the node.
+      // The app then shows the same rationale in its inspector.
+      const owner = markers[markerIndex].why;
+      if (owner && openMarker >= 0) select(owner);
+      else draw();
       return;
     }
     if (under && under.closest && under.closest('.bub')) return;
@@ -432,6 +503,23 @@ const buildVisual = (visual, stage, post) => {
       const show = on == null ? legend.style.display === 'none' : !!on;
       legend.style.display = show ? '' : 'none';
       return show;
+    },
+    hasRationale: whyNodes.length > 0,
+    // Shows or hides the "?" markers of the nodes that have a rationale.
+    // Called with no argument it switches them over. Hiding them also closes
+    // the bubble of such a marker if it is open. Returns whether they are
+    // shown.
+    setRationale(on) {
+      rationaleOn = on == null ? !rationaleOn : !!on;
+      markers.forEach((marker, i) => {
+        if (marker.why)
+          markerEls[i].classList.toggle('cj-layer-off', !rationaleOn);
+      });
+      if (!rationaleOn && openMarker >= 0 && markers[openMarker].why) {
+        openMarker = -1;
+        draw();
+      }
+      return rationaleOn;
     },
     zoomBy(factor) {
       const rect = m.view.getBoundingClientRect();

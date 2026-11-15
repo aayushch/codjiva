@@ -43,6 +43,16 @@ Open **Settings** (the sliders icon in the title bar, or Cmd/Ctrl+,) to see whic
 6. **Compose.** Tick two or more artifacts in the library and click **Compose**. Codjiva proposes joins between
    their ports, and you confirm them.
 
+**Rationale.** A visual or a film says what the code does. Where the code also shows why it is built that
+way, the agent records that as a rationale, with the line that gives the reason. Each one is marked "Stated
+in the code" when a comment or a name gives the reason, and "Inferred from the code" when the agent concluded
+it from how the code works. A rationale is never drawn until you ask for it:
+
+- In a visual, select a part to read its rationale in the inspector. The **Rationale** switch under Layers
+  puts a **?** on every part that has one, and a click on the **?** opens it.
+- In a film, a bubble that has one carries a small **rationale** chip. Clicking it pauses the film and opens
+  the reason inside the bubble. The inspector lists all rationales of the film.
+
 **How long a job takes.** Before a job starts, its dialog says how long it usually takes to make, as a range
 such as "8–13 min", and the job panel repeats that next to the running clock. The first estimates come from
 how long the code is, how much it branches and, for a film, the length you chose. Codjiva then notes how
