@@ -56,13 +56,13 @@
   {#if problem}<div class="frame-problem">{problem}</div>{/if}
   <div class="zoomctl">
     <button
-      class="btn tip-up"
+      class="btn tip-up tip-end"
       aria-label="Zoom out"
       data-tip="Zoom out"
       onclick={() => send({ cj: 'zoom', factor: 0.8 })}>−</button
     >
     <button
-      class="btn tip-up"
+      class="btn tip-up tip-end"
       aria-label="Fit"
       data-tip="Fit the whole visual"
       onclick={() => send({ cj: 'fit' })}>⤢</button
