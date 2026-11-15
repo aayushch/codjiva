@@ -1,4 +1,5 @@
-// The Api implementation used inside the desktop app: every method calls one Tauri command.
+// The Api implementation used inside the desktop app: every method calls one
+// Tauri command.
 
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -15,7 +16,11 @@ export const tauriApi: Api = {
     return info;
   },
   async pickFolder() {
-    const picked = await open({ directory: true, multiple: false, title: 'Open folder' });
+    const picked = await open({
+      directory: true,
+      multiple: false,
+      title: 'Open folder',
+    });
     return typeof picked === 'string' ? picked : null;
   },
   workspaceOpen: (path) => invoke('workspace_open', { path }),
@@ -41,7 +46,8 @@ export const tauriApi: Api = {
   apiKeyClear: (providerId) => invoke('api_key_clear', { providerId }),
   apiCheck: (providerId) => invoke('api_check', { providerId }),
   companionsSuggest: (relPath) => invoke('companions_suggest', { relPath }),
-  companionsIgnoreCheck: (patterns, paths) => invoke('companions_ignore_check', { patterns, paths }),
+  companionsIgnoreCheck: (patterns, paths) =>
+    invoke('companions_ignore_check', { patterns, paths }),
   folderInfo: (relPath) => invoke('folder_info', { relPath }),
   composePropose: (artifactIds) => invoke('compose_propose', { artifactIds }),
   feedbackCapture: (rect) => invoke('feedback_capture', { rect }),
@@ -54,26 +60,36 @@ export const tauriApi: Api = {
   jobValidated: (token, report) => invoke('job_validated', { token, report }),
   artifactList: () => invoke('artifact_list'),
   artifactDetail: (id, version) => invoke('artifact_detail', { id, version }),
-  artifactSetCurrent: (id, version) => invoke('artifact_set_current', { id, version }),
+  artifactSetCurrent: (id, version) =>
+    invoke('artifact_set_current', { id, version }),
   artifactDelete: (id) => invoke('artifact_delete', { id }),
   async artifactExport(id, version, suggestedName) {
-    const destPath = await save({ title: 'Export HTML', defaultPath: suggestedName, filters: [{ name: 'HTML', extensions: ['html'] }] });
+    const destPath = await save({
+      title: 'Export HTML',
+      defaultPath: suggestedName,
+      filters: [{ name: 'HTML', extensions: ['html'] }],
+    });
     if (!destPath) return null;
     await invoke('artifact_export', { id, version, destPath });
     return destPath;
   },
-  artifactOpenInBrowser: (id, version) => invoke('artifact_open_in_browser', { id, version }),
+  artifactOpenInBrowser: (id, version) =>
+    invoke('artifact_open_in_browser', { id, version }),
   artifactReveal: (id, version) => invoke('artifact_reveal', { id, version }),
   guardRevert: (violations) => invoke('guard_revert', { violations }),
   async onValidateRequest(handler) {
-    return listen<ValidateRequest>('validate-request', (event) => handler(event.payload));
+    return listen<ValidateRequest>('validate-request', (event) =>
+      handler(event.payload),
+    );
   },
   async onFsChanged(handler) {
     return listen<Changes>('fs-changed', (event) => handler(event.payload));
   },
-  // On Windows a custom scheme is reached through an http address on a reserved host name; on
-  // macOS and Linux the scheme is used directly.
+  // On Windows a custom scheme is reached through an http address on a reserved
+  // host name; on macOS and Linux the scheme is used directly.
   artifactUrl(path) {
-    return platform === 'windows' ? `http://codjiva.localhost/${path}` : `codjiva://localhost/${path}`;
+    return platform === 'windows'
+      ? `http://codjiva.localhost/${path}`
+      : `codjiva://localhost/${path}`;
   },
 };

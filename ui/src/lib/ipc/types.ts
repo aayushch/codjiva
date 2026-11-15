@@ -1,5 +1,6 @@
-// The shapes that cross between the interface and the Rust core. Each type mirrors a struct in
-// crates/codjiva-core or ui/src-tauri; field names are the camelCase form of the Rust fields.
+// The shapes that cross between the interface and the Rust core. Each type
+// mirrors a struct in crates/codjiva-core or ui/src-tauri; field names are the
+// camelCase form of the Rust fields.
 
 export type AppInfo = {
   name: string;
@@ -40,7 +41,12 @@ export type FileInfo = {
   binary: boolean;
 };
 
-export type FileContent = { relPath: string; text: string; truncated: boolean; highlighter: string };
+export type FileContent = {
+  relPath: string;
+  text: string;
+  truncated: boolean;
+  highlighter: string;
+};
 
 export type FileHit = { relPath: string; name: string };
 
@@ -49,10 +55,12 @@ export type Changes = { dirs: string[]; paths: string[] };
 export type Settings = {
   agent: string | null;
   models: Record<string, string>;
-  // How much effort the model spends on thinking. `auto` lets the app choose by the kind of
-  // job, and `agent` asks for nothing, so the agent uses its own default.
+  // How much effort the model spends on thinking. `auto` lets the app choose by
+  // the kind of job, and `agent` asks for nothing, so the agent uses its own
+  // default.
   effort: 'auto' | 'agent' | 'low' | 'medium' | 'high';
-  // The address of each API provider, by provider id, when it is not the provider's usual one.
+  // The address of each API provider, by provider id, when it is not the
+  // provider's usual one.
   apiBaseUrls: Record<string, string>;
   agentPaths: Record<string, string>;
   maxFixIterations: number;
@@ -61,8 +69,8 @@ export type Settings = {
   basePlaybackSpeed: number;
   externalEditorCommand: string;
   maxCompanionFiles: number;
-  // Patterns for files and folders that are never suggested as companions, written like the
-  // lines of a `.gitignore` file.
+  // Patterns for files and folders that are never suggested as companions,
+  // written like the lines of a `.gitignore` file.
   companionIgnore: string[];
   // The colours of the app's own window. `system` follows the operating system.
   theme: 'system' | 'light' | 'dark';
@@ -71,8 +79,8 @@ export type Settings = {
   layout: Layout;
 };
 
-// The panels around the editor area as the user left them: which are open, and their sizes in
-// pixels. A height of null means the height the app chooses.
+// The panels around the editor area as the user left them: which are open, and
+// their sizes in pixels. A height of null means the height the app chooses.
 export type Layout = {
   sidebarOpen: boolean;
   sidebarWidth: number;
@@ -96,8 +104,9 @@ export type AgentInfo = {
   verified: boolean;
   // The model jobs use when Settings names none, for agents that have one.
   defaultModel?: string | null;
-  // What the user should know about how far this agent can be confined. Empty for an agent
-  // that its own permission rules confine to the folder it writes into.
+  // What the user should know about how far this agent can be confined. Empty
+  // for an agent that its own permission rules confine to the folder it writes
+  // into.
   limits?: string;
 };
 
@@ -121,18 +130,45 @@ export type ApiProvider = {
 };
 
 // One chapter of a film's outline, as the agent plans it before it draws.
-export type OutlineChapter = { id: string; title: string; summary: string; beats: { t?: number; what: string }[]; rewind?: boolean };
-export type Outline = { schemaVersion: 1; title: string; targetSeconds?: number; chapters: OutlineChapter[] };
+export type OutlineChapter = {
+  id: string;
+  title: string;
+  summary: string;
+  beats: { t?: number; what: string }[];
+  rewind?: boolean;
+};
+export type Outline = {
+  schemaVersion: 1;
+  title: string;
+  targetSeconds?: number;
+  chapters: OutlineChapter[];
+};
 
-// One chapter of a finished film: where it starts and how long it runs, in real seconds.
-export type Chapter = { id: string; title: string; name: string; desc: string; start: number; dur: number };
+// One chapter of a finished film: where it starts and how long it runs, in real
+// seconds.
+export type Chapter = {
+  id: string;
+  title: string;
+  name: string;
+  desc: string;
+  start: number;
+  dur: number;
+};
 
-// The element the user pointed at in an artifact, as the artifact describes it. `x` and `y` are
-// where the pointer was, and `box` is the element's box, all in stage pixels. A film adds the
-// scene on screen, the film time `t` and that scene's animation time `sceneT`.
+// The element the user pointed at in an artifact, as the artifact describes it.
+// `x` and `y` are where the pointer was, and `box` is the element's box, all in
+// stage pixels. A film adds the scene on screen, the film time `t` and that
+// scene's animation time `sceneT`.
 export type PickedElement = {
-  x: number; y: number; selector?: string; part?: string; text?: string; box?: [number, number, number, number];
-  scene?: string; t?: number; sceneT?: number;
+  x: number;
+  y: number;
+  selector?: string;
+  part?: string;
+  text?: string;
+  box?: [number, number, number, number];
+  scene?: string;
+  t?: number;
+  sceneT?: number;
 };
 
 // What the user said about a version, and what they were looking at.
@@ -148,37 +184,63 @@ export type Feedback = {
   screenshot?: string | null;
 };
 
-// One port of an artifact: a point where work crosses the edge of the code it explains.
-export type Port = { id: string; dir: 'in' | 'out'; symbol: string; ref: string; carries: string; kind: string; anchor: [number, number] | null };
-
-// The ports of one artifact's current version.
-export type ArtifactPorts = { artifactId: string; version: number; title: string; subject: string[]; ports: Port[] };
-
-// A join between an out port of one artifact and an in port of another. `strength` is set for
-// a join the app proposed: the same symbol, the same last name, or a mention in the line of code.
-export type Join = {
-  fromArtifact: string; fromPort: string; toArtifact: string; toPort: string;
-  symbol: string; kind: string; carries: string; reason: string; strength: 'exact' | 'name' | 'line' | null;
+// One port of an artifact: a point where work crosses the edge of the code it
+// explains.
+export type Port = {
+  id: string;
+  dir: 'in' | 'out';
+  symbol: string;
+  ref: string;
+  carries: string;
+  kind: string;
+  anchor: [number, number] | null;
 };
 
-// One artifact that a pipeline is composed of, under the short key the pipeline gives it.
+// The ports of one artifact's current version.
+export type ArtifactPorts = {
+  artifactId: string;
+  version: number;
+  title: string;
+  subject: string[];
+  ports: Port[];
+};
+
+// A join between an out port of one artifact and an in port of another.
+// `strength` is set for a join the app proposed: the same symbol, the same last
+// name, or a mention in the line of code.
+export type Join = {
+  fromArtifact: string;
+  fromPort: string;
+  toArtifact: string;
+  toPort: string;
+  symbol: string;
+  kind: string;
+  carries: string;
+  reason: string;
+  strength: 'exact' | 'name' | 'line' | null;
+};
+
+// One artifact that a pipeline is composed of, under the short key the pipeline
+// gives it.
 export type Part = { key: string; artifact: string; version: number };
 
 export type JobRequest = {
   kind: 'visualise' | 'animate' | 'compose' | 'feedback';
-  // The file the artifact explains. Empty for a feedback job, which names a version instead.
+  // The file the artifact explains. Empty for a feedback job, which names a
+  // version instead.
   subject: string[];
   companions?: string[];
   instructions?: string;
-  // For a film: its target length in real seconds, and an outline the user approved or edited.
+  // For a film: its target length in real seconds, and an outline the user
+  // approved or edited.
   lengthSeconds?: number;
   outline?: Outline | null;
   // For feedback: the version to change and what the user said.
   artifactId?: string;
   baseVersion?: number;
   feedback?: Feedback;
-  // For a pipeline: the artifacts to join, in flow order, the confirmed joins, and whether
-  // the pipeline is a film instead of a still visual.
+  // For a pipeline: the artifacts to join, in flow order, the confirmed joins,
+  // and whether the pipeline is a film instead of a still visual.
   parts?: string[];
   joins?: Join[];
   film?: boolean;
@@ -205,7 +267,8 @@ export type Suggestion = { path: string; why: string; score: number };
 
 // What a set of ignore patterns matches in the open workspace.
 export type IgnoreCheck = {
-  // How many code files of the workspace the patterns match, and the first few of them.
+  // How many code files of the workspace the patterns match, and the first few
+  // of them.
   matched: number;
   examples: string[];
   // Which of the paths that were asked about match.
@@ -217,11 +280,19 @@ export type IgnoreCheck = {
 // An area of the window, in CSS pixels from the top-left of the page.
 export type Rect = { x: number; y: number; width: number; height: number };
 
-export type Violation = { path: string; change: 'created' | 'modified' | 'deleted'; tracked: boolean };
+export type Violation = {
+  path: string;
+  change: 'created' | 'modified' | 'deleted';
+  tracked: boolean;
+};
 export type RevertResult = { path: string; reverted: boolean; note: string };
 
 // One element named by a self-test issue: where it is and what it says.
-export type IssueElement = { selector: string; text: string; box: [number, number, number, number] };
+export type IssueElement = {
+  selector: string;
+  text: string;
+  box: [number, number, number, number];
+};
 export type Issue = {
   check: string;
   severity: 'error' | 'warning';
@@ -233,19 +304,56 @@ export type Issue = {
   b?: IssueElement;
   count?: number;
 };
-export type BuildProblem = { check: string; severity: 'error' | 'warning'; file: string; line: number | null; message: string };
+export type BuildProblem = {
+  check: string;
+  severity: 'error' | 'warning';
+  file: string;
+  line: number | null;
+  message: string;
+};
 // The combined result of building a version and running its self-test.
-export type ValidationReport = { ok: boolean; built?: boolean; build?: BuildProblem[]; issues: Issue[]; stats?: unknown; duration?: number | null };
+export type ValidationReport = {
+  ok: boolean;
+  built?: boolean;
+  build?: BuildProblem[];
+  issues: Issue[];
+  stats?: unknown;
+  duration?: number | null;
+};
 
 export type JobEvent =
-  | { type: 'started'; jobId: string; artifactId: string; version: number; agent: string }
-  | { type: 'phase'; phase: string; detail: string | null; chapter?: number | null; of?: number | null }
+  | {
+      type: 'started';
+      jobId: string;
+      artifactId: string;
+      version: number;
+      agent: string;
+    }
+  | {
+      type: 'phase';
+      phase: string;
+      detail: string | null;
+      chapter?: number | null;
+      of?: number | null;
+    }
   | { type: 'outline'; outline: Outline }
   | { type: 'log'; level: 'info' | 'tool' | 'warn' | 'error'; text: string }
   | { type: 'guard'; violations: Violation[] }
   | { type: 'validation'; report: ValidationReport; iteration: number }
-  | { type: 'usage'; costUsd: number | null; inputTokens: number; outputTokens: number }
-  | { type: 'result'; artifactId: string; version: number; passed: boolean; errors: number; warnings: number }
+  | {
+      type: 'usage';
+      costUsd: number | null;
+      inputTokens: number;
+      outputTokens: number;
+    }
+  | {
+      type: 'result';
+      artifactId: string;
+      version: number;
+      passed: boolean;
+      errors: number;
+      warnings: number;
+    }
   | { type: 'failed'; code: string; message: string }
   | { type: 'cancelled' };
 
@@ -275,13 +383,20 @@ export type ArtifactSummary = {
   staleSources: string[];
   durationSec: number | null;
   ports: Port[];
-  // For a pipeline: whether its current version is a visual or a film, and its parts.
+  // For a pipeline: whether its current version is a visual or a film, and its
+  // parts.
   form?: 'visual' | 'film';
   parts?: Part[];
 };
 
 export type CodeRef = { path: string; line: number };
-export type VisualNode = { id: string; label: string; role: string; refs?: CodeRef[]; select: string[] };
+export type VisualNode = {
+  id: string;
+  label: string;
+  role: string;
+  refs?: CodeRef[];
+  select: string[];
+};
 
 export type Manifest = {
   artifactId: string;
@@ -292,10 +407,20 @@ export type Manifest = {
   companions: { path: string; why: string }[];
   sources: Record<string, string>;
   instructions: string;
-  agent: { kind: string; version: string | null; model: string | null; sessionId: string | null };
+  agent: {
+    kind: string;
+    version: string | null;
+    model: string | null;
+    sessionId: string | null;
+  };
   promptVersion: string;
   runtimeVersion: string;
-  validation: { passed: boolean; iterations: number; errors: number; warnings: number };
+  validation: {
+    passed: boolean;
+    iterations: number;
+    errors: number;
+    warnings: number;
+  };
   createdAt: string;
   parent?: number;
   costUsd?: number;
@@ -304,7 +429,8 @@ export type Manifest = {
   chapters?: Chapter[];
   // The user's feedback that produced this version.
   feedback?: string;
-  // For a pipeline: its form, its parts in flow order and the joins between them.
+  // For a pipeline: its form, its parts in flow order and the joins between
+  // them.
   form?: 'visual' | 'film';
   parts?: Part[];
   joins?: Join[];
@@ -313,23 +439,33 @@ export type Manifest = {
 export type ArtifactDetail = {
   manifest: Manifest;
   // The version's visual.json or film.json.
-  definition: { title?: string; nodes?: VisualNode[]; layers?: Record<string, string[]>; legend?: unknown[] } | null;
+  definition: {
+    title?: string;
+    nodes?: VisualNode[];
+    layers?: Record<string, string[]>;
+    legend?: unknown[];
+  } | null;
   // The agent's analysis of the code, model.json.
   model: Record<string, any> | null;
   validation: ValidationReport | null;
   bytes: number;
 };
 
-// What the window is asked to check for a running job: load this version in a hidden frame and
-// run its self-test.
-export type ValidateRequest = { token: string; artifactId: string; version: number };
+// What the window is asked to check for a running job: load this version in a
+// hidden frame and run its self-test.
+export type ValidateRequest = {
+  token: string;
+  artifactId: string;
+  version: number;
+};
 
-// An error returned by a command. `code` is stable and may be branched on; `message` is a full
-// sentence for the user.
+// An error returned by a command. `code` is stable and may be branched on;
+// `message` is a full sentence for the user.
 export type AppError = { code: string; message: string; detail?: string };
 
-// Everything the interface can ask the core to do. Two implementations exist: one that calls
-// the Tauri commands, and an in-memory one for running the interface in a plain browser.
+// Everything the interface can ask the core to do. Two implementations exist:
+// one that calls the Tauri commands, and an in-memory one for running the
+// interface in a plain browser.
 export interface Api {
   appInfo(): Promise<AppInfo>;
   pickFolder(): Promise<string | null>;
@@ -356,37 +492,55 @@ export interface Api {
   // Saves a provider's key in the operating system's credential store.
   apiKeySet(providerId: string, key: string): Promise<void>;
   apiKeyClear(providerId: string): Promise<void>;
-  // Sends one very small request to the provider. Returns the name of the model that answered.
+  // Sends one very small request to the provider. Returns the name of the model
+  // that answered.
   apiCheck(providerId: string): Promise<string>;
   // Suggests companion files for a film of this file, best first.
   companionsSuggest(relPath: string): Promise<Suggestion[]>;
-  // Reports what the ignore patterns match in the open workspace and which of `paths` they
-  // match. Saves nothing.
-  companionsIgnoreCheck(patterns: string[], paths: string[]): Promise<IgnoreCheck>;
+  // Reports what the ignore patterns match in the open workspace and which of
+  // `paths` they match. Saves nothing.
+  companionsIgnoreCheck(
+    patterns: string[],
+    paths: string[],
+  ): Promise<IgnoreCheck>;
   folderInfo(relPath: string): Promise<FolderInfo>;
   // Reads the ports of the given artifacts and proposes joins between them.
-  composePropose(artifactIds: string[]): Promise<{ parts: ArtifactPorts[]; joins: Join[] }>;
-  // Saves a picture of an area of the window for a feedback job. Returns its path relative to
-  // the workspace, or null where the app cannot take such a picture.
+  composePropose(
+    artifactIds: string[],
+  ): Promise<{ parts: ArtifactPorts[]; joins: Join[] }>;
+  // Saves a picture of an area of the window for a feedback job. Returns its
+  // path relative to the workspace, or null where the app cannot take such a
+  // picture.
   feedbackCapture(rect: Rect): Promise<string | null>;
-  // Starts a job and returns its id. `onEvent` is called for everything the job does.
-  jobStart(request: JobRequest, onEvent: (event: JobEvent) => void): Promise<string>;
+  // Starts a job and returns its id. `onEvent` is called for everything the job
+  // does.
+  jobStart(
+    request: JobRequest,
+    onEvent: (event: JobEvent) => void,
+  ): Promise<string>;
   jobCancel(jobId: string): Promise<void>;
   jobValidated(token: string, report: ValidationReport): Promise<void>;
   artifactList(): Promise<ArtifactSummary[]>;
   artifactDetail(id: string, version?: number): Promise<ArtifactDetail>;
   artifactSetCurrent(id: string, version: number): Promise<void>;
   artifactDelete(id: string): Promise<void>;
-  // Asks the user where to save, then writes the version's self-contained page there. Returns
-  // the chosen path, or null when the user cancelled.
-  artifactExport(id: string, version: number, suggestedName: string): Promise<string | null>;
+  // Asks the user where to save, then writes the version's self-contained page
+  // there. Returns the chosen path, or null when the user cancelled.
+  artifactExport(
+    id: string,
+    version: number,
+    suggestedName: string,
+  ): Promise<string | null>;
   artifactOpenInBrowser(id: string, version: number): Promise<void>;
   artifactReveal(id: string, version: number): Promise<void>;
   guardRevert(violations: Violation[]): Promise<RevertResult[]>;
-  // Calls `handler` whenever a running job needs a version checked. Returns a function that
-  // stops it.
-  onValidateRequest(handler: (request: ValidateRequest) => void): Promise<() => void>;
-  // Calls `handler` whenever watched folders change on disk. Returns a function that stops it.
+  // Calls `handler` whenever a running job needs a version checked. Returns a
+  // function that stops it.
+  onValidateRequest(
+    handler: (request: ValidateRequest) => void,
+  ): Promise<() => void>;
+  // Calls `handler` whenever watched folders change on disk. Returns a function
+  // that stops it.
   onFsChanged(handler: (changes: Changes) => void): Promise<() => void>;
   // The address the sandboxed frame loads for a path served by the app, such as
   // `reference/film`.

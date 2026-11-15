@@ -1,12 +1,15 @@
-//! The `codjiva://` URL scheme, which serves built artifacts to the sandboxed frame.
+//! The `codjiva://` URL scheme, which serves built artifacts to the sandboxed
+//! frame.
 //!
-//! The frame that shows an artifact has no access to the app. It can only load pages from this
-//! scheme, and every page is sent with a policy that blocks all network requests.
+//! The frame that shows an artifact has no access to the app. It can only load
+//! pages from this scheme, and every page is sent with a policy that blocks all
+//! network requests.
 //!
 //! Paths:
-//!   /reference/film            the reference film bundled with the app
-//!   /reference/visual          the still visual of the reference plant
-//!   /artifact/<id>/<version>   a built version of an artifact of the open workspace
+//!   - `/reference/film`: the reference film bundled with the app.
+//!   - `/reference/visual`: the still visual of the reference plant.
+//!   - `/artifact/<id>/<version>`: a built version of an artifact of the open
+//!     workspace.
 
 use crate::AppState;
 use codjiva_core::artifacts;
@@ -17,7 +20,10 @@ fn page(html: &str) -> Response<Vec<u8>> {
     Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "text/html; charset=utf-8")
-        .header("Content-Security-Policy", codjiva_build::CONTENT_SECURITY_POLICY)
+        .header(
+            "Content-Security-Policy",
+            codjiva_build::CONTENT_SECURITY_POLICY,
+        )
         .header("Cache-Control", "no-store")
         .header("X-Content-Type-Options", "nosniff")
         .body(html.as_bytes().to_vec())
@@ -32,8 +38,9 @@ fn not_found() -> Response<Vec<u8>> {
         .expect("a response with fixed headers is valid")
 }
 
-/// Reads the page of `artifact/<id>/<version>` from the open workspace. The id and the version
-/// number are checked by the artifact store, so no other file can be reached through this path.
+/// Reads the page of `artifact/<id>/<version>` from the open workspace. The id
+/// and the version number are checked by the artifact store, so no other file
+/// can be reached through this path.
 fn artifact_page(state: &AppState, rest: &str) -> Option<String> {
     let (id, version) = rest.split_once('/')?;
     let version: u32 = version.parse().ok()?;
@@ -47,7 +54,10 @@ pub fn respond(state: &AppState, path: &str) -> Response<Vec<u8>> {
     match path {
         "reference/film" => page(reference::film_html()),
         "reference/visual" => page(reference::visual_html()),
-        _ => match path.strip_prefix("artifact/").and_then(|rest| artifact_page(state, rest)) {
+        _ => match path
+            .strip_prefix("artifact/")
+            .and_then(|rest| artifact_page(state, rest))
+        {
             Some(html) => page(&html),
             None => not_found(),
         },

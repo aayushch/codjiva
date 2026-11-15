@@ -1,47 +1,57 @@
 /**
  * How the app's window uses the two palettes of tokens.css.
  *
- * tokens.css defines the dark palette, which is the default, and the light palette. The root
- * element has the attribute data-theme="light" or data-theme="dark"; lib/theme.ts sets it from
- * the `theme` setting.
+ * tokens.css defines the dark palette, which is the default, and the light
+ * palette. The root element has the attribute data-theme="light" or
+ * data-theme="dark"; lib/theme.ts sets it from the `theme` setting.
  */
-:root { color-scheme:dark }
+:root {
+  color-scheme: dark;
+}
 
-/* The light palette itself is in tokens.css, next to the dark one. These rules soften what is
-   drawn over the window in the light theme. */
-:root[data-theme="light"] .scrim { background:rgba(26,32,43,.35) }
-:root[data-theme="light"] .dialog { box-shadow:0 20px 60px rgba(26,32,43,.25) }
-:root[data-theme="light"] .toast { box-shadow:0 12px 30px rgba(26,32,43,.2) }
+/* The light palette itself is in tokens.css, next to the dark one. These rules
+   soften what is drawn over the window in the light theme. */
+:root[data-theme='light'] .scrim {
+  background: rgba(26, 32, 43, 0.35);
+}
+:root[data-theme='light'] .dialog {
+  box-shadow: 0 20px 60px rgba(26, 32, 43, 0.25);
+}
+:root[data-theme='light'] .toast {
+  box-shadow: 0 12px 30px rgba(26, 32, 43, 0.2);
+}
 
-/* A picture or a film is transparent around its drawing, so whatever is behind its frame has
-   to be in the same palette as the drawing. A frame whose page is drawn in the dark palette
-   has the class `dark-stage` (see ArtifactFrame.svelte). The thumbnails in the library and the
-   hidden frame that checks new artifacts are always drawn dark. Inside these three places the
-   dark palette of tokens.css is declared again, together with the derived tones, because a
-   derived tone is computed where it is declared. */
-:root[data-theme="light"] :is(.canvas:has(iframe.dark-stage), .thumb, .validator) {
-  color-scheme:dark;
-  color:var(--second);
-  --ground:#14181F;
-  --main:#F2B33D;
-  --second:#E8ECF1;
-  --accent:#4FB0C6;
-  --ink:color-mix(in srgb, var(--second) 72%, var(--ground));
-  --line:color-mix(in srgb, var(--second) 45%, var(--ground));
-  --muted:color-mix(in srgb, var(--second) 60%, var(--ground));
-  --faint:color-mix(in srgb, var(--second) 9%, var(--ground));
-  --fainter:color-mix(in srgb, var(--second) 5%, var(--ground));
-  --panel:color-mix(in srgb, var(--second) 4%, var(--ground));
-  --amberdim:color-mix(in srgb, var(--main) 35%, var(--ground));
-  --cyandim:color-mix(in srgb, var(--accent) 35%, var(--ground));
-  --chip:color-mix(in srgb, var(--second) 12%, var(--ground));
-  --drop:rgba(0,0,0,.45);
-  --shell-window:#0c0e12;
-  --shell-bar:#101318;
-  --shell-button:#1b2029;
-  --shell-hover:#252c38;
-  --shell-border:#2a313d;
-  --shell-border-soft:#262c36;
-  --shell-tick:#5b6575;
-  --shell-text-2:#aab3c0;
+/* A picture or a film is transparent around its drawing, so whatever is behind
+   its frame has to be in the same palette as the drawing. A frame whose page is
+   drawn in the dark palette has the class `dark-stage` (see
+   ArtifactFrame.svelte). The thumbnails in the library and the hidden frame
+   that checks new artifacts are always drawn dark. Inside these three places
+   the dark palette of tokens.css is declared again, together with the derived
+   tones, because a derived tone is computed where it is declared. */
+:root[data-theme='light']
+  :is(.canvas:has(iframe.dark-stage), .thumb, .validator) {
+  color-scheme: dark;
+  color: var(--second);
+  --ground: #14181f;
+  --main: #f2b33d;
+  --second: #e8ecf1;
+  --accent: #4fb0c6;
+  --ink: color-mix(in srgb, var(--second) 72%, var(--ground));
+  --line: color-mix(in srgb, var(--second) 45%, var(--ground));
+  --muted: color-mix(in srgb, var(--second) 60%, var(--ground));
+  --faint: color-mix(in srgb, var(--second) 9%, var(--ground));
+  --fainter: color-mix(in srgb, var(--second) 5%, var(--ground));
+  --panel: color-mix(in srgb, var(--second) 4%, var(--ground));
+  --amberdim: color-mix(in srgb, var(--main) 35%, var(--ground));
+  --cyandim: color-mix(in srgb, var(--accent) 35%, var(--ground));
+  --chip: color-mix(in srgb, var(--second) 12%, var(--ground));
+  --drop: rgba(0, 0, 0, 0.45);
+  --shell-window: #0c0e12;
+  --shell-bar: #101318;
+  --shell-button: #1b2029;
+  --shell-hover: #252c38;
+  --shell-border: #2a313d;
+  --shell-border-soft: #262c36;
+  --shell-tick: #5b6575;
+  --shell-text-2: #aab3c0;
 }

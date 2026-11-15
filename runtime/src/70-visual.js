@@ -1,6 +1,7 @@
-// The still visual: one copy of the plant that the viewer can pan, zoom and inspect. There is no
-// timeline. Hovering a part highlights it, clicking selects it, numbered markers open bubbles,
-// and layers can be switched off to declutter.
+// The still visual: one copy of the plant that the viewer can pan, zoom and
+// inspect. There is no timeline. Hovering a part highlights it, clicking
+// selects it, numbered markers open bubbles, and layers can be switched off to
+// declutter.
 
 /*@api
 ## Still visuals (`visual.json`)
@@ -21,28 +22,46 @@ hover highlight, click to select, layer toggles and numbered markers. You only d
 
 const buildVisual = (visual, stage, post) => {
   const plant = registry.plant;
-  if (!plant) throw new Error('No plant is defined. plant.js must call CJ.definePlant({...}).');
+  if (!plant)
+    throw new Error(
+      'No plant is defined. plant.js must call CJ.definePlant({...}).',
+    );
   const box = document.createElement('div');
   box.className = 'scene-box';
   box.dataset.scene = 'v';
   stage.append(box);
 
   const markers = visual.markers || [];
-  const bubbles = markers.map((m) => Object.assign({ x: m.x, y: m.y, maxWidth: 420 }, m.bubble));
+  const bubbles = markers.map((m) =>
+    Object.assign({ x: m.x, y: m.y, maxWidth: 420 }, m.bubble),
+  );
   const m = mountPlantCopy(box, 'v', plant, visual.title, {}, bubbles);
   const world = m.world;
   const state = Object.assign({}, plant.defaults || {}, visual.state || {});
   if (plant.set) plant.set(m.refs, state, 0);
 
-  // An overlay inside the world. When a part is highlighted, a veil dims the whole drawing and
-  // copies of the highlighted elements are drawn above the veil at full brightness.
+  // An overlay inside the world. When a part is highlighted, a veil dims the
+  // whole drawing and copies of the highlighted elements are drawn above the
+  // veil at full brightness.
   const veil = elementFromHtml('<div class="cj-veil"></div>');
-  const liftSvg = elementFromHtml('<svg class="art cj-lift" viewBox="0 0 1920 1080"></svg>');
+  const liftSvg = elementFromHtml(
+    '<svg class="art cj-lift" viewBox="0 0 1920 1080"></svg>',
+  );
   const liftHtml = elementFromHtml('<div class="cj-lift-html"></div>');
   m.dimmer.before(veil, liftSvg, liftHtml);
 
   const markerEls = markers.map((marker, i) => {
-    const el = elementFromHtml('<div class="cj-marker' + (marker.bubble && marker.bubble.alarm ? ' alarm' : '') + '" style="left:' + marker.x + 'px;top:' + marker.y + 'px">' + CJ.esc(marker.n == null ? i + 1 : marker.n) + '</div>');
+    const el = elementFromHtml(
+      '<div class="cj-marker' +
+        (marker.bubble && marker.bubble.alarm ? ' alarm' : '') +
+        '" style="left:' +
+        marker.x +
+        'px;top:' +
+        marker.y +
+        'px">' +
+        CJ.esc(marker.n == null ? i + 1 : marker.n) +
+        '</div>',
+    );
     m.dimmer.before(el);
     return el;
   });
@@ -53,12 +72,20 @@ const buildVisual = (visual, stage, post) => {
   // Every element that belongs to a node, by node id.
   const nodes = (visual.nodes || []).map((node) => {
     const els = [];
-    (node.select || []).forEach((name) => { const el = m.q(name); if (el) els.push(el); });
-    els.forEach((el) => { el.classList.add('cj-node'); el.setAttribute('data-node', node.id); });
+    (node.select || []).forEach((name) => {
+      const el = m.q(name);
+      if (el) els.push(el);
+    });
+    els.forEach((el) => {
+      el.classList.add('cj-node');
+      el.setAttribute('data-node', node.id);
+    });
     return { node, els };
   });
   const nodeById = {};
-  nodes.forEach((entry) => { nodeById[entry.node.id] = entry; });
+  nodes.forEach((entry) => {
+    nodeById[entry.node.id] = entry;
+  });
 
   // The elements each layer switches, resolved once from the layer's patterns.
   const layerEls = {};
@@ -74,22 +101,32 @@ const buildVisual = (visual, stage, post) => {
       const stem = m.c(star ? pattern.slice(0, -1) : pattern);
       prefixed.forEach((el) => {
         const classes = (el.getAttribute('class') || '').split(/\s+/);
-        if (classes.some((one) => (star ? one.indexOf(stem) === 0 : one === stem))) found.add(el);
+        if (
+          classes.some((one) => (star ? one.indexOf(stem) === 0 : one === stem))
+        )
+          found.add(el);
       });
     });
     layerEls[layer] = Array.from(found);
   });
   const layerOn = {};
-  Object.keys(layerEls).forEach((layer) => { layerOn[layer] = true; });
+  Object.keys(layerEls).forEach((layer) => {
+    layerOn[layer] = true;
+  });
 
-  const home = { cx: visual.camera.cx, cy: visual.camera.cy, z: visual.camera.z };
+  const home = {
+    cx: visual.camera.cx,
+    cy: visual.camera.cy,
+    z: visual.camera.z,
+  };
   const view = { cx: home.cx, cy: home.cy, z: home.z };
   let hovered = null;
   let selected = null;
   let openMarker = -1;
   const bubbleSizes = bubbles.map(() => ({}));
 
-  // Where a marker's bubble goes: beside the marker, on the side its tail points away from.
+  // Where a marker's bubble goes: beside the marker, on the side its tail
+  // points away from.
   const placeBubble = (i) => {
     const el = m.bubbleEls[i];
     const marker = markers[i];
@@ -99,11 +136,18 @@ const buildVisual = (visual, stage, post) => {
     let left = marker.x - 49;
     let top = marker.y + 34;
     if (tail === 'd') top = marker.y - 34 - h;
-    if (tail === 'l') { left = marker.x + 34; top = marker.y - 35; }
-    if (tail === 'r') { left = marker.x - 34 - w; top = marker.y - 35; }
+    if (tail === 'l') {
+      left = marker.x + 34;
+      top = marker.y - 35;
+    }
+    if (tail === 'r') {
+      left = marker.x - 34 - w;
+      top = marker.y - 35;
+    }
     el.style.left = left + 'px';
     el.style.top = top + 'px';
-    if (!el.classList.contains('tail-' + tail)) el.classList.add('tail-' + tail);
+    if (!el.classList.contains('tail-' + tail))
+      el.classList.add('tail-' + tail);
     bubbleSizes[i] = {};
   };
 
@@ -111,7 +155,9 @@ const buildVisual = (visual, stage, post) => {
     entry.els.forEach((el) => {
       const copy = el.cloneNode(true);
       copy.removeAttribute('id');
-      copy.querySelectorAll('[id]').forEach((child) => child.removeAttribute('id'));
+      copy
+        .querySelectorAll('[id]')
+        .forEach((child) => child.removeAttribute('id'));
       copy.classList.add(cls);
       copy.classList.remove('cj-layer-off');
       copy.setAttribute('data-copy', '1');
@@ -127,20 +173,27 @@ const buildVisual = (visual, stage, post) => {
     const focus = selected || hovered;
     veil.style.opacity = focus ? 0.6 : 0;
     if (selected) liftCopies(nodeById[selected], 'cj-selected');
-    if (hovered && hovered !== selected) liftCopies(nodeById[hovered], 'cj-hover');
+    if (hovered && hovered !== selected)
+      liftCopies(nodeById[hovered], 'cj-hover');
     m.bubbleEls.forEach((el, i) => {
       const open = i === openMarker;
       el.style.opacity = open ? 1 : 0;
       el.style.pointerEvents = open ? 'auto' : 'none';
-      if (open) clampBubble(el, bubbleSizes[i], { cx: view.cx, cy: view.cy, z: scale }); else el.style.transform = '';
+      if (open)
+        clampBubble(el, bubbleSizes[i], { cx: view.cx, cy: view.cy, z: scale });
+      else el.style.transform = '';
     });
-    markerEls.forEach((el, i) => { el.classList.toggle('open', i === openMarker); });
+    markerEls.forEach((el, i) => {
+      el.classList.toggle('open', i === openMarker);
+    });
   };
 
   const setLayers = (on) => {
     Object.keys(layerEls).forEach((layer) => {
       if (on && on[layer] != null) layerOn[layer] = !!on[layer];
-      layerEls[layer].forEach((el) => el.classList.toggle('cj-layer-off', !layerOn[layer]));
+      layerEls[layer].forEach((el) =>
+        el.classList.toggle('cj-layer-off', !layerOn[layer]),
+      );
     });
   };
 
@@ -157,7 +210,8 @@ const buildVisual = (visual, stage, post) => {
     draw();
   };
 
-  // The factor between page pixels and stage pixels, which changes when the window is resized.
+  // The factor between page pixels and stage pixels, which changes when the
+  // window is resized.
   const stageScale = () => stage.getBoundingClientRect().width / STAGE_W || 1;
 
   const zoomAt = (factor, pageX, pageY) => {
@@ -175,10 +229,11 @@ const buildVisual = (visual, stage, post) => {
     draw();
   };
 
-  // The id of the node at a page position, or null. Smaller parts are often drawn on top of the
-  // machine they belong to (a gear on a gate, stamps in a processor), so the topmost element is
-  // not enough: this looks down through everything stacked at that position for the first
-  // element that belongs to a node.
+  // The id of the node at a page position, or null. Smaller parts are often
+  // drawn on top of the machine they belong to (a gear on a gate, stamps in a
+  // processor), so the topmost element is not enough: this looks down through
+  // everything stacked at that position for the first element that belongs to a
+  // node.
   const nodeAt = (pageX, pageY) => {
     const stack = document.elementsFromPoint(pageX, pageY);
     for (const el of stack) {
@@ -191,7 +246,13 @@ const buildVisual = (visual, stage, post) => {
 
   let drag = null;
   m.view.addEventListener('pointerdown', (ev) => {
-    drag = { x: ev.clientX, y: ev.clientY, cx: view.cx, cy: view.cy, moved: false };
+    drag = {
+      x: ev.clientX,
+      y: ev.clientY,
+      cx: view.cx,
+      cy: view.cy,
+      moved: false,
+    };
     m.view.setPointerCapture(ev.pointerId);
   });
   m.view.addEventListener('pointermove', (ev) => {
@@ -217,9 +278,16 @@ const buildVisual = (visual, stage, post) => {
       const node = nodeById[hovered].node;
       const k = stageScale();
       const rect = m.view.getBoundingClientRect();
-      tip.innerHTML = '<b>' + CJ.esc(node.label) + '</b><span>' + CJ.esc(node.role || '') + '</span>';
-      tip.style.left = Math.min(VIEW_W - 460, (ev.clientX - rect.left) / k + 18) + 'px';
-      tip.style.top = Math.min(VIEW_H - 120, (ev.clientY - rect.top) / k + 18) + 'px';
+      tip.innerHTML =
+        '<b>' +
+        CJ.esc(node.label) +
+        '</b><span>' +
+        CJ.esc(node.role || '') +
+        '</span>';
+      tip.style.left =
+        Math.min(VIEW_W - 460, (ev.clientX - rect.left) / k + 18) + 'px';
+      tip.style.top =
+        Math.min(VIEW_H - 120, (ev.clientY - rect.top) / k + 18) + 'px';
       tip.style.opacity = 1;
     } else {
       tip.style.opacity = 0;
@@ -242,16 +310,24 @@ const buildVisual = (visual, stage, post) => {
     select(nodeAt(ev.clientX, ev.clientY));
   });
   m.view.addEventListener('pointerleave', () => {
-    if (hovered) { hovered = null; draw(); post({ cj: 'hover', nodeId: null }); }
+    if (hovered) {
+      hovered = null;
+      draw();
+      post({ cj: 'hover', nodeId: null });
+    }
     tip.style.opacity = 0;
   });
-  m.view.addEventListener('wheel', (ev) => {
-    ev.preventDefault();
-    zoomAt(Math.exp(-ev.deltaY * 0.0015), ev.clientX, ev.clientY);
-  }, { passive: false });
+  m.view.addEventListener(
+    'wheel',
+    (ev) => {
+      ev.preventDefault();
+      zoomAt(Math.exp(-ev.deltaY * 0.0015), ev.clientX, ev.clientY);
+    },
+    { passive: false },
+  );
 
-  // The legend card is hidden until the viewer asks for it, from the control bar of a standalone
-  // visual or from the app.
+  // The legend card is hidden until the viewer asks for it, from the control
+  // bar of a standalone visual or from the app.
   let legend = null;
   if (Array.isArray(visual.legend) && visual.legend.length) {
     legend = elementFromHtml(legendMarkup({ legend: visual.legend }));
@@ -275,7 +351,8 @@ const buildVisual = (visual, stage, post) => {
     setLayers,
     layers: () => Object.assign({}, layerOn),
     hasLegend: !!legend,
-    // Shows or hides the legend card. Called with no argument it switches the card over.
+    // Shows or hides the legend card. Called with no argument it switches the
+    // card over.
     setLegend(on) {
       if (!legend) return false;
       const show = on == null ? legend.style.display === 'none' : !!on;
@@ -286,7 +363,8 @@ const buildVisual = (visual, stage, post) => {
       const rect = m.view.getBoundingClientRect();
       zoomAt(factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
     },
-    // Opens one marker's bubble, or closes all with -1. The self-test uses it to check each bubble.
+    // Opens one marker's bubble, or closes all with -1. The self-test uses it
+    // to check each bubble.
     openMarker(i) {
       openMarker = i;
       if (i >= 0) placeBubble(i);

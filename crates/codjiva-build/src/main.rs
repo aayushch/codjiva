@@ -1,15 +1,21 @@
 //! Command-line front end of the artifact builder.
 //!
-//!   codjiva-build <source folder> <output.html>   build an artifact
-//!   codjiva-build --api-doc                       print the runtime API reference agents read
-//!   codjiva-build --runtime-js                    print the runtime script that gets inlined
+//!   - `codjiva-build <source folder> <output.html>`: build an artifact.
+//!   - `codjiva-build --api-doc`: print the runtime API reference agents read.
+//!   - `codjiva-build --runtime-js`: print the runtime script that gets
+//!     inlined.
 
 use std::path::Path;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
         ["--api-doc"] => {
             print!("{}", codjiva_build::runtime::runtime_api_doc());
             ExitCode::SUCCESS
@@ -20,7 +26,10 @@ fn main() -> ExitCode {
         }
         [src, out] => build(Path::new(src), Path::new(out)),
         _ => {
-            eprintln!("usage: codjiva-build <source folder> <output.html>\n       codjiva-build --api-doc\n       codjiva-build --runtime-js");
+            eprintln!(
+                "usage: codjiva-build <source folder> <output.html>\n       \
+                 codjiva-build --api-doc\n       codjiva-build --runtime-js"
+            );
             ExitCode::from(2)
         }
     }
@@ -36,7 +45,13 @@ fn build(src: &Path, out: &Path) -> ExitCode {
                 eprintln!("could not write {}: {e}", out.display());
                 return ExitCode::FAILURE;
             }
-            println!("built {:?} \"{}\": {} bytes -> {}", built.kind, built.title, built.html.len(), out.display());
+            println!(
+                "built {:?} \"{}\": {} bytes -> {}",
+                built.kind,
+                built.title,
+                built.html.len(),
+                out.display()
+            );
             ExitCode::SUCCESS
         }
         Err(failure) => {

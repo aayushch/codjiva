@@ -1,18 +1,19 @@
 // The Codjiva runtime: the code every generated visual and film runs on.
 //
-// The builder joins all files in runtime/src in file-name order and wraps them in one function.
-// So the `const` declarations in this file are visible to the later runtime files, and hidden
-// from the plant and scene files an agent writes. Agent code reaches the runtime only through
-// the global object `CJ`.
+// The builder joins all files in runtime/src in file-name order and wraps them
+// in one function. So the `const` declarations in this file are visible to the
+// later runtime files, and hidden from the plant and scene files an agent
+// writes. Agent code reaches the runtime only through the global object `CJ`.
 //
-// Comment blocks that start with `/*@api` are documentation for agents. The builder removes them
-// from built artifacts and collects them into the runtime API reference that is added to prompts.
+// Comment blocks that start with `/*@api` are documentation for agents. The
+// builder removes them from built artifacts and collects them into the runtime
+// API reference that is added to prompts.
 
 const CJ = {};
 window.CJ = CJ;
 
-// The stage is a fixed 1920 x 1080 box. The top HUD_H pixels hold the chapter title. The rest is
-// the view, a window onto the drawn world.
+// The stage is a fixed 1920 x 1080 box. The top HUD_H pixels hold the chapter
+// title. The rest is the view, a window onto the drawn world.
 const STAGE_W = 1920;
 const STAGE_H = 1080;
 const HUD_H = 110;
@@ -47,24 +48,39 @@ CJ.clamp01 = clamp01;
 CJ.clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 CJ.seg = (t, a, b) => clamp01((t - a) / (b - a));
 CJ.lerp = (a, b, x) => a + (b - a) * x;
-CJ.eo = (x) => { x = clamp01(x); return 1 - Math.pow(1 - x, 3); };
-CJ.ei = (x) => { x = clamp01(x); return x * x * x; };
-CJ.eio = (x) => { x = clamp01(x); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+CJ.eo = (x) => {
+  x = clamp01(x);
+  return 1 - Math.pow(1 - x, 3);
+};
+CJ.ei = (x) => {
+  x = clamp01(x);
+  return x * x * x;
+};
+CJ.eio = (x) => {
+  x = clamp01(x);
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+};
 CJ.eob = (x, s) => {
   x = clamp01(x);
   const k = s == null ? 1.4 : s;
   const c3 = k + 1;
   return 1 + c3 * Math.pow(x - 1, 3) + k * Math.pow(x - 1, 2);
 };
-CJ.smooth = (x) => { x = clamp01(x); return x * x * (3 - 2 * x); };
+CJ.smooth = (x) => {
+  x = clamp01(x);
+  return x * x * (3 - 2 * x);
+};
 CJ.win = (t, a, b, fade) => {
   const f = fade == null ? 0.35 : fade;
-  return Math.min(1, Math.max(0, (t - a) / f)) * Math.min(1, Math.max(0, (b - t) / f));
+  return (
+    Math.min(1, Math.max(0, (t - a) / f)) *
+    Math.min(1, Math.max(0, (b - t) / f))
+  );
 };
 CJ.rng = (seed) => {
-  let s = (seed >>> 0) || 1;
+  let s = seed >>> 0 || 1;
   return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
+    s = (s + 0x6d2b79f5) >>> 0;
     let r = Math.imul(s ^ (s >>> 15), 1 | s);
     r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
     return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
@@ -79,11 +95,17 @@ CJ.rng = (seed) => {
 | `CJ.esc(text)` | `text` with `&`, `<`, `>` and `"` escaped, safe to put inside HTML. |
 | `CJ.textWidth(text, size = 18)` | The width in px of one line of `text` at font size `size`. Every character of the stage font is 0.6 of the font size wide, so this is exact. Use it to check that a label fits before you place it. |
 */
-CJ.esc = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-CJ.textWidth = (text, size) => String(text).length * (size == null ? 18 : size) * 0.6;
+CJ.esc = (text) =>
+  String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+CJ.textWidth = (text, size) =>
+  String(text).length * (size == null ? 18 : size) * 0.6;
 
-// Turns an HTML string into one element. A string with several top-level elements is wrapped in
-// a box that does not affect layout.
+// Turns an HTML string into one element. A string with several top-level
+// elements is wrapped in a box that does not affect layout.
 const elementFromHtml = (html) => {
   const tpl = document.createElement('template');
   tpl.innerHTML = String(html).trim();
@@ -94,5 +116,6 @@ const elementFromHtml = (html) => {
   return box;
 };
 
-// Rounds to two decimals and drops trailing zeros, for coordinates written into markup.
+// Rounds to two decimals and drops trailing zeros, for coordinates written into
+// markup.
 const r2 = (x) => String(Math.round(x * 100) / 100);

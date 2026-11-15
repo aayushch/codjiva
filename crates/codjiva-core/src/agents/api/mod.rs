@@ -1,4 +1,5 @@
-//! API-key mode: the app runs the agent loop itself against a model provider's API.
+//! API-key mode: the app runs the agent loop itself against a model provider's
+//! API.
 
 pub mod anthropic;
 pub mod backend;

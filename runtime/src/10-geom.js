@@ -19,7 +19,10 @@ CJ.route = (points) => {
   const lengths = [];
   let total = 0;
   for (let i = 1; i < points.length; i++) {
-    const l = Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
+    const l = Math.hypot(
+      points[i][0] - points[i - 1][0],
+      points[i][1] - points[i - 1][1],
+    );
     lengths.push(l);
     total += l;
   }
@@ -40,6 +43,15 @@ CJ.route = (points) => {
 };
 
 CJ.place = (el, xy, scale, opacity) => {
-  el.setAttribute('transform', 'translate(' + xy[0].toFixed(1) + ' ' + xy[1].toFixed(1) + ') scale(' + (scale == null ? 1 : scale) + ')');
+  el.setAttribute(
+    'transform',
+    'translate(' +
+      xy[0].toFixed(1) +
+      ' ' +
+      xy[1].toFixed(1) +
+      ') scale(' +
+      (scale == null ? 1 : scale) +
+      ')',
+  );
   el.style.opacity = opacity == null ? 1 : opacity;
 };

@@ -1,124 +1,583 @@
 /**
- * Codjiva film and visual styles. The builder inlines this after resources/theme/tokens.css.
- * The stage is a 1920 x 1080 box that the runtime scales to fit the window.
- * Agent-written parts use the classes in the "labels", "code chips" and "bubbles" sections.
- * Classes that start with cj- belong to the runtime.
+ * Codjiva film and visual styles. The builder inlines this after
+ * resources/theme/tokens.css. The stage is a 1920 x 1080 box that the runtime
+ * scales to fit the window. Agent-written parts use the classes in the
+ * "labels", "code chips" and "bubbles" sections. Classes that start with cj-
+ * belong to the runtime.
  */
 
 /* ---------- page and standalone player bar ---------- */
-html, body { margin:0; height:100%; background:var(--shell-window); color:var(--second); font-family:var(--font); overflow:hidden }
-#app { position:fixed; inset:0; display:flex; flex-direction:column; background:var(--shell-window) }
-#frame { position:relative; flex:1; overflow:hidden; cursor:pointer }
-#loading { position:absolute; inset:0; display:grid; place-items:center; font-size:15px; color:var(--shell-text-2); padding:0 40px; text-align:center }
-body.ready #loading { display:none }
-body.embed #controls { display:none }
-/* Embedded in the app, the page around the stage is see-through so the app's own background shows. */
-html.embed, html.embed body, html.embed #app { background:transparent }
-#controls { flex:none; display:flex; align-items:center; gap:14px; padding:10px 16px; background:var(--shell-bar); border-top:1px solid var(--shell-border-soft); user-select:none }
-#controls button { flex:none; width:36px; height:36px; border:0; border-radius:var(--radius-m); background:var(--shell-button); color:var(--second); cursor:pointer; display:grid; place-items:center; padding:0; font:inherit }
-#controls button:hover { background:var(--shell-hover) }
-#controls button:focus-visible { outline:2px solid var(--main); outline-offset:2px }
-#controls button svg { width:18px; height:18px; fill:currentColor }
-#controls button.text { width:auto; padding:0 12px; font-size:13px; color:var(--shell-text-2) }
-#controls button.text.on { color:var(--main) }
-#layers { display:flex; gap:8px }
-#hint-text { flex:1; text-align:right; font-size:13px; color:var(--shell-text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-#play[data-state="playing"] .i-play, #play[data-state="paused"] .i-pause { display:none }
-#mute[data-state="muted"] .i-on, #mute[data-state="on"] .i-off { display:none }
-#bar { position:relative; flex:1; height:22px; cursor:pointer; touch-action:none }
-#bar::before { content:''; position:absolute; left:0; right:0; top:9px; height:4px; border-radius:2px; background:var(--shell-border) }
-#fill { position:absolute; left:0; top:9px; height:4px; border-radius:2px; background:var(--main); width:0 }
-#knob { position:absolute; top:4px; width:14px; height:14px; margin-left:-7px; border-radius:50%; background:var(--main); box-shadow:0 0 0 3px color-mix(in srgb, var(--main) 25%, transparent) }
-.mark { position:absolute; top:6px; width:2px; height:10px; margin-left:-1px; background:var(--shell-tick) }
-#time { flex:none; font-size:13px; color:var(--shell-text-2); min-width:96px; text-align:right; font-variant-numeric:tabular-nums }
-#chapter { flex:none; font-size:13px; color:var(--second); max-width:28vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--shell-window);
+  color: var(--second);
+  font-family: var(--font);
+  overflow: hidden;
+}
+#app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--shell-window);
+}
+#frame {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  cursor: pointer;
+}
+#loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  color: var(--shell-text-2);
+  padding: 0 40px;
+  text-align: center;
+}
+body.ready #loading {
+  display: none;
+}
+body.embed #controls {
+  display: none;
+}
+/* Embedded in the app, the page around the stage is see-through so the app's
+   own background shows. */
+html.embed,
+html.embed body,
+html.embed #app {
+  background: transparent;
+}
+#controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--shell-bar);
+  border-top: 1px solid var(--shell-border-soft);
+  user-select: none;
+}
+#controls button {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--shell-button);
+  color: var(--second);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font: inherit;
+}
+#controls button:hover {
+  background: var(--shell-hover);
+}
+#controls button:focus-visible {
+  outline: 2px solid var(--main);
+  outline-offset: 2px;
+}
+#controls button svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+#controls button.text {
+  width: auto;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--shell-text-2);
+}
+#controls button.text.on {
+  color: var(--main);
+}
+#layers {
+  display: flex;
+  gap: 8px;
+}
+#hint-text {
+  flex: 1;
+  text-align: right;
+  font-size: 13px;
+  color: var(--shell-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#play[data-state='playing'] .i-play,
+#play[data-state='paused'] .i-pause {
+  display: none;
+}
+#mute[data-state='muted'] .i-on,
+#mute[data-state='on'] .i-off {
+  display: none;
+}
+#bar {
+  position: relative;
+  flex: 1;
+  height: 22px;
+  cursor: pointer;
+  touch-action: none;
+}
+#bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 9px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--shell-border);
+}
+#fill {
+  position: absolute;
+  left: 0;
+  top: 9px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--main);
+  width: 0;
+}
+#knob {
+  position: absolute;
+  top: 4px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  border-radius: 50%;
+  background: var(--main);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--main) 25%, transparent);
+}
+.mark {
+  position: absolute;
+  top: 6px;
+  width: 2px;
+  height: 10px;
+  margin-left: -1px;
+  background: var(--shell-tick);
+}
+#time {
+  flex: none;
+  font-size: 13px;
+  color: var(--shell-text-2);
+  min-width: 96px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+#chapter {
+  flex: none;
+  font-size: 13px;
+  color: var(--second);
+  max-width: 28vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ---------- stage, scenes, camera ---------- */
-#stage { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0; overflow:hidden;
-  background:var(--ground); color:var(--second); font-family:var(--font) }
-/* The runtime clock sets every property on every frame, so CSS must never animate anything. */
-#stage *, #stage *::before, #stage *::after { transition:none !important; animation:none !important }
-.scene-box { position:absolute; inset:0; overflow:hidden }
-.ground { position:absolute; inset:0; background:var(--ground) }
-.art { position:absolute; inset:0; width:100%; height:100%; overflow:visible }
-.world { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0 }
+#stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 0 0;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--second);
+  font-family: var(--font);
+}
+/* The runtime clock sets every property on every frame, so CSS must never
+   animate anything. */
+#stage *,
+#stage *::before,
+#stage *::after {
+  transition: none !important;
+  animation: none !important;
+}
+.scene-box {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.ground {
+  position: absolute;
+  inset: 0;
+  background: var(--ground);
+}
+.art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 0 0;
+}
 
 /* ---------- title band (top 110 px) and the view below it ---------- */
-.hud { position:absolute; left:0; right:0; top:0; height:var(--hud-h); padding:30px 48px 0; box-sizing:border-box; background:var(--ground) }
-.hud .line { font-size:44px; line-height:1.1; margin:0; font-weight:700; white-space:nowrap }
-.view { position:absolute; left:0; right:0; top:var(--hud-h); bottom:0; overflow:hidden; border-top:1.5px solid var(--line) }
-.dimmer { position:absolute; left:-2000px; top:-2000px; width:6000px; height:6000px; background:var(--ground); opacity:0; pointer-events:none }
+.hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--hud-h);
+  padding: 30px 48px 0;
+  box-sizing: border-box;
+  background: var(--ground);
+}
+.hud .line {
+  font-size: 44px;
+  line-height: 1.1;
+  margin: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.view {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--hud-h);
+  bottom: 0;
+  overflow: hidden;
+  border-top: 1.5px solid var(--line);
+}
+.dimmer {
+  position: absolute;
+  left: -2000px;
+  top: -2000px;
+  width: 6000px;
+  height: 6000px;
+  background: var(--ground);
+  opacity: 0;
+  pointer-events: none;
+}
 
-/* ---------- legend card (start of a film; on request in a visual) ---------- */
-.words { position:absolute; margin:0; display:flex; flex-direction:column; gap:18px } .words > * { margin:0 }
-.sub { font-size:34px; color:var(--muted) }
-.cj-legend { padding:34px 44px; background:color-mix(in srgb, var(--ground) 96%, transparent); border:2px solid var(--line); border-radius:12px;
-  transform:translateY(var(--lift, 0px)) }
-.cj-legend-centred { left:50%; top:calc(var(--hud-h) + 485px); transform:translate(-50%, calc(-50% + var(--lift, 0px))) }
-.cj-legend-row { display:flex; align-items:center; gap:22px }
-.cj-legend-row svg { flex:none }
-.cj-legend-row .sub { margin:34px 0; color:var(--second); white-space:nowrap }
+/* ---------- legend card (start of a film; on request in a visual) ----------
+   */
+.words {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.words > * {
+  margin: 0;
+}
+.sub {
+  font-size: 34px;
+  color: var(--muted);
+}
+.cj-legend {
+  padding: 34px 44px;
+  background: color-mix(in srgb, var(--ground) 96%, transparent);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  transform: translateY(var(--lift, 0px));
+}
+.cj-legend-centred {
+  left: 50%;
+  top: calc(var(--hud-h) + 485px);
+  transform: translate(-50%, calc(-50% + var(--lift, 0px)));
+}
+.cj-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.cj-legend-row svg {
+  flex: none;
+}
+.cj-legend-row .sub {
+  margin: 34px 0;
+  color: var(--second);
+  white-space: nowrap;
+}
 
 /* ---------- labels ---------- */
-.pl  { position:absolute; font-size:18px; line-height:1.15; color:var(--muted); white-space:nowrap }
-.pl span { display:block }
-.plt { position:absolute; font-size:18px; font-weight:700; color:var(--second); padding:2px 10px; background:var(--ground);
-  border:1.5px solid var(--line); border-radius:var(--radius-s); white-space:nowrap }
-.tag { position:absolute; font-size:26px; line-height:1.2; padding:6px 12px; border-radius:6px;
-  background:color-mix(in srgb, var(--ground) 88%, transparent); border:1.5px solid var(--line); color:var(--second); max-width:520px }
-.tag span { display:block }
-.tag.hot { border-color:var(--main); color:var(--main) } .tag.cool { border-color:var(--accent); color:var(--accent) }
-.tag.dim { border-color:var(--faint); color:var(--muted) }
-.note { position:absolute; font-size:28px; line-height:1.3; color:var(--muted); max-width:560px }
+.pl {
+  position: absolute;
+  font-size: 18px;
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pl span {
+  display: block;
+}
+.plt {
+  position: absolute;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--second);
+  padding: 2px 10px;
+  background: var(--ground);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-s);
+  white-space: nowrap;
+}
+.tag {
+  position: absolute;
+  font-size: 26px;
+  line-height: 1.2;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  border: 1.5px solid var(--line);
+  color: var(--second);
+  max-width: 520px;
+}
+.tag span {
+  display: block;
+}
+.tag.hot {
+  border-color: var(--main);
+  color: var(--main);
+}
+.tag.cool {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tag.dim {
+  border-color: var(--faint);
+  color: var(--muted);
+}
+.note {
+  position: absolute;
+  font-size: 28px;
+  line-height: 1.3;
+  color: var(--muted);
+  max-width: 560px;
+}
 
 /* ---------- code chips: every identifier from the code ---------- */
-#stage code { font-family:var(--mono); font-size:.9em; padding:1px 6px; border-radius:var(--radius-s);
-  background:var(--chip); color:var(--second); white-space:nowrap }
+#stage code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--chip);
+  color: var(--second);
+  white-space: nowrap;
+}
 
-/* ---------- bubbles (the runtime sets opacity and the clamping transform) ---------- */
-.bub { position:absolute; width:max-content; max-width:420px; padding:12px 16px; font-size:20px; line-height:1.4;
-  color:var(--second); background:var(--ground); border:2px solid var(--accent); border-radius:var(--radius-l);
-  box-shadow:0 0 0 7px color-mix(in srgb, var(--accent) 22%, transparent), 0 12px 30px var(--drop);
-  opacity:0; white-space:normal }
-.bub .k { display:block; font-size:18px; letter-spacing:.06em; color:var(--accent); margin-bottom:6px }
-.bub.alarm { border-color:var(--main); box-shadow:0 0 0 7px color-mix(in srgb, var(--main) 26%, transparent), 0 12px 30px var(--drop) }
-.bub.alarm .k { color:var(--main) }
-.bub::after { content:''; position:absolute; width:18px; height:18px; background:var(--ground); border:2px solid var(--accent); transform:rotate(45deg) }
-.bub.alarm::after { border-color:var(--main) }
-.bub:not(.tail-u):not(.tail-d):not(.tail-l):not(.tail-r)::after { display:none }
-.tail-d::after { left:var(--tx, 40px); bottom:-11px; border-top:none; border-left:none }
-.tail-u::after { left:var(--tx, 40px); top:-11px; border-bottom:none; border-right:none }
-.tail-l::after { left:-11px; top:var(--ty, 26px); border-top:none; border-right:none }
-.tail-r::after { right:-11px; top:var(--ty, 26px); border-bottom:none; border-left:none }
+/* ---------- bubbles (the runtime sets opacity and the clamping transform)
+   ---------- */
+.bub {
+  position: absolute;
+  width: max-content;
+  max-width: 420px;
+  padding: 12px 16px;
+  font-size: 20px;
+  line-height: 1.4;
+  color: var(--second);
+  background: var(--ground);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-l);
+  box-shadow:
+    0 0 0 7px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 12px 30px var(--drop);
+  opacity: 0;
+  white-space: normal;
+}
+.bub .k {
+  display: block;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.bub.alarm {
+  border-color: var(--main);
+  box-shadow:
+    0 0 0 7px color-mix(in srgb, var(--main) 26%, transparent),
+    0 12px 30px var(--drop);
+}
+.bub.alarm .k {
+  color: var(--main);
+}
+.bub::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  background: var(--ground);
+  border: 2px solid var(--accent);
+  transform: rotate(45deg);
+}
+.bub.alarm::after {
+  border-color: var(--main);
+}
+.bub:not(.tail-u):not(.tail-d):not(.tail-l):not(.tail-r)::after {
+  display: none;
+}
+.tail-d::after {
+  left: var(--tx, 40px);
+  bottom: -11px;
+  border-top: none;
+  border-left: none;
+}
+.tail-u::after {
+  left: var(--tx, 40px);
+  top: -11px;
+  border-bottom: none;
+  border-right: none;
+}
+.tail-l::after {
+  left: -11px;
+  top: var(--ty, 26px);
+  border-top: none;
+  border-right: none;
+}
+.tail-r::after {
+  right: -11px;
+  top: var(--ty, 26px);
+  border-bottom: none;
+  border-left: none;
+}
 
 /* ---------- rewind treatment ---------- */
-.cj-rewind-lines { position:absolute; left:0; right:0; top:var(--hud-h); bottom:0; pointer-events:none; opacity:0;
-  background:repeating-linear-gradient(0deg, color-mix(in srgb, var(--accent) 10%, transparent) 0 2px, transparent 2px 7px), color-mix(in srgb, var(--accent) 6%, transparent) }
-.cj-rewind-tag { position:absolute; right:48px; top:30px; padding:8px 18px; font-size:28px; font-weight:700; letter-spacing:.08em;
-  color:var(--ground); background:var(--main); border-radius:6px; opacity:0 }
+.cj-rewind-lines {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--hud-h);
+  bottom: 0;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--accent) 10%, transparent) 0 2px,
+      transparent 2px 7px
+    ),
+    color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.cj-rewind-tag {
+  position: absolute;
+  right: 48px;
+  top: 30px;
+  padding: 8px 18px;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ground);
+  background: var(--main);
+  border-radius: 6px;
+  opacity: 0;
+}
 
 /* ---------- still visuals ---------- */
-.cj-node { cursor:pointer }
-.cj-veil { position:absolute; left:-2000px; top:-2000px; width:6000px; height:6000px; background:var(--ground); opacity:0; pointer-events:none }
-.cj-lift { pointer-events:none } .cj-lift > * { pointer-events:auto }
-.cj-lift-html { position:absolute; left:0; top:0 }
-.cj-hover { filter:drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 60%, transparent)) }
-.cj-selected { filter:drop-shadow(0 0 8px color-mix(in srgb, var(--main) 70%, transparent)) }
-.cj-marker { position:absolute; width:30px; height:30px; margin:-15px 0 0 -15px; border-radius:50%; display:grid; place-items:center;
-  font-size:15px; font-weight:700; color:var(--ground); background:var(--accent); cursor:pointer;
-  box-shadow:0 0 0 5px color-mix(in srgb, var(--accent) 25%, transparent) }
-.cj-marker.alarm { background:var(--main); box-shadow:0 0 0 5px color-mix(in srgb, var(--main) 25%, transparent) }
-.cj-marker.open { box-shadow:0 0 0 5px color-mix(in srgb, var(--second) 45%, transparent) }
-.cj-layer-off { display:none !important }
-.cj-tip { position:absolute; max-width:440px; padding:8px 12px; font-size:16px; line-height:1.35; color:var(--ink); background:var(--ground);
-  border:1.5px solid var(--line); border-radius:var(--radius-m); box-shadow:0 12px 30px var(--drop); opacity:0; pointer-events:none }
-.cj-tip b { display:block; color:var(--second) }
+.cj-node {
+  cursor: pointer;
+}
+.cj-veil {
+  position: absolute;
+  left: -2000px;
+  top: -2000px;
+  width: 6000px;
+  height: 6000px;
+  background: var(--ground);
+  opacity: 0;
+  pointer-events: none;
+}
+.cj-lift {
+  pointer-events: none;
+}
+.cj-lift > * {
+  pointer-events: auto;
+}
+.cj-lift-html {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.cj-hover {
+  filter: drop-shadow(
+    0 0 6px color-mix(in srgb, var(--accent) 60%, transparent)
+  );
+}
+.cj-selected {
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--main) 70%, transparent));
+}
+.cj-marker {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ground);
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.cj-marker.alarm {
+  background: var(--main);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--main) 25%, transparent);
+}
+.cj-marker.open {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--second) 45%, transparent);
+}
+.cj-layer-off {
+  display: none !important;
+}
+.cj-tip {
+  position: absolute;
+  max-width: 440px;
+  padding: 8px 12px;
+  font-size: 16px;
+  line-height: 1.35;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: 0 12px 30px var(--drop);
+  opacity: 0;
+  pointer-events: none;
+}
+.cj-tip b {
+  display: block;
+  color: var(--second);
+}
 
-/* Point-at mode: the app has asked the user to click the element their feedback is about. */
-body.picking, body.picking * { cursor:crosshair !important }
-body.picking #frame { outline:2px dashed var(--accent); outline-offset:-2px }
+/* Point-at mode: the app has asked the user to click the element their feedback
+   is about. */
+body.picking,
+body.picking * {
+  cursor: crosshair !important;
+}
+body.picking #frame {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
 
-/* A pipeline's bay: the whole sheet of one part, drawn at a reduced scale inside the yard. */
-.cj-bay { position:absolute; width:1920px; height:1080px; transform-origin:0 0 }
-/* The yard has its own grid. A part's grid inside its bay would only add a second, finer one. */
-.cj-bay .grid { display:none }
+/* A pipeline's bay: the whole sheet of one part, drawn at a reduced scale
+   inside the yard. */
+.cj-bay {
+  position: absolute;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 0 0;
+}
+/* The yard has its own grid. A part's grid inside its bay would only add a
+   second, finer one. */
+.cj-bay .grid {
+  display: none;
+}

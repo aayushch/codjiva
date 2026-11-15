@@ -1,0 +1,25 @@
+{
+  "name": "codjiva-tools",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Formatting and linting for the whole repository. The app itself is in ui/.",
+  "scripts": {
+    "format": "prettier --write . && cargo fmt --all && node scripts/wrap-comments.mjs",
+    "format:check": "prettier --check . && cargo fmt --all --check",
+    "lint": "eslint . && node scripts/line-width.mjs",
+    "style": "npm run format:check && npm run lint"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.24.1",
+    "globals": "^17.14.0",
+    "prettier": "^3.10.1",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte": "^5.57.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2"
+  }
+}

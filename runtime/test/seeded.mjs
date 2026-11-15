@@ -1,27 +1,43 @@
-// Seeded-defect tests. Each case plants one known defect in a copy of the reference film and
-// checks that the builder or the self-test reports it with the right check and element.
+// Seeded-defect tests. Each case plants one known defect in a copy of the
+// reference film and checks that the builder or the self-test reports it with
+// the right check and element.
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { build, tryBuild, copySources, openArtifact, runSelfTest, referenceFilm } from './lib.mjs';
+import {
+  build,
+  tryBuild,
+  copySources,
+  openArtifact,
+  runSelfTest,
+  referenceFilm,
+} from './lib.mjs';
 
-// Replaces `from` with `to` in one file of a copied source folder. Fails if `from` is absent,
-// so a case cannot silently stop planting its defect when the reference sources change.
+// Replaces `from` with `to` in one file of a copied source folder. Fails if
+// `from` is absent, so a case cannot silently stop planting its defect when the
+// reference sources change.
 const edit = (dir, file, from, to) => {
   const full = path.join(dir, file);
   const text = readFileSync(full, 'utf8');
-  if (!text.includes(from)) throw new Error(`${file}: the text to replace was not found: ${from}`);
+  if (!text.includes(from))
+    throw new Error(`${file}: the text to replace was not found: ${from}`);
   writeFileSync(full, text.replace(from, to));
 };
 
 const browser = await chromium.launch();
 let failed = 0;
 const pass = (name) => console.log('ok    ' + name);
-const fail = (name, why) => { failed++; console.log('FAIL  ' + name + '\n      ' + why); };
+const fail = (name, why) => {
+  failed++;
+  console.log('FAIL  ' + name + '\n      ' + why);
+};
 
 // Builds the edited copy, runs the self-test and returns its issues.
 const issuesOf = async (dir, name) => {
-  const { page, context } = await openArtifact(browser, build(dir, 'seeded-' + name));
+  const { page, context } = await openArtifact(
+    browser,
+    build(dir, 'seeded-' + name),
+  );
   const report = await runSelfTest(page);
   await context.close();
   return report.issues;
@@ -30,48 +46,145 @@ const issuesOf = async (dir, name) => {
 const selfTestCases = [
   {
     name: 'an overlapping label is reported as text-overlap, naming both labels',
-    plant: (dir) => edit(dir, 'plant.js', "CJ.label('shed (counted)', 855, 900)", "CJ.label('shed (counted)', 200, 904)"),
-    expect: (issues) => issues.some((i) => i.check === 'text-overlap' && i.severity === 'error' && [i.a.text, i.b.text].sort().join() === 'rejected · duplicate · blocked,shed (counted)'),
+    plant: (dir) =>
+      edit(
+        dir,
+        'plant.js',
+        "CJ.label('shed (counted)', 855, 900)",
+        "CJ.label('shed (counted)', 200, 904)",
+      ),
+    expect: (issues) =>
+      issues.some(
+        (i) =>
+          i.check === 'text-overlap' &&
+          i.severity === 'error' &&
+          [i.a.text, i.b.text].sort().join() ===
+            'rejected · duplicate · blocked,shed (counted)',
+      ),
   },
   {
     name: 'a label crossing a machine edge is reported as text-overlap against that machine',
-    plant: (dir) => edit(dir, 'plant.js', "CJ.label('Store', 1480, 952)", "CJ.label('Store', 1480, 630)"),
-    expect: (issues) => issues.some((i) => i.check === 'text-overlap' && i.a.text === 'Store' && /-flush$/.test(i.b.selector)),
+    plant: (dir) =>
+      edit(
+        dir,
+        'plant.js',
+        "CJ.label('Store', 1480, 952)",
+        "CJ.label('Store', 1480, 630)",
+      ),
+    expect: (issues) =>
+      issues.some(
+        (i) =>
+          i.check === 'text-overlap' &&
+          i.a.text === 'Store' &&
+          /-flush$/.test(i.b.selector),
+      ),
   },
   {
     name: 'a render that throws is reported as exception, naming the scene',
-    plant: (dir) => edit(dir, 'scenes/budget.js', 'const soft = seg(t, 2.0, 2.4);', "if (t > 5) throw new Error('boom');\n    const soft = seg(t, 2.0, 2.4);"),
-    expect: (issues) => issues.some((i) => i.check === 'exception' && i.scene === 'budget' && /boom/.test(i.message)),
+    plant: (dir) =>
+      edit(
+        dir,
+        'scenes/budget.js',
+        'const soft = seg(t, 2.0, 2.4);',
+        "if (t > 5) throw new Error('boom');\n    const soft = seg(t, 2.0, 2.4);",
+      ),
+    expect: (issues) =>
+      issues.some(
+        (i) =>
+          i.check === 'exception' &&
+          i.scene === 'budget' &&
+          /boom/.test(i.message),
+      ),
   },
   {
     name: 'a class used on two elements is reported as prefix, naming the class',
-    plant: (dir) => edit(dir, 'scenes/budget.js', "CJ.ring(c('rh'), 1874, 255, 20)", "CJ.ring(c('rh'), 1874, 255, 20) + CJ.ring(c('rs'), 1874, 372, 20)"),
-    expect: (issues) => issues.some((i) => i.check === 'prefix' && i.scene === 'budget' && i.a.selector === '.budget-rs'),
+    plant: (dir) =>
+      edit(
+        dir,
+        'scenes/budget.js',
+        "CJ.ring(c('rh'), 1874, 255, 20)",
+        "CJ.ring(c('rh'), 1874, 255, 20) + CJ.ring(c('rs'), 1874, 372, 20)",
+      ),
+    expect: (issues) =>
+      issues.some(
+        (i) =>
+          i.check === 'prefix' &&
+          i.scene === 'budget' &&
+          i.a.selector === '.budget-rs',
+      ),
   },
   {
     name: 'a class without the scene prefix is reported as prefix',
-    plant: (dir) => edit(dir, 'scenes/budget.js', "CJ.ring(c('rh'), 1874, 255, 20)", "CJ.ring(c('rh'), 1874, 255, 20) + CJ.ring('loose', 1874, 372, 20)"),
-    expect: (issues) => issues.some((i) => i.check === 'prefix' && i.scene === 'budget' && /"loose"/.test(i.hint)),
+    plant: (dir) =>
+      edit(
+        dir,
+        'scenes/budget.js',
+        "CJ.ring(c('rh'), 1874, 255, 20)",
+        "CJ.ring(c('rh'), 1874, 255, 20) + CJ.ring('loose', 1874, 372, 20)",
+      ),
+    expect: (issues) =>
+      issues.some(
+        (i) =>
+          i.check === 'prefix' &&
+          i.scene === 'budget' &&
+          /"loose"/.test(i.hint),
+      ),
   },
   {
     name: 'a render that keeps state between frames is reported as determinism',
-    plant: (dir) => edit(dir, 'scenes/budget.js', 'const soft = seg(t, 2.0, 2.4);', 'this.calls = (this.calls || 0) + 1;\n    this.rs.style.strokeWidth = this.calls;\n    const soft = seg(t, 2.0, 2.4);'),
-    expect: (issues) => issues.some((i) => i.check === 'determinism' && i.scene === 'budget'),
+    plant: (dir) =>
+      edit(
+        dir,
+        'scenes/budget.js',
+        'const soft = seg(t, 2.0, 2.4);',
+        'this.calls = (this.calls || 0) + 1;\n    this.rs.style.strokeWidth = this.calls;\n    const soft = seg(t, 2.0, 2.4);',
+      ),
+    expect: (issues) =>
+      issues.some((i) => i.check === 'determinism' && i.scene === 'budget'),
   },
   {
     name: 'a label too long for its fixed-width box is reported as text-overflow',
-    plant: (dir) => edit(dir, 'plant.js', "const PRESS_LABELS = ['valid', 'price', 'stamp'];", "const PRESS_LABELS = ['valid', 'price', 'stampWithALongName'];"),
-    expect: (issues) => issues.some((i) => i.check === 'text-overflow' && /stampWithALongName/.test(i.a.text)),
+    plant: (dir) =>
+      edit(
+        dir,
+        'plant.js',
+        "const PRESS_LABELS = ['valid', 'price', 'stamp'];",
+        "const PRESS_LABELS = ['valid', 'price', 'stampWithALongName'];",
+      ),
+    expect: (issues) =>
+      issues.some(
+        (i) =>
+          i.check === 'text-overflow' && /stampWithALongName/.test(i.a.text),
+      ),
   },
   {
     name: 'a state jump between chapters is reported as continuity, naming the key',
-    plant: (dir) => edit(dir, 'scenes/routing.js', 'ctx.set({ level: 0.34, gauge: 4 / 64,', 'ctx.set({ level: 0.6, gauge: 4 / 64,'),
-    expect: (issues) => issues.some((i) => i.check === 'continuity' && i.scene === 'routing' && /level: 0\.34 → 0\.6/.test(i.message)),
+    plant: (dir) =>
+      edit(
+        dir,
+        'scenes/routing.js',
+        'ctx.set({ level: 0.34, gauge: 4 / 64,',
+        'ctx.set({ level: 0.6, gauge: 4 / 64,',
+      ),
+    expect: (issues) =>
+      issues.some(
+        (i) =>
+          i.check === 'continuity' &&
+          i.scene === 'routing' &&
+          /level: 0\.34 → 0\.6/.test(i.message),
+      ),
   },
   {
     name: 'a packet kind missing from the legend is reported as legend',
-    plant: (dir) => edit(dir, 'film.json', '{ "kind": "batch", "html": "The batch · <code>[]Order</code> written by one <code>WriteBatch</code>" }', '{ "kind": "primary", "html": "again" }'),
-    expect: (issues) => issues.some((i) => i.check === 'legend' && /"batch"/.test(i.message)),
+    plant: (dir) =>
+      edit(
+        dir,
+        'film.json',
+        '{ "kind": "batch", "html": "The batch · <code>[]Order</code> written by one <code>WriteBatch</code>" }',
+        '{ "kind": "primary", "html": "again" }',
+      ),
+    expect: (issues) =>
+      issues.some((i) => i.check === 'legend' && /"batch"/.test(i.message)),
   },
 ];
 
@@ -81,16 +194,40 @@ for (const [index, test] of selfTestCases.entries()) {
     test.plant(dir);
     const issues = await issuesOf(dir, 'case' + index);
     if (test.expect(issues)) pass(test.name);
-    else fail(test.name, 'issues were: ' + JSON.stringify(issues.map((i) => [i.check, i.scene, i.a && i.a.selector, i.message])).slice(0, 600));
+    else
+      fail(
+        test.name,
+        'issues were: ' +
+          JSON.stringify(
+            issues.map((i) => [
+              i.check,
+              i.scene,
+              i.a && i.a.selector,
+              i.message,
+            ]),
+          ).slice(0, 600),
+      );
   } catch (e) {
     fail(test.name, String(e.stderr || e.message || e).slice(0, 600));
   }
 }
 
 const builderCases = [
-  { name: 'the builder rejects fetch and names the file and line', code: "\nfetch('/data');\n", expect: /scenes\/budget\.js:\d+: error \[forbidden-token\] `fetch`/ },
-  { name: 'the builder rejects Math.random and names the file and line', code: '\nconst jitter = Math.random();\n', expect: /scenes\/budget\.js:\d+: error \[forbidden-token\] `Math\.random`/ },
-  { name: 'the builder rejects a timer', code: '\nsetTimeout(() => {}, 10);\n', expect: /\[forbidden-token\] `setTimeout`/ },
+  {
+    name: 'the builder rejects fetch and names the file and line',
+    code: "\nfetch('/data');\n",
+    expect: /scenes\/budget\.js:\d+: error \[forbidden-token\] `fetch`/,
+  },
+  {
+    name: 'the builder rejects Math.random and names the file and line',
+    code: '\nconst jitter = Math.random();\n',
+    expect: /scenes\/budget\.js:\d+: error \[forbidden-token\] `Math\.random`/,
+  },
+  {
+    name: 'the builder rejects a timer',
+    code: '\nsetTimeout(() => {}, 10);\n',
+    expect: /\[forbidden-token\] `setTimeout`/,
+  },
 ];
 for (const [index, test] of builderCases.entries()) {
   const dir = copySources(referenceFilm, 'build' + index);
@@ -102,5 +239,8 @@ for (const [index, test] of builderCases.entries()) {
 }
 
 await browser.close();
-if (failed) { console.error(failed + ' seeded-defect case(s) failed'); process.exit(1); }
+if (failed) {
+  console.error(failed + ' seeded-defect case(s) failed');
+  process.exit(1);
+}
 console.log('All seeded defects were caught.');

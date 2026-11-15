@@ -1,0 +1,2 @@
+# Rust code is formatted by `cargo fmt` with the standard style and lines of at most 80 columns.
+max_width = 80

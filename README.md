@@ -134,6 +134,21 @@ scripts/selfcheck.sh                     # the real app window touring itself (m
 `scripts/selfcheck.sh` can also run real jobs with a real agent on a copy of a fixture; see the comments at
 the top of the script and `fixtures/README.md`.
 
+### Formatting
+
+The code is formatted by tools, with lines of at most 80 columns: Prettier for JavaScript, TypeScript, Svelte
+and CSS, and rustfmt for Rust. ESLint looks for mistakes in the JavaScript, TypeScript and Svelte code.
+
+```sh
+npm ci                # once, at the top of the repository: installs Prettier and ESLint
+npm run format        # formats every file and wraps comments that are too wide
+npm run style         # what CI runs: is everything formatted, lint, and the width of lines
+```
+
+`.editorconfig` gives editors the same indentation and width. A long string, a web address and the markup of
+a Svelte file may be wider than 80 columns; `scripts/line-width.mjs` lists the cases. The test data in
+`fixtures/` and the example film in `runtime/reference/` are not formatted.
+
 ### Where things are
 
 | Folder | |
@@ -144,6 +159,7 @@ the top of the script and `fixtures/README.md`.
 | `ui/` | The Svelte interface and, in `ui/src-tauri/`, the Tauri shell. |
 | `resources/` | Prompts, schemas, agent definitions, fonts and the theme. |
 | `fixtures/` | Small workspaces for testing, and sessions recorded from real agent runs. |
+| `scripts/` | Scripts for testing, for the landing page, and for formatting. |
 | `landing/` | The project's web page. `scripts/landing.sh` builds its live examples, and a workflow publishes it to GitHub Pages. |
 
 More: [adding or changing an agent](docs/AGENTS.md).

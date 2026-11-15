@@ -11,6 +11,28 @@ on:
   pull_request:
 
 jobs:
+  # Fails when a file is not formatted, when ESLint finds a mistake, or when a line is wider
+  # than 80 columns. `npm run format` at the top of the repository fixes the formatting.
+  style:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install the formatting tools
+        run: npm ci
+
+      - name: Formatting, lint and line width
+        run: npm run style
+
   check:
     strategy:
       fail-fast: false

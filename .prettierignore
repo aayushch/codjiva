@@ -1,0 +1,40 @@
+# Prettier formats the JavaScript, TypeScript, Svelte and CSS source of the app, the runtime,
+# the tests and the landing page. Everything else is listed here.
+
+# Build output and installed packages
+node_modules/
+target/
+dist/
+/ui/build/
+/ui/src-tauri/gen/
+/ui/e2e/out/
+/runtime/test/out/
+/runtime/test/.cache/
+/landing/demo/
+/landing/fonts/
+
+# Test data: made-up workspaces and recorded agent sessions. A recorded session refers to its
+# files by hash and line number, so they must stay as they were recorded.
+/fixtures/
+
+# The example film and visual that agents are given to read. They are kept as agents write them.
+/runtime/reference/
+
+# Files that stay on the author's machine
+/codeviz-spec/
+/PLAN.md
+
+# Kinds of file that are not formatted: documents, data, pages and lock files
+*.md
+*.json
+*.jsonl
+*.html
+*.yml
+*.yaml
+*.toml
+*.lock
+*.svg
+*.txt
+/resources/prompts/
+/resources/schemas/
+/resources/adapters/

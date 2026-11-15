@@ -1,6 +1,30 @@
 <script lang="ts">
-  // The app's line icons, drawn inline. Every icon is a 16 x 16 outline with a 1.5 px stroke.
-  type Name = 'dir' | 'file' | 'viz' | 'search' | 'play' | 'pause' | 'sound-on' | 'sound-off' | 'full' | 'settings' | 'close' | 'external' | 'target' | 'folder-open' | 'film' | 'reveal' | 'again' | 'export' | 'panel' | 'sidebar' | 'inspector' | 'back' | 'forward';
+  // The app's line icons, drawn inline. Every icon is a 16 x 16 outline with a
+  // 1.5 px stroke.
+  type Name =
+    | 'dir'
+    | 'file'
+    | 'viz'
+    | 'search'
+    | 'play'
+    | 'pause'
+    | 'sound-on'
+    | 'sound-off'
+    | 'full'
+    | 'settings'
+    | 'close'
+    | 'external'
+    | 'target'
+    | 'folder-open'
+    | 'film'
+    | 'reveal'
+    | 'again'
+    | 'export'
+    | 'panel'
+    | 'sidebar'
+    | 'inspector'
+    | 'back'
+    | 'forward';
 
   let { name, size = 14 }: { name: Name; size?: number } = $props();
 
@@ -11,11 +35,13 @@
     search: 'M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0z M10.5 10.5 14 14',
     play: 'M5 3.5v9l7-4.5z',
     pause: 'M5 3.5v9 M11 3.5v9',
-    'sound-on': 'M2.5 6v4h2.5l3.5 3V3L5 6H2.5z M11 5.5a3.5 3.5 0 0 1 0 5 M12.8 3.5a6.3 6.3 0 0 1 0 9',
+    'sound-on':
+      'M2.5 6v4h2.5l3.5 3V3L5 6H2.5z M11 5.5a3.5 3.5 0 0 1 0 5 M12.8 3.5a6.3 6.3 0 0 1 0 9',
     'sound-off': 'M2.5 6v4h2.5l3.5 3V3L5 6H2.5z M11 6l3.5 4 M14.5 6 11 10',
     full: 'M2.5 6V2.5H6 M10 2.5h3.5V6 M13.5 10v3.5H10 M6 13.5H2.5V10',
     // Three sliders, the usual sign for settings.
-    settings: 'M2 4h6.5 M11.5 4H14 M10 2.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M2 8h2 M7 8h7 M5.5 6.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M2 12h6.5 M11.5 12H14 M10 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z',
+    settings:
+      'M2 4h6.5 M11.5 4H14 M10 2.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M2 8h2 M7 8h7 M5.5 6.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M2 12h6.5 M11.5 12H14 M10 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z',
     close: 'M3.5 3.5l9 9 M12.5 3.5l-9 9',
     external: 'M9.5 2.5h4v4 M13.5 2.5 7.5 8.5 M11.5 9.5v4h-9v-9h4',
     target: 'M13 8A5 5 0 1 1 3 8a5 5 0 0 1 10 0z M8 1v3 M8 12v3 M1 8h3 M12 8h3',
@@ -28,7 +54,8 @@
     export: 'M8 2v8 M4.5 6.5 8 10l3.5-3.5 M2.5 11.5v2h11v-2',
     // A window with a panel along its bottom edge.
     panel: 'M2.5 2.5h11v11h-11z M2.5 10h11',
-    // A window with a panel along its left edge, and one with a panel along its right edge.
+    // A window with a panel along its left edge, and one with a panel along its
+    // right edge.
     sidebar: 'M2.5 2.5h11v11h-11z M6 2.5v11',
     inspector: 'M2.5 2.5h11v11h-11z M10 2.5v11',
     back: 'M13 8H3 M7 4 3 8l4 4',
@@ -36,6 +63,17 @@
   };
 </script>
 
-<svg class="ico" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<svg
+  class="ico"
+  width={size}
+  height={size}
+  viewBox="0 0 16 16"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.5"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  aria-hidden="true"
+>
   <path d={PATHS[name]} />
 </svg>
