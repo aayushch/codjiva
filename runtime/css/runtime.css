@@ -283,15 +283,22 @@ html.embed #app {
 }
 .cj-legend {
   padding: 34px 44px;
+  box-sizing: border-box;
   background: color-mix(in srgb, var(--ground) 96%, transparent);
   border: 2px solid var(--line);
   border-radius: 12px;
   transform: translateY(var(--lift, 0px));
 }
+/* A card without a position of its own is centred in the stage. It is as wide
+   as its longest row, up to the width of the stage less 48 px on each side. A
+   row that is longer than that wraps. */
 .cj-legend-centred {
-  left: 50%;
+  left: 48px;
+  right: 48px;
+  width: fit-content;
+  margin: 0 auto;
   top: calc(var(--hud-h) + 485px);
-  transform: translate(-50%, calc(-50% + var(--lift, 0px)));
+  transform: translateY(calc(-50% + var(--lift, 0px)));
 }
 .cj-legend-row {
   display: flex;
@@ -304,7 +311,7 @@ html.embed #app {
 .cj-legend-row .sub {
   margin: 34px 0;
   color: var(--second);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- labels ---------- */

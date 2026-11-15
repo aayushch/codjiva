@@ -49,7 +49,7 @@ const formatTime = (x) => {
   return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 };
 
-CJ.version = '1.1.0';
+CJ.version = '1.1.1';
 
 CJ.boot = async (data) => {
   const params = new URLSearchParams(window.location.search);

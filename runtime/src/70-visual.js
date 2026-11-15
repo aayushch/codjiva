@@ -14,7 +14,7 @@ hover highlight, click to select, layer toggles and numbered markers. You only d
 | `title` | Shown in the title band. |
 | `camera` | `{ cx, cy, z }`: the default framing. Choose it so the whole flow is visible with at least 40 px of margin. |
 | `state` | The plant state to show, merged over the plant's `defaults`. Pick a moment where the interesting parts are visible at once. |
-| `nodes` | The clickable parts: `{ id, label, role, refs: [{ path, line }], select: [names] }`. `select` lists the unprefixed names of the elements that highlight together; give each clickable machine one wrapping element. |
+| `nodes` | The clickable parts: `{ id, label, role, refs: [{ path, line }], select: [names] }`. `select` lists the unprefixed names of the elements that highlight together; give each clickable machine one wrapping element. Whatever is drawn inside a selected element, such as the labels on a machine, is highlighted with it. A plate inside a machine can be a node of its own: a click on it selects it, and a click beside it selects the machine. |
 | `layers` | `{ data: [...], control: [...], errors: [...], labels: [...] }`. Each entry is an unprefixed element name, a name ending in `*` (matches `pipe1`, `pipe2`, ...), or a class selector starting with `.` (such as `.pl` and `.plt` for all labels and plates). |
 | `markers` | 3 to 8 points of interest: `{ x, y, n, bubble: { kicker, html, tail, alarm } }`. `n` is the number shown, in reading order along the flow. Clicking a marker opens its bubble beside it. |
 | `legend` | Optional rows `{ kind, html }`, one per packet kind used. |
@@ -41,8 +41,8 @@ const buildVisual = (visual, stage, post) => {
   if (plant.set) plant.set(m.refs, state, 0);
 
   // An overlay inside the world. When a part is highlighted, a veil dims the
-  // whole drawing and copies of the highlighted elements are drawn above the
-  // veil at full brightness.
+  // whole drawing. Copies of the highlighted elements, and of everything
+  // drawn inside them, are drawn above the veil at full brightness.
   const veil = elementFromHtml('<div class="cj-veil"></div>');
   const liftSvg = elementFromHtml(
     '<svg class="art cj-lift" viewBox="0 0 1920 1080"></svg>',
@@ -151,18 +151,89 @@ const buildVisual = (visual, stage, post) => {
     bubbleSizes[i] = {};
   };
 
-  const liftCopies = (entry, cls) => {
-    entry.els.forEach((el) => {
-      const copy = el.cloneNode(true);
-      copy.removeAttribute('id');
-      copy
-        .querySelectorAll('[id]')
-        .forEach((child) => child.removeAttribute('id'));
+  // The parts of the drawing that a highlight leaves alone: the overlay
+  // itself, the markers and the bubbles.
+  const notDrawing = (el) =>
+    el === veil ||
+    el === liftSvg ||
+    el === liftHtml ||
+    el === m.dimmer ||
+    el.classList.contains('cj-marker') ||
+    el.classList.contains('bub');
+
+  // The elements that are drawn inside the elements of a node without being
+  // part of the node: the labels and plates on a machine, and the smaller
+  // parts drawn in it. They are highlighted with the node. Without them, the
+  // bright copy of a machine's body would cover what is written on it.
+  //
+  // An element counts as inside when its box lies within the box of one of
+  // the node's elements and it comes after that element in the page, which
+  // means it is drawn on top of it. A group that is only partly inside is
+  // searched for children that are inside. A group with a `transform` is not
+  // searched, because a copy of one of its children would lose that
+  // transform and be drawn in the wrong place.
+  //
+  // The result is kept in `entry.inside`. `setLayers` clears it, because an
+  // element of a layer that is switched off has no box.
+  const insideOf = (entry) => {
+    if (entry.inside) return entry.inside;
+    const hosts = entry.els.map((el) => ({
+      el,
+      box: el.getBoundingClientRect(),
+    }));
+    const within = (el) => {
+      const b = el.getBoundingClientRect();
+      if (b.width === 0 && b.height === 0) return false;
+      return hosts.some(
+        (host) =>
+          b.left >= host.box.left - 1 &&
+          b.right <= host.box.right + 1 &&
+          b.top >= host.box.top - 1 &&
+          b.bottom <= host.box.bottom + 1 &&
+          !!(
+            host.el.compareDocumentPosition(el) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+          ),
+      );
+    };
+    const found = [];
+    const search = (parent) => {
+      Array.from(parent.children).forEach((el) => {
+        if (notDrawing(el) || el.hasAttribute('data-copy')) return;
+        const own = entry.els.some((one) => one === el || one.contains(el));
+        if (own) return;
+        const holdsNode = entry.els.some((one) => el.contains(one));
+        if (!holdsNode && within(el)) found.push(el);
+        else if (el.children.length && !el.hasAttribute('transform'))
+          search(el);
+      });
+    };
+    search(world);
+    entry.inside = found;
+    return found;
+  };
+
+  // Draws a copy of `el` above the veil. `cls` is the class that gives the
+  // copy its glow, or null for an element that is only shown with a node.
+  const lift = (el, cls) => {
+    const copy = el.cloneNode(true);
+    copy.removeAttribute('id');
+    copy
+      .querySelectorAll('[id]')
+      .forEach((child) => child.removeAttribute('id'));
+    if (cls) {
       copy.classList.add(cls);
       copy.classList.remove('cj-layer-off');
-      copy.setAttribute('data-copy', '1');
-      (el instanceof SVGElement ? liftSvg : liftHtml).append(copy);
-    });
+    }
+    copy.setAttribute('data-copy', '1');
+    (el instanceof SVGElement ? liftSvg : liftHtml).append(copy);
+  };
+
+  // Highlights a node: its own elements with the glow of `cls`, and
+  // everything drawn inside them as it is.
+  const liftCopies = (entry, cls) => {
+    entry.els.forEach((el) => lift(el, cls));
+    insideOf(entry).forEach((el) => lift(el, null));
   };
 
   const draw = () => {
@@ -189,6 +260,9 @@ const buildVisual = (visual, stage, post) => {
   };
 
   const setLayers = (on) => {
+    nodes.forEach((entry) => {
+      entry.inside = null;
+    });
     Object.keys(layerEls).forEach((layer) => {
       if (on && on[layer] != null) layerOn[layer] = !!on[layer];
       layerEls[layer].forEach((el) =>

@@ -20,6 +20,10 @@ in {{srcDir}}/ and, if the feedback corrects a fact, in {{artifactDir}}/model.js
 - Feedback about pace changes the `animLength`, the bubble times or the camera move durations of that chapter
   only.
 - After the change, recompute the boxes of everything within 200 px and make sure nothing is crowded.
+- Feedback that asks for more detail about a part of a visual ("go deeper into this", "show the cases") adds
+  boxes inside that part. Draw each as a `CJ.plate` with its own class name, and add a node for each to
+  `visual.json` with its real name as `label`, what it does as `role`, its line in `refs` and the plate's name
+  in `select`, so that the user can click each box and read about it.
 
 When you are done, write {"phase": "done", "note": "<one line per change, with the file name>"} to
 {{artifactDir}}/progress.json.

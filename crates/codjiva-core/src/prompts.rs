@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 /// Raised whenever a change to the prompt files could change what agents
 /// produce. It is recorded in every manifest.
-pub const PROMPT_VERSION: &str = "1.3.0";
+pub const PROMPT_VERSION: &str = "1.4.0";
 
 macro_rules! prompt_file {
     ($name:literal) => {

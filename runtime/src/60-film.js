@@ -242,7 +242,7 @@ normally, and 0.1 while a bubble is up. So a scene's real length is about `animL
 | Field | Meaning |
 |-------|---------|
 | `title` | The film's title. |
-| `legend` | One row `{ kind, html }` per packet kind the film uses. The legend card covers a dimmed plant at the start of the first scene, then lifts away. Start the first scene's own motion after animation second 4. |
+| `legend` | One row `{ kind, html }` per packet kind the film uses. The legend card covers a dimmed plant at the start of the first scene, then lifts away. Keep a row to about 60 characters. A longer row wraps onto a second line. Start the first scene's own motion after animation second 4. |
 | `scenes` | The chapters, in order. 4 to 8. |
 | `thumbT` | The real time, in seconds, of the frame to use as the thumbnail. |
 
@@ -459,8 +459,18 @@ const legendMarkup = (film) => {
         '</p></div>',
     )
     .join('');
+  // A card placed with `legendAt` ends at least 48 px before the right edge of
+  // the stage. A row that would reach further wraps.
   const at = film.legendAt;
-  const style = at ? 'left:' + at[0] + 'px;top:' + at[1] + 'px' : '';
+  const style = at
+    ? 'left:' +
+      at[0] +
+      'px;top:' +
+      at[1] +
+      'px;max-width:calc(100% - ' +
+      (at[0] + 48) +
+      'px)'
+    : '';
   return (
     '<div class="words cj-legend' +
     (at ? '' : ' cj-legend-centred') +

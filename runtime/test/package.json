@@ -10,7 +10,9 @@
     "seeded": "node seeded.mjs",
     "pipeline": "node pipeline.mjs",
     "browsers": "node browsers.mjs",
-    "test": "node --test unit/*.test.mjs && node golden.mjs && node selftest.mjs && node seeded.mjs && node browsers.mjs && node pipeline.mjs"
+    "legend": "node legend.mjs",
+    "highlight": "node highlight.mjs",
+    "test": "node --test unit/*.test.mjs && node golden.mjs && node selftest.mjs && node seeded.mjs && node browsers.mjs && node pipeline.mjs && node legend.mjs && node highlight.mjs"
   },
   "devDependencies": {
     "pixelmatch": "^6.0.0",

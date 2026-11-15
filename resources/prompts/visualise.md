@@ -25,6 +25,12 @@ is no timeline and nothing moves.
   and tally board. A node has an `id`, a short `label` (the real name), a one-sentence `role`, `refs` (`path` and
   `line`), and `select` (the unprefixed name of the part's element). A visual of one file usually has 6 to 12
   nodes. A part without a node is a dead spot when the user clicks it.
+- **Detail inside a machine is clickable too.** When you draw what happens inside a machine, such as the cases
+  of a `switch`, the steps of a loop or the checks of a validator, draw each of them as a `CJ.plate` with its
+  own class name and give each plate its own node. The node's `label` is the real name of that case or step,
+  its `role` says in one sentence what it does, its `refs` name its line, and its `select` names the plate. A
+  click on a plate then selects that case, and a click beside it selects the machine. These nodes are in
+  addition to the 6 to 12.
 - **Layers** so the user can declutter. Provide all four: `data` (pipes, bins, drums, packets), `control`
   (wires, lamps, gauges, tanks, tally boards), `errors` (drop bins, warnings) and `labels` (`[".pl", ".plt"]`).
 - **3 to 8 markers**, numbered in reading order along the flow. Each opens one bubble (§6 of the core guide).
