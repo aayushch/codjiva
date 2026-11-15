@@ -125,6 +125,7 @@ const DEFAULT_SETTINGS: Settings = {
     libraryOpen: true,
     libraryHeight: null,
   },
+  checkForUpdates: true,
 };
 
 // A small stand-in for the desktop app's pattern matching. It knows the three
@@ -1006,6 +1007,24 @@ export const mockApi: Api = {
       ? '/__artifact/reference/visual.html'
       : `/__artifact/${path}.html`;
   },
+  // No newer version exists unless the page has put one in
+  // `window.__mockUpdate`, as the end-to-end test does.
+  async updateCheck() {
+    await sleep(150);
+    return (window as any).__mockUpdate ?? null;
+  },
+  async updateInstall(onProgress) {
+    for (const percent of [20, 55, 90, 100]) {
+      await sleep(120);
+      onProgress(percent);
+    }
+  },
+  async relaunch() {
+    (window as any).__mockRelaunched = true;
+  },
+  async openReleases() {
+    (window as any).__mockOpenedReleases = true;
+  },
 };
 
 // Lets the end-to-end test simulate an edit to a source file of a mock
@@ -1026,6 +1045,8 @@ if (typeof window !== 'undefined') {
       listener({ dirs: [dir], paths: [relPath] }),
     );
   };
+  // The end-to-end test sets `window.__mockUpdate` to offer a newer version,
+  // and reads `window.__mockRelaunched` to see that a restart was asked for.
   // Lets the end-to-end test simulate that a file was deleted, and read the
   // settings that were last saved.
   (window as any).__mockDeleteFile = (relPath: string) => {

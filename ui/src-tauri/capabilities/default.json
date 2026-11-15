@@ -1,8 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the main window may ask the operating system for: native dialogs, and opening files and links in other apps.",
-  "windows": ["main"],
+  "description": "What the main window may ask the operating system for: native dialogs, opening files and links in other apps, checking for a newer version of the app and installing it, and restarting the app after an update.",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
@@ -10,6 +12,8 @@
     "core:window:allow-set-fullscreen",
     "core:window:allow-set-theme",
     "dialog:default",
-    "opener:default"
+    "opener:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

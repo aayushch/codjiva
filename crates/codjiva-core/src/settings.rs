@@ -187,6 +187,10 @@ pub struct Settings {
     /// enforce a budget.
     pub max_budget_usd: Option<f64>,
     pub layout: Layout,
+    /// Whether the app asks GitHub for a newer version by itself, shortly
+    /// after it starts and every two hours. With this off, it asks only when
+    /// the user clicks the button in Settings.
+    pub check_for_updates: bool,
 }
 
 impl Default for Settings {
@@ -214,6 +218,7 @@ impl Default for Settings {
             parallel_jobs: 1,
             max_budget_usd: None,
             layout: Layout::default(),
+            check_for_updates: true,
         }
     }
 }
@@ -284,6 +289,7 @@ mod tests {
         assert_eq!(settings.theme, Theme::System);
         assert!(settings.companion_ignore.contains(&"vendor/".to_string()));
         assert_eq!(settings.layout, Layout::default());
+        assert!(settings.check_for_updates);
         std::fs::write(dir.path().join("settings.json"), r#"{"effort": null}"#)
             .unwrap();
         assert_eq!(

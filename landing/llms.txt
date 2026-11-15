@@ -27,6 +27,7 @@ Codjiva contains no AI model. It runs a coding agent installed on the computer (
 - The window is laid out like an IDE: a file explorer and a library of artifacts on the left, an inspector on the right and a job panel at the bottom. Each panel can be resized, closed and reopened by dragging its edge, and the layout is remembered. Back and Forward move through the files, tabs and pipelines the user looked at, and a film continues where it was left.
 - A file that has a visual or a film has a dot in the explorer, and the folders above it are tinted.
 - The window, the visuals and the films follow a light or a dark theme.
+- The app updates itself from the project's GitHub releases: it reads the latest release's `latest.json`, offers a newer version, verifies the download's signature and installs it. The automatic check can be switched off in Settings.
 - Built with Tauri 2, Rust and Svelte 5.
 
 ## Links

@@ -1540,7 +1540,7 @@ check(
   (await page.locator('.dialog.settings [role=tab]').allTextContents()).join(
     ', ',
   ) ===
-    'Agent, API keys, Jobs, Films, Companion files, Source code, Appearance' &&
+    'Agent, API keys, Jobs, Films, Companion files, Source code, Appearance, Updates' &&
     (await page.locator('.pane h3').textContent()) === 'Agent',
   'Settings is divided into sections and opens on the first',
 );
@@ -1702,6 +1702,61 @@ check(
 );
 await page.keyboard.press('Escape');
 check((await page.getByRole('dialog').count()) === 0, 'Escape closes a dialog');
+
+// ---- updates of the app: a check on request, the notice in the title bar,
+// the download and the restart
+{
+  const pane = page.locator('.dialog.settings .pane');
+  const notice = page.locator('.titlebar .update');
+  await page.keyboard.press(`${mod}+,`);
+  await section('Updates').click();
+  check(
+    /Codjiva 0\.1\.0/.test(await pane.textContent()) &&
+      (await notice.count()) === 0,
+    'the Updates section names the running version, and no notice is shown',
+  );
+  await pane.getByRole('button', { name: 'Check for updates' }).click();
+  await pane.getByText('This is the newest version.').waitFor();
+  check(true, 'a check that finds nothing newer says so');
+
+  await page.evaluate(() => {
+    window.__mockUpdate = { version: '0.2.0', notes: 'Films start faster.' };
+  });
+  await pane.getByRole('button', { name: 'Check for updates' }).click();
+  await pane.getByText('Version 0.2.0 is available.').waitFor();
+  check(
+    /Films start faster\./.test(await pane.textContent()),
+    'a newer release is offered with its notes',
+  );
+  const automatic = pane.getByRole('checkbox');
+  await automatic.uncheck();
+  await page.waitForTimeout(200);
+  check(
+    (await page.evaluate(() => window.__mockSettings().checkForUpdates)) ===
+      false,
+    'the automatic check can be switched off',
+  );
+  await automatic.check();
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  check(
+    (await notice.getByRole('button', { name: 'Update to 0.2.0' }).count()) ===
+      1,
+    'the title bar offers the update',
+  );
+  await shot('12-update-notice');
+  await notice.getByRole('button', { name: 'Update to 0.2.0' }).click();
+  await notice.getByText(/Updating · \d+%/).waitFor();
+  check(true, 'the notice shows the download as it arrives');
+  await notice.getByRole('button', { name: 'Restart to update' }).waitFor();
+  await notice.getByRole('button', { name: 'Restart to update' }).click();
+  check(
+    await page.evaluate(() => window.__mockRelaunched === true),
+    'after the update is installed the notice restarts the app',
+  );
+  await notice.getByRole('button', { name: 'Hide the update notice' }).click();
+  check((await notice.count()) === 0, 'the notice can be hidden');
+}
 
 // ---- example film in the sandboxed frame
 await page.reload();

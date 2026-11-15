@@ -492,20 +492,30 @@ async function composeTour(
   await shot('33-pipeline-zoomed');
 }
 
-export async function runSelfCheckIfAsked(): Promise<void> {
-  const config = await invoke<{
-    workspace: string | null;
-    visualise: string | null;
-    instructions: string | null;
-    animate: string | null;
-    feedback: string | null;
-    cancelAfter: number | null;
-    compose: string[];
-    composeFilm: boolean;
-    length: number | null;
-  } | null>('selfcheck_config');
-  if (!config) return;
+// What the environment asked the tour to do, as the `selfcheck_config` command
+// reports it.
+type SelfCheckConfig = {
+  workspace: string | null;
+  visualise: string | null;
+  instructions: string | null;
+  animate: string | null;
+  feedback: string | null;
+  cancelAfter: number | null;
+  compose: string[];
+  composeFilm: boolean;
+  length: number | null;
+};
 
+// Starts the tour if the app was started for a self-check. Returns true if
+// it was, without waiting for the tour to end.
+export async function runSelfCheckIfAsked(): Promise<boolean> {
+  const config = await invoke<SelfCheckConfig | null>('selfcheck_config');
+  if (!config) return false;
+  void runSelfCheck(config);
+  return true;
+}
+
+async function runSelfCheck(config: SelfCheckConfig): Promise<void> {
   const checks: Check[] = [];
   const record = (name: string, ok: boolean, detail?: string) => {
     checks.push({ name, ok, detail });

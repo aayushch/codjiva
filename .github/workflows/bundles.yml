@@ -49,9 +49,11 @@ jobs:
         working-directory: ui
         run: npm ci
 
+      # scripts/build.sh leaves out the signed bundles for the app's updater, because this
+      # workflow has no signing key.
       - name: Build installers
-        working-directory: ui
-        run: npx tauri build --target ${{ matrix.target }}
+        shell: bash
+        run: bash scripts/build.sh --target ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
         with:

@@ -31,6 +31,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "category": "DeveloperTool",
     "shortDescription": "See your code work",
     "longDescription": "Codjiva opens a codebase and shows a visual representation of each file instead of its text: an interactive blueprint, or a narrated film of the file and the code around it.",
@@ -48,10 +49,22 @@
       "minimumSystemVersion": "12.0"
     },
     "windows": {
-      "nsis": { "installMode": "both" }
+      "nsis": {
+        "installMode": "both"
+      }
     },
     "linux": {
-      "deb": { "section": "devel" }
+      "deb": {
+        "section": "devel"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwMzk4OTE5RTEzRDc3RjQKUldUMGR6M2hHWWs1b0tsRk10WSsybmZqZWxIbC9xUU1BdzRkQnVlekRtQ1FJRHU4Vi9hWEdzVjYK",
+      "endpoints": [
+        "https://github.com/aayushch/codjiva/releases/latest/download/latest.json"
+      ]
     }
   }
 }

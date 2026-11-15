@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from '$lib/state/app.svelte';
+  import { updater } from '$lib/state/updater.svelte';
   import Icon from './Icon.svelte';
   import Logo from './Logo.svelte';
 
@@ -13,6 +14,10 @@
   // job panel and inspector buttons at the right end. The inspector button is
   // disabled while no visual or film is on screen, because the inspector has
   // nothing to describe then.
+  //
+  // The update notice is at the left of the agent status while a newer
+  // version of the app waits, is being installed, is ready or failed to
+  // install. Its button does the next step: install, restart, or try again.
   const mac = $derived(app.info?.platform === 'macos' && !app.theater);
   // The modifier keys as each system writes them, for the labels of the
   // buttons.
@@ -42,6 +47,34 @@
     <span class="ws" data-tauri-drag-region>Codjiva</span>
   {/if}
   <span class="agent">
+    {#if updater.noticeShown}
+      <span class="update" role="status">
+        {#if updater.status === 'ready'}
+          <button class="update-act" onclick={() => updater.relaunch()}
+            >Restart to update</button
+          >
+        {:else if updater.status === 'downloading'}
+          <span class="update-text">Updating · {updater.progress}%</span>
+        {:else if updater.status === 'error'}
+          <button
+            class="update-act"
+            title={updater.error ?? ''}
+            onclick={() => updater.install()}>Update failed · Retry</button
+          >
+        {:else}
+          <button class="update-act" onclick={() => updater.install()}
+            >Update to {updater.version}</button
+          >
+        {/if}
+        {#if updater.status !== 'downloading'}
+          <button
+            class="update-close"
+            aria-label="Hide the update notice"
+            onclick={() => (updater.dismissed = true)}>✕</button
+          >
+        {/if}
+      </span>
+    {/if}
     {#if app.job?.status === 'running'}
       <span class="dot"></span>
       {app.job.agent ?? app.activeAgent?.name ?? 'Agent'} · working

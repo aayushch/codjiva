@@ -77,7 +77,14 @@ export type Settings = {
   parallelJobs: number;
   maxBudgetUsd: number | null;
   layout: Layout;
+  // Whether the app looks for a newer version by itself. With false it looks
+  // only when the user asks in Settings.
+  checkForUpdates: boolean;
 };
+
+// A newer version of the app that the latest release offers. `notes` is the
+// text of the release, or null if it has none.
+export type UpdateInfo = { version: string; notes: string | null };
 
 // The panels around the editor area as the user left them: which are open, and
 // their sizes in pixels. A height of null means the height the app chooses.
@@ -545,4 +552,15 @@ export interface Api {
   // The address the sandboxed frame loads for a path served by the app, such as
   // `reference/film`.
   artifactUrl(path: string): string;
+  // Asks the latest release on GitHub whether it is newer than this app.
+  // Returns that version, or null if this app is the newest.
+  updateCheck(): Promise<UpdateInfo | null>;
+  // Downloads the version `updateCheck` found, checks its signature and
+  // installs it. `onProgress` is called with the share of the download that
+  // has arrived, from 0 to 100. The new version runs after `relaunch`.
+  updateInstall(onProgress: (percent: number) => void): Promise<void>;
+  // Restarts the app.
+  relaunch(): Promise<void>;
+  // Opens the page of the latest release in the user's browser.
+  openReleases(): Promise<void>;
 }

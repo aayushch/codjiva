@@ -2,6 +2,7 @@
   import { showsFilm } from '$lib/artifacts';
   import { api, inDesktopApp } from '$lib/ipc';
   import { applyTheme, onSystemThemeChange } from '$lib/theme';
+  import { updater } from '$lib/state/updater.svelte';
   import {
     app,
     DOCK_HEIGHT,
@@ -39,10 +40,17 @@
   $effect(() => {
     app.init().then(async () => {
       // The self-check tour only exists in the desktop app, so its code is
-      // loaded only there.
-      if (inDesktopApp) (await import('$lib/selfcheck')).runSelfCheckIfAsked();
+      // loaded only there. A tour drives the window by itself, so the app
+      // does not look for updates during one.
+      const touring =
+        inDesktopApp &&
+        (await (await import('$lib/selfcheck')).runSelfCheckIfAsked());
+      if (!touring) updater.start();
     });
-    return () => app.dispose();
+    return () => {
+      updater.stop();
+      app.dispose();
+    };
   });
 
   // Keeps the window in the theme the settings ask for. With the `system`

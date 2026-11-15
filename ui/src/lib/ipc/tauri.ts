@@ -6,8 +6,12 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { Api, AppInfo, Changes, JobEvent, ValidateRequest } from './types';
+import type { Update } from '@tauri-apps/plugin-updater';
 
 let platform = '';
+// The update the last `updateCheck` found, which `updateInstall` installs.
+let foundUpdate: Update | null = null;
+const RELEASES = 'https://github.com/aayushch/codjiva/releases/latest';
 
 export const tauriApi: Api = {
   async appInfo() {
@@ -91,5 +95,38 @@ export const tauriApi: Api = {
     return platform === 'windows'
       ? `http://codjiva.localhost/${path}`
       : `codjiva://localhost/${path}`;
+  },
+  // The updater and the two plugins below are loaded when they are first
+  // needed, so they are not part of the app's start-up.
+  async updateCheck() {
+    const { check } = await import('@tauri-apps/plugin-updater');
+    foundUpdate = await check();
+    if (!foundUpdate) return null;
+    return { version: foundUpdate.version, notes: foundUpdate.body ?? null };
+  },
+  async updateInstall(onProgress) {
+    if (!foundUpdate) throw new Error('There is no update to install.');
+    let total = 0;
+    let received = 0;
+    await foundUpdate.downloadAndInstall((event) => {
+      if (event.event === 'Started') {
+        total = event.data.contentLength ?? 0;
+      } else if (event.event === 'Progress') {
+        received += event.data.chunkLength;
+        if (total > 0) {
+          onProgress(Math.min(100, Math.round((received / total) * 100)));
+        }
+      } else if (event.event === 'Finished') {
+        onProgress(100);
+      }
+    });
+  },
+  async relaunch() {
+    const { relaunch } = await import('@tauri-apps/plugin-process');
+    await relaunch();
+  },
+  async openReleases() {
+    const { openUrl } = await import('@tauri-apps/plugin-opener');
+    await openUrl(RELEASES);
   },
 };

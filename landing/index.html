@@ -205,7 +205,7 @@
 		<div class="fact"><b>One folder, plain files</b><span>Everything is saved under <code>.codjiva/</code> in the folder you opened. A film is a single HTML file that opens offline in any browser.</span></div>
 		<div class="fact"><b>Your code is never changed</b><span>Agents are confined to that folder. After every job the write guard compares the rest of the workspace with how it was.</span></div>
 		<div class="fact"><b>Films cannot phone home</b><span>Every picture and film runs in a sandboxed frame that has no access to the network, your files or the app.</span></div>
-		<div class="fact"><b>No account, no telemetry</b><span>Codjiva has no server. Your code goes only to the agent or provider you chose, under your own account with them.</span></div>
+		<div class="fact"><b>No account, no telemetry</b><span>Codjiva has no server. Your code goes only to the agent or provider you chose, under your own account with them. The app's only other request asks GitHub whether a newer version exists, and you can switch that off.</span></div>
 		<div class="fact"><b>It tells you when a picture is old</b><span>Each version records a hash of the files it was made from. Change a file and the picture is marked stale. Nothing is regenerated behind your back.</span></div>
 		<div class="fact"><b>Keys stay in the keychain</b><span>If you use an API key, it is kept in your system's credential store, never in a file.</span></div>
 	</div>
@@ -253,6 +253,7 @@
 				<a class="asset" href="https://github.com/aayushch/codjiva/releases/latest" target="_blank" rel="noopener"><span>All downloads on GitHub</span><small>releases/latest</small></a>
 			</div>
 			<p class="footnote">You also need one coding agent installed and signed in, or an API key. Claude Code is the one Codjiva is tested with most.</p>
+			<p class="footnote">Once installed, Codjiva updates itself: it offers each new release in its title bar, checks the download's signature and installs it.</p>
 		</div>
 		<div>
 			<h3>Or build it from source</h3>
@@ -260,8 +261,8 @@
 <pre>git clone https://github.com/aayushch/codjiva
 cd codjiva/ui
 npm ci
-npx tauri dev     <span class="c"># run the app</span>
-npx tauri build   <span class="c"># build an installer</span></pre>
+npx tauri dev          <span class="c"># run the app</span>
+../scripts/build.sh    <span class="c"># build an installer</span></pre>
 		</div>
 	</div>
 </section>

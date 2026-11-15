@@ -329,6 +329,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // The updater reads `latest.json` from the newest release on GitHub
+        // and installs a newer version when the interface asks it to. The
+        // process plugin restarts the app afterwards.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(AppState {
             config_dir,
             workspace: RwLock::new(None),

@@ -1,9 +1,16 @@
 name: Release
 
 # Pushing a tag such as v0.2.0 builds installers for every platform and attaches them to a draft
-# GitHub release named after the tag. Publish the draft to ship it.
+# GitHub release named after the tag, together with the signed bundles and the latest.json file
+# that the app's own updater reads. Publish the draft to ship it. Installed copies of the app then
+# offer the new version.
 #
-# Signing is switched on by repository secrets and skipped when they are absent:
+# The updater bundles are signed with the key whose public half is in
+# ui/src-tauri/tauri.conf.json. The build fails without these two repository secrets:
+#   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#
+# Signing for the operating systems is switched on by repository secrets and skipped when they
+# are absent:
 #   macOS:   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
 #            APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
 #   Windows: WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD
@@ -58,10 +65,18 @@ jobs:
         working-directory: ui
         run: npm ci
 
+      # The updater compares the version built into the app with the version of the latest
+      # release, so the app is built with the version of the tag.
+      - name: Set the version from the tag
+        shell: bash
+        run: bash scripts/set-version.sh "${GITHUB_REF_NAME#v}"
+
       - name: Build and attach installers
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -76,5 +91,6 @@ jobs:
           releaseBody: 'Installers for macOS (.dmg), Windows (.exe, .msi) and Linux (.AppImage, .deb, .rpm) are attached below.'
           releaseDraft: true
           prerelease: false
+          includeUpdaterJson: true
           projectPath: ui
           args: --target ${{ matrix.target }}

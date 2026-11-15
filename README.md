@@ -95,8 +95,9 @@ agent run.
 - Your code goes only to the agent or provider you chose, in the same way as when you use that agent yourself.
 - API keys are stored in the operating system's credential store (Keychain, Credential Manager, Secret Service),
   or read from the provider's environment variable. They are never written to a file.
-- Codjiva has no telemetry and makes no network requests of its own, apart from the calls to an API provider
-  that you set up.
+- Codjiva has no telemetry. It makes two kinds of network request of its own: the calls to an API provider
+  that you set up, and a request to GitHub for the newest release, to offer an update. The second can be
+  switched off in **Settings › Updates**.
 
 ## Settings worth knowing
 
@@ -108,6 +109,7 @@ agent run.
 | Fix rounds | 3 | How often a result that fails its checks is sent back to the agent. |
 | Spending limit per job | none | For agents that can enforce one. |
 | Never suggest these files and folders | `vendor/`, `third_party/`, `node_modules/` | Patterns for third-party and generated code that should not be suggested as companion files. One per line, written like a line of a `.gitignore` file: `vendor/` is every folder of that name, `/internal/generated/` is that one folder, `*.pb.go` is every file with that ending. |
+| Look for updates automatically | on | Asks GitHub for the newest release shortly after the app starts and every two hours. With this off, the app looks only when you click **Check for updates**. |
 | Theme | Match the system | Light or dark, for the window and for the visuals and films shown in it. An artifact made by an earlier version stays dark until it is made again, and an exported film is dark. |
 
 ## Building from source
@@ -118,8 +120,29 @@ You need Rust (stable), Node.js 22 and, on Linux, the system packages Tauri list
 cd ui
 npm ci
 npx tauri dev            # run the app
-npx tauri build          # build an installer for this system
+cd .. && scripts/build.sh   # build an installer for this system
 ```
+
+`scripts/build.sh` passes its arguments on to `tauri build`. It leaves out the signed bundles for the app's
+updater unless the signing key is in the environment, so that anyone can build the app.
+
+### Releases and updates
+
+1. `scripts/set-version.sh 0.2.0`, then commit.
+2. `git tag v0.2.0 && git push --tags`.
+3. The `Release` workflow builds the installers for macOS (Apple silicon and Intel), Windows and Linux and
+   attaches them to a draft release named after the tag, with the updater bundles and `latest.json` next to
+   them. Publish the draft when the files look right.
+
+An installed copy of Codjiva reads that `latest.json` a few seconds after it starts and every two hours. When
+the release is newer, the title bar offers the update; the app downloads it, checks its signature, installs it
+and asks for a restart. **Settings › Updates** has a button to check at once, and a switch that turns the
+automatic check off.
+
+The updater bundles are signed with a minisign key. Its public half is in `ui/src-tauri/tauri.conf.json`. The
+private half and its password must be in the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, or the release build fails. Keep the key safe: an app that is already
+installed accepts only updates signed with it. On Linux the updater works for the AppImage only.
 
 ### Tests
 

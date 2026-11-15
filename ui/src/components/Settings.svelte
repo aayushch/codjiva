@@ -2,6 +2,7 @@
   import { api, type IgnoreCheck, type Settings } from '$lib/ipc';
   import { parsePatterns } from '$lib/ignore';
   import { app } from '$lib/state/app.svelte';
+  import { updater } from '$lib/state/updater.svelte';
   import ApiProviders from './ApiProviders.svelte';
 
   // The Settings dialog. The list on the left names the sections, and the area
@@ -28,6 +29,7 @@
     ],
     ['editor', 'Source code', 'How files open in your own editor.'],
     ['appearance', 'Appearance', 'The colours of the app.'],
+    ['updates', 'Updates', 'Newer versions of Codjiva.'],
   ] as const;
   type Section = (typeof SECTIONS)[number][0];
   let section = $state<Section>('agent');
@@ -50,6 +52,26 @@
     ['light', 'Light'],
     ['dark', 'Dark'],
   ];
+
+  // The Updates section. `checked` is what the check the user asked for
+  // found: 'latest' if this app is the newest version, 'failed' if the
+  // release could not be asked, and null before a check and when a newer
+  // version was found, which the section shows by itself.
+  let checked = $state<'latest' | 'failed' | null>(null);
+  async function checkNow() {
+    checked = null;
+    const asked = await updater.check();
+    if (!asked) checked = 'failed';
+    else if (updater.status === 'idle') checked = 'latest';
+  }
+  const lastChecked = $derived(
+    updater.lastCheckedAt == null
+      ? 'not yet'
+      : new Date(updater.lastCheckedAt).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+  );
 
   // What the saved ignore patterns match in the open workspace. It is asked for
   // again whenever the Companion files section is shown or the patterns change.
@@ -383,6 +405,74 @@
               dark until it is made again. An exported film is dark.
             </div>
           </div>
+        {:else if section === 'updates'}
+          <div class="field">
+            <span class="label">This version</span>
+            <div class="update-row">
+              {#if updater.status === 'ready'}
+                <span>Version {updater.version} is installed.</span>
+                <button class="btn primary" onclick={() => updater.relaunch()}
+                  >Restart to use it</button
+                >
+              {:else if updater.status === 'downloading'}
+                <span
+                  >Downloading version {updater.version} · {updater.progress}%</span
+                >
+              {:else if updater.status === 'available'}
+                <span>Version {updater.version} is available.</span>
+                <button class="btn primary" onclick={() => updater.install()}
+                  >Download and install</button
+                >
+              {:else}
+                <span>Codjiva {app.info?.version}</span>
+                <button
+                  class="btn"
+                  disabled={updater.status === 'checking'}
+                  onclick={checkNow}
+                  >{updater.status === 'checking'
+                    ? 'Checking…'
+                    : 'Check for updates'}</button
+                >
+                {#if checked === 'latest'}<span class="update-note"
+                    >This is the newest version.</span
+                  >{/if}
+              {/if}
+            </div>
+            {#if updater.status === 'error'}
+              <div class="why warn">
+                {updater.version
+                  ? 'The update could not be installed.'
+                  : 'The check failed.'}
+                {updater.error}
+                <button class="link" onclick={() => api.openReleases()}
+                  >Open the downloads page</button
+                >
+              </div>
+            {/if}
+            {#if updater.notes && updater.status !== 'idle'}
+              <div class="why notes">{updater.notes}</div>
+            {/if}
+            <div class="why">
+              Last checked: {lastChecked}. Codjiva asks GitHub for the newest
+              release, downloads the installer for this system when you say so,
+              and checks its signature before it installs it.
+            </div>
+          </div>
+          <label class="check"
+            ><input
+              type="checkbox"
+              checked={s.checkForUpdates}
+              onchange={(e) => set('checkForUpdates', e.currentTarget.checked)}
+            />
+            <span
+              >Look for updates automatically
+              <div class="why">
+                A few seconds after the app starts, and every two hours while it
+                is open. With this off, Codjiva looks only when you click the
+                button above.
+              </div></span
+            ></label
+          >
         {/if}
       {/if}
     </div>
@@ -480,6 +570,32 @@
   }
   .why.matched {
     color: var(--shell-text-2);
+  }
+  /* The Updates section: the version, the button for the next step, and a
+     short note after a check, on one line. */
+  .update-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .update-note {
+    color: var(--shell-text-2);
+  }
+  /* The text of a release keeps its own line breaks. */
+  .why.notes {
+    white-space: pre-wrap;
+    max-height: 120px;
+    overflow: auto;
+  }
+  .link {
+    border: 0;
+    padding: 0;
+    background: none;
+    font: inherit;
+    color: var(--accent);
+    text-decoration: underline;
+    cursor: pointer;
   }
   .foot {
     grid-column: 2;

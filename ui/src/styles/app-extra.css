@@ -543,6 +543,51 @@ html.dragging-handle iframe {
   border-left-color: var(--main);
 }
 
+/* ---------- update notice in the title bar ---------- */
+.update {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 10px;
+  padding: 0 4px 0 0;
+  border: 1px solid color-mix(in srgb, var(--main) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--main) 12%, transparent);
+  color: var(--second);
+}
+.update-act,
+.update-text {
+  padding: 2px 6px 2px 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+.update-act {
+  cursor: pointer;
+}
+.update-act:hover {
+  color: var(--main);
+}
+.update-close {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  font-size: 10px;
+  color: var(--shell-text-2);
+  cursor: pointer;
+}
+.update-close:hover {
+  background: var(--shell-button);
+  color: var(--second);
+}
+.update-text + .update-close,
+.update-text:last-child {
+  padding-right: 10px;
+}
+
 /* ---------- agent status ---------- */
 .agent-none {
   display: inline-flex;

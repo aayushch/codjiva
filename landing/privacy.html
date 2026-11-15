@@ -39,9 +39,9 @@
 
 <main class="wrap doc">
 	<h1>Privacy Policy</h1>
-	<p class="updated">Last updated: 14 November 2026</p>
+	<p class="updated">Last updated: 15 November 2026</p>
 	<p>This policy covers the Codjiva desktop app (macOS, Windows and Linux) and this website. Codjiva is free, open-source software made by Aayush Chawla. Its source code is public at <a href="https://github.com/aayushch/codjiva">github.com/aayushch/codjiva</a>, so every statement below can be checked against the code.</p>
-	<p class="short"><b>In short:</b> Codjiva has no servers and no accounts, and it collects no analytics, telemetry or crash reports. What it makes is stored only on your computer, in the folder you opened. Your code is read by the coding agent you chose, or sent to the model provider whose API key you entered, under your own account with them.</p>
+	<p class="short"><b>In short:</b> Codjiva has no servers and no accounts, and it collects no analytics, telemetry or crash reports. To offer updates, it asks GitHub which release is the newest. What it makes is stored only on your computer, in the folder you opened. Your code is read by the coding agent you chose, or sent to the model provider whose API key you entered, under your own account with them.</p>
 
 	<h2>1. What Codjiva stores, and where</h2>
 	<ul>
@@ -63,8 +63,9 @@
 	<ul>
 		<li><b>Requests to a model provider</b>, only when you have set up an API key and run a job with it, as described in section 2.</li>
 		<li><b>The agents.</b> Agent programs connect to their own providers. Codjiva does not see or change those connections.</li>
+		<li><b>Updates.</b> A few seconds after it starts, and every two hours while it is open, Codjiva downloads a small file from the project's releases on GitHub that names the newest version. If that version is newer and you accept the update, Codjiva downloads the installer from the same release, checks its signature and installs it. These requests carry nothing about you or your code, but GitHub receives your IP address, under its own privacy policy. You can switch the automatic check off in Settings, under Updates; Codjiva then asks only when you click the button there.</li>
 	</ul>
-	<p>Codjiva makes no other connections. It does not check for updates, and it sends no analytics, telemetry, usage statistics or crash reports, to its maker or to anyone else.</p>
+	<p>Codjiva makes no other connections. It sends no analytics, telemetry, usage statistics or crash reports, to its maker or to anyone else.</p>
 	<p>The visuals and films themselves are shown in a sandboxed frame that cannot reach the network, your files or the rest of the app. An exported film is a single file that loads nothing from the internet.</p>
 
 	<h2>4. This website</h2>
