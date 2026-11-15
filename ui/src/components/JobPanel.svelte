@@ -6,7 +6,9 @@
 
   // The bottom dock: what the running job is doing, step by step, with the agent's activity as
   // it happens. A film job also shows its story outline here as soon as the agent has written
-  // it. The dock stays after the job ends so the outcome can be read.
+  // it. The dock stays after the job ends so the outcome can be read. The finished film or visual
+  // is shown above the dock as soon as the job ends, if the user is still on the job's file. If
+  // they have selected another file by then, the dock has a button that opens the result.
   const job = $derived(app.job);
   const steps = $derived(job ? stepStates(job, stepsFor(job)) : []);
   // What the job makes, for the sentences that report its outcome.
@@ -51,6 +53,7 @@
           <button class="btn small" onclick={() => app.cancelJob()}>Cancel</button>
         {:else}
           <button class="btn small" onclick={() => (app.dockOpen = false)}>Close</button>
+          {#if app.jobResultElsewhere}<button class="btn small primary" onclick={() => app.openJobResult()}>Show the {made}</button>{/if}
         {/if}
         {#if job.agent}<span class="pill">{job.agent}</span>{/if}
         <span class="pill">{formatElapsed((job.endedAt ?? now) - job.startedAt)}</span>
@@ -91,14 +94,6 @@
         </ol>
         {#if canChangeOutline}
           <div class="outline-actions">
-            {#if app.filmAwaitsApproval}
-              <span class="ready">The film is ready.</span>
-              <button class="btn small primary" onclick={() => app.approveOutline()}>Watch the film</button>
-            {:else if !app.outlineApproved && app.settings?.approveOutline}
-              <button class="btn small" onclick={() => app.approveOutline()}>Looks good</button>
-            {:else if app.outlineApproved}
-              <span class="pill">accepted</span>
-            {/if}
             <button class="btn small" onclick={() => (app.dialog = 'outline')}>Change the outline…</button>
           </div>
         {/if}

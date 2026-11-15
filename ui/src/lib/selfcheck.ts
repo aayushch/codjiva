@@ -144,8 +144,6 @@ async function animateTour(file: string, instructions: string, feedback: string 
 
   let began = performance.now();
   await app.startJob({ kind: 'animate', subject: [file], companions, instructions, lengthSeconds });
-  // The tour stands in for the user who accepts the outline.
-  app.outlineApproved = true;
   const outline = await until(() => app.job?.outline ?? (app.job?.status !== 'running' ? false : null), 30 * 60 * 1000);
   if (outline) {
     await tick();

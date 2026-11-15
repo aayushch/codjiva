@@ -69,7 +69,7 @@ const langOf = (name: string): [string | null, string] => {
 const fail = (code: string, message: string): AppError => ({ code, message });
 
 const DEFAULT_SETTINGS: Settings = {
-  agent: null, models: {}, effort: 'auto', apiBaseUrls: {}, agentPaths: {}, approveOutline: true, maxFixIterations: 3, filmLength: 'standard',
+  agent: null, models: {}, effort: 'auto', apiBaseUrls: {}, agentPaths: {}, maxFixIterations: 3, filmLength: 'standard',
   soundOnByDefault: false, basePlaybackSpeed: 0.6, externalEditorCommand: 'code -g {file}:{line}', maxCompanionFiles: 12,
   companionIgnore: ['vendor/', 'third_party/', 'node_modules/'], theme: 'system', parallelJobs: 1, maxBudgetUsd: null,
 };

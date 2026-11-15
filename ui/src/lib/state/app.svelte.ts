@@ -127,8 +127,6 @@ class AppState {
   dockOpen = $state(false);
   instructionsAsk = $state<InstructionsAsk | null>(null);
   animateAsk = $state<AnimateAsk | null>(null);
-  // True once the user has accepted the outline of the film job that is running or just ended.
-  outlineApproved = $state(false);
   // Versions the window has been asked to self-test for running jobs, oldest first.
   validateQueue = $state<ValidateRequest[]>([]);
 
@@ -298,8 +296,6 @@ class AppState {
     this.instructionsAsk = null;
     this.animateAsk = null;
     this.composeAsk = null;
-    // An outline the user edited is theirs, so it needs no second approval.
-    this.outlineApproved = request.kind === 'animate' && !!request.outline;
     this.job = newJob(request, Date.now(), subject);
     this.dockOpen = true;
     try {
@@ -314,20 +310,21 @@ class AppState {
     }
   }
 
-  // True when a finished film is held back until the user has accepted its outline. The
-  // setting "Show the story outline for approval" switches this on.
-  filmAwaitsApproval = $derived(this.job?.request.kind === 'animate' && this.job.status === 'done' && !!this.settings?.approveOutline && !this.outlineApproved);
+  // The artifact the last job made, once the job has finished and the artifact is listed.
+  jobArtifact = $derived(this.job?.status === 'done' ? this.artifacts.find((a) => a.id === this.job?.artifactId) ?? null : null);
+  // True when the artifact the last job made is not the one on screen. The job panel then
+  // offers a button that opens it.
+  jobResultElsewhere = $derived(!!this.jobArtifact && (this.example !== null || this.tab === 'source' || this.currentArtifact?.id !== this.jobArtifact.id));
 
-  // After a job made a version: reads the artifacts again and, if the user is still on that
-  // file, shows the new version. A film whose outline has not been accepted is not shown yet.
+  // After a job made a version: reads the artifacts again and shows the new version.
   private async onJobResult() {
     await this.reloadArtifacts();
-    if (this.filmAwaitsApproval) return;
     await this.showJobResult();
   }
 
-  // Shows the version the last job made, on the tab of its kind.
-  async showJobResult() {
+  // Shows the version the last job made, on the tab of its kind: the Film tab for a film, the
+  // Visual tab for a visual.
+  private async showJobResult() {
     const job = this.job;
     if (!job || job.status !== 'done') return;
     const made = this.artifacts.find((a) => a.id === job.artifactId);
@@ -343,10 +340,9 @@ class AppState {
     await this.loadDetail();
   }
 
-  // Accepts the outline of the film job. If the film is already finished, it is shown now.
-  async approveOutline() {
-    this.outlineApproved = true;
-    if (this.job?.status === 'done') await this.showJobResult();
+  // Opens the artifact the last job made, selecting its file if the user has moved to another.
+  async openJobResult() {
+    if (this.jobArtifact) await this.openArtifact(this.jobArtifact);
   }
 
   // Starts the film again from an outline the user edited. The running job, if any, is

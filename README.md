@@ -36,8 +36,8 @@ Open **Settings** (the sliders icon in the title bar, or Cmd/Ctrl+,) to see whic
 4. **Animate** asks which companion files the agent should read, what the film should show, and how long it
    should be. Codjiva suggests companions from the file's imports, its tests and the files that use it. Use
    **Ignore always…** next to a suggestion to keep that file, or a whole folder it is in, out of the suggestions
-   for good. The story outline appears while the film is being made, and you can accept or change it. A film
-   plays at 0.75×, 1×, 1.25×, 2× or 4×.
+   for good. The story outline appears while the film is being made, and you can change it. The film
+   opens on the **Film** tab as soon as it is finished, and plays at 0.75×, 1×, 1.25×, 2× or 4×.
 5. **Feedback.** Under the inspector, write what should change. Codjiva attaches the moment of the film you are
    at and, with **Point at…**, the element you mean. A new version is made with only that change.
 6. **Compose.** Tick two or more artifacts in the library and click **Compose**. Codjiva proposes joins between
@@ -83,7 +83,6 @@ agent run.
 | Model | `sonnet` for Claude Code | Faster and much cheaper than the largest models, with results of the same quality in our tests. Type another model's name to use that one. |
 | Thinking effort | Automatic | Low for a visual, medium for a film or a pipeline. |
 | Fix rounds | 3 | How often a result that fails its checks is sent back to the agent. |
-| Show the story outline for approval | on | A finished film waits until you accept its outline. |
 | Spending limit per job | none | For agents that can enforce one. |
 | Never suggest these files and folders | `vendor/`, `third_party/`, `node_modules/` | Patterns for third-party and generated code that should not be suggested as companion files. One per line, written like a line of a `.gitignore` file: `vendor/` is every folder of that name, `/internal/generated/` is that one folder, `*.pb.go` is every file with that ending. |
 | Theme | Match the system | Light or dark, for the window and for the visuals and films shown in it. An artifact made by an earlier version stays dark until it is made again, and an exported film is dark. |

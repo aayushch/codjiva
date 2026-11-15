@@ -55,7 +55,6 @@ export type Settings = {
   // The address of each API provider, by provider id, when it is not the provider's usual one.
   apiBaseUrls: Record<string, string>;
   agentPaths: Record<string, string>;
-  approveOutline: boolean;
   maxFixIterations: number;
   filmLength: 'short' | 'standard' | 'deep';
   soundOnByDefault: boolean;

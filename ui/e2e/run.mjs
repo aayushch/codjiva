@@ -218,10 +218,12 @@ check(animateRequest.kind === 'animate' && animateRequest.lengthSeconds === 60 &
   'the job is started with the ticked companions, the instructions and the length', JSON.stringify(animateRequest));
 await page.locator('.dock .step.now', { hasText: 'Animating chapter' }).waitFor();
 await shot('09b-animate-job');
-await page.locator('.outline-actions .ready').waitFor({ timeout: 45000 });
-check(await page.locator('.player').count() === 0, 'a finished film waits until its outline is accepted');
-await page.getByRole('button', { name: 'Watch the film' }).click();
-await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
+// The user reads the source while the film is being made. The finished film replaces the source
+// view without a click.
+await page.locator('.tab', { hasText: 'Source' }).click();
+await page.locator('.player:not(.waiting)').waitFor({ timeout: 60000 });
+check(await page.locator('.tab.on', { hasText: 'Film' }).count() === 1 && await page.locator('.dock .outcome').count() === 1 && await page.locator('.dock').getByRole('button', { name: 'Show the film' }).count() === 0,
+  'a finished film is shown on the Film tab without a click');
 check(/4 chapters/.test(await page.locator('.inspector').textContent()), 'the film is shown with its chapters in the inspector');
 check(await page.locator('.tab', { hasText: 'Film' }).locator('.has').count() === 1 && await page.locator('.lib-item').count() === 2, 'the file now has a film next to its visual');
 await page.getByRole('button', { name: 'Close' }).click();
@@ -286,14 +288,14 @@ await page.getByRole('button', { name: 'Remove chapter 3' }).click();
 check(await page.getByRole('button', { name: 'Remove chapter 1' }).isDisabled(), 'an outline keeps at least two chapters');
 await shot('09e-outline');
 await page.getByRole('button', { name: 'Make the film with this outline' }).click();
-await page.locator('.outline-actions .pill', { hasText: 'accepted' }).waitFor();
+await page.waitForFunction(() => !!window.__mockLastRequest?.outline && document.querySelectorAll('.outline-list li').length === 2);
 const outlineRequest = await page.evaluate(() => window.__mockLastRequest);
 check(outlineRequest.outline.chapters.length === 2 && outlineRequest.outline.chapters[1].title === '2 · Waiting in the queue' && outlineRequest.companions.length === 3,
   'the film is started again with the edited outline', JSON.stringify(outlineRequest.outline));
 check(await page.locator('.outline-list li').count() === 2, 'the dock shows the edited outline');
 await page.locator('.dock .log', { hasText: 'Done. The film passed every check.' }).waitFor({ timeout: 45000 });
 await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
-check((await page.locator('.toolbar select option').count()) === 3, 'a film made from an outline the user edited is shown without asking again');
+check((await page.locator('.toolbar select option').count()) === 3, 'a film made from an outline the user edited is shown as a new version');
 await page.getByRole('button', { name: 'Close' }).click();
 await page.locator('.tab', { hasText: 'Visual' }).click();
 await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
@@ -328,7 +330,14 @@ await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
 await row('store.go').click();
 await page.locator('.empty').getByRole('button', { name: 'Visualise', exact: true }).click();
 await page.getByRole('dialog').getByRole('button', { name: 'Visualise' }).click();
+// The user selects another file while the visual is being made. The finished visual does not
+// take them away from that file, and the dock offers a button that opens it.
+await row('handler.go').click();
 await page.locator('.dock .log', { hasText: 'Done. The visual passed every check.' }).waitFor({ timeout: 45000 });
+check(await page.locator('.row.selected', { hasText: 'handler.go' }).count() === 1, 'a visual that finishes while another file is selected does not replace that file');
+await page.locator('.dock').getByRole('button', { name: 'Show the visual' }).click();
+await page.locator('.inspector', { hasText: 'store.go' }).waitFor();
+check(await page.locator('.row.selected', { hasText: 'store.go' }).count() === 1 && await page.locator('.dock').getByRole('button', { name: 'Show the visual' }).count() === 0, 'the button in the dock opens the finished visual and its file');
 await page.getByRole('button', { name: 'Close' }).click();
 check(/ports · 1 in · 0 out/.test(await page.locator('.lib-item', { hasText: 'store.go' }).textContent()), 'the library shows how many ports an artifact has');
 check(/Connects to/.test(await page.locator('.inspector').textContent()), 'an artifact that meets another in the code says what it connects to');

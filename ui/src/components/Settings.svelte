@@ -95,8 +95,6 @@
           <div class="field"><span class="label">Length of new films</span>
             <div class="seg">{#each lengths as [value, label]}<button class="btn" class:on={s.filmLength === value} onclick={() => set('filmLength', value)}>{label}</button>{/each}</div>
           </div>
-          <label class="check"><input type="checkbox" checked={s.approveOutline} onchange={(e) => set('approveOutline', e.currentTarget.checked)} />
-            <span>Show the story outline for approval<div class="why">Before a film is drawn, review its chapters and change the instructions if they miss the point.</div></span></label>
           <label class="check"><input type="checkbox" checked={s.soundOnByDefault} onchange={(e) => set('soundOnByDefault', e.currentTarget.checked)} />
             <span>Start films with sound on<div class="why">Films start muted unless this is on.</div></span></label>
           <div class="field"><label for="set-speed">Base playback speed</label>

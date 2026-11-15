@@ -120,8 +120,6 @@ pub struct Settings {
     pub api_base_urls: BTreeMap<String, String>,
     /// Where an agent's program is, by agent id, for programs the app cannot find by itself.
     pub agent_paths: BTreeMap<String, String>,
-    /// Show the story outline of a film for approval before the film is shown.
-    pub approve_outline: bool,
     /// How many times a failed self-test is sent back to the agent before the app gives up.
     pub max_fix_iterations: u32,
     pub film_length: FilmLength,
@@ -151,7 +149,6 @@ impl Default for Settings {
             effort: EffortSetting::Auto,
             api_base_urls: BTreeMap::new(),
             agent_paths: BTreeMap::new(),
-            approve_outline: true,
             max_fix_iterations: 3,
             film_length: FilmLength::Standard,
             sound_on_by_default: false,
@@ -212,7 +209,6 @@ mod tests {
         assert_eq!(settings.max_fix_iterations, 5);
         assert_eq!(settings.film_length.seconds(), 300);
         assert_eq!(settings.external_editor_command, "code -g {file}:{line}");
-        assert!(settings.approve_outline);
         assert_eq!(settings.effort, EffortSetting::Auto);
         assert_eq!(settings.theme, Theme::System);
         assert!(settings.companion_ignore.contains(&"vendor/".to_string()));

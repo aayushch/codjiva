@@ -192,7 +192,6 @@ code { font-family:var(--font) }
 .outline-list .t { display:block; color:var(--second) }
 .outline-list .s { display:block; color:var(--muted); font-size:11px }
 .outline-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px }
-.outline-actions .ready { color:var(--main) }
 .btn.small.primary { font-weight:500 }
 .dialog.animate, .dialog.outline { width:min(680px, 92vw) }
 .dialog .kicker { margin-top:14px }
