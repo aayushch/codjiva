@@ -1,6 +1,6 @@
 <script lang="ts">
   // The app's line icons, drawn inline. Every icon is a 16 x 16 outline with a 1.5 px stroke.
-  type Name = 'dir' | 'file' | 'viz' | 'search' | 'play' | 'pause' | 'sound-on' | 'sound-off' | 'full' | 'settings' | 'close' | 'external' | 'target' | 'folder-open' | 'film' | 'reveal';
+  type Name = 'dir' | 'file' | 'viz' | 'search' | 'play' | 'pause' | 'sound-on' | 'sound-off' | 'full' | 'settings' | 'close' | 'external' | 'target' | 'folder-open' | 'film' | 'reveal' | 'again' | 'export' | 'panel';
 
   let { name, size = 14 }: { name: Name; size?: number } = $props();
 
@@ -22,6 +22,12 @@
     'folder-open': 'M1.5 12.5v-9H6l1.5 1.5h6v2 M1.5 12.5l2-5.5h11l-2 5.5z',
     film: 'M2.5 3.5h11v9h-11z M5.5 3.5v9 M10.5 3.5v9 M2.5 6.5h3 M2.5 9.5h3 M10.5 6.5h3 M10.5 9.5h3',
     reveal: 'M1.5 4.5v8h13v-7H7.5l-1.5-1.5h-4.5z M6 9h4 M8.5 7.5 10 9l-1.5 1.5',
+    // An arrow that goes round in a circle: make it again.
+    again: 'M13.5 8a5.5 5.5 0 1 1-1.6-3.9l1.6 1.4 M13.5 2.5v3h-3',
+    // An arrow that points down into a tray: save a copy.
+    export: 'M8 2v8 M4.5 6.5 8 10l3.5-3.5 M2.5 11.5v2h11v-2',
+    // A window with a panel along its bottom edge.
+    panel: 'M2.5 2.5h11v11h-11z M2.5 10h11',
   };
 </script>
 

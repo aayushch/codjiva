@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from '$lib/state/app.svelte';
+  import { ancestorsOf } from '$lib/tree';
   import Icon from './Icon.svelte';
 
   // Every row is ROW_HEIGHT pixels tall, so the rows in view can be worked out from the scroll
@@ -27,6 +28,15 @@
       }
     }
     return found;
+  });
+  // For each folder, how many files and folders somewhere inside it have a visual or a film.
+  // The row of such a folder is tinted, so that a closed folder shows that it leads to one.
+  const holds = $derived.by(() => {
+    const counts = new Map<string, number>();
+    for (const path of badges.keys()) {
+      for (const dir of ancestorsOf(path)) counts.set(dir, (counts.get(dir) ?? 0) + 1);
+    }
+    return counts;
   });
   // The path of the selected row. A selected folder's path is stored with a trailing slash.
   const selectedPath = $derived(app.selected?.replace(/\/$/, '') ?? null);
@@ -90,9 +100,10 @@
     <div style:transform="translateY({first * ROW_HEIGHT}px)">
       {#each visible as row, i (row.entry.relPath)}
         {@const index = first + i}
-        <div class="row" class:selected={row.entry.relPath === selectedPath} class:cursor={index === cursor} style:--depth={row.depth}
+        {@const inside = holds.get(row.entry.relPath) ?? 0}
+        <div class="row" class:selected={row.entry.relPath === selectedPath} class:cursor={index === cursor} class:holds={inside > 0} style:--depth={row.depth}
           role="treeitem" aria-selected={row.entry.relPath === selectedPath} aria-expanded={row.entry.kind === 'dir' ? row.expanded : undefined}
-          tabindex="-1" title={row.entry.relPath} onclick={() => activate(index)} onkeydown={() => {}}>
+          tabindex="-1" title={inside ? `${row.entry.relPath} · ${inside} inside ${inside === 1 ? 'has' : 'have'} a visual or a film` : row.entry.relPath} onclick={() => activate(index)} onkeydown={() => {}}>
           <span class="chev">{row.entry.kind === 'dir' ? (row.expanded ? '▾' : '▸') : ''}</span>
           <Icon name={row.entry.kind === 'dir' ? 'dir' : 'file'} />
           <span class="name">{row.entry.name}</span>

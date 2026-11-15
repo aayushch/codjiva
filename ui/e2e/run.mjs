@@ -117,7 +117,77 @@ check(/\$0\.42/.test(await page.locator('.dock-foot').textContent()), 'the dock 
 check(await page.locator('.validator').count() === 0, 'the hidden validation frame is removed after the check');
 check(await page.locator('.row.selected .badge.dot').count() === 1, 'the file gets a badge in the tree');
 check(await page.locator('.lib-item').count() === 1, 'the visual appears in the library');
+// Every folder above the file is tinted, and stays tinted when it is closed.
+check(await row('internal').evaluate((el) => el.classList.contains('holds')) && await row('orders').evaluate((el) => el.classList.contains('holds')) && await page.locator('.row.holds').count() === 2,
+  'the folders above a file with a visual are tinted');
+await row('internal').click();
+check(await row('internal').evaluate((el) => el.classList.contains('holds') && getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)') && await row('handler.go').count() === 0,
+  'a closed folder shows that a file inside it has a visual');
+await shot('03d-tree-tint');
+await row('internal').click();
+await row('handler.go').waitFor();
 await page.getByRole('button', { name: 'Close' }).click();
+
+// ---- the library can be closed to its heading, and its top edge can be dragged
+const libraryHeight = () => page.locator('.library').evaluate((el) => Math.round(el.getBoundingClientRect().height));
+const heightAsMade = await libraryHeight();
+await page.locator('.lib-toggle').click();
+check(await page.locator('.lib-item').count() === 0 && await libraryHeight() <= 38 && /1/.test(await page.locator('.lib-toggle .count').textContent()),
+  'clicking the library\'s heading leaves only the heading, with the number of artifacts');
+await page.locator('.lib-toggle').click();
+check(await page.locator('.lib-item').count() === 1 && await libraryHeight() === heightAsMade, 'clicking the heading again shows the list');
+const grip = await page.locator('.library .splitter').boundingBox();
+await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+await page.mouse.down();
+await page.mouse.move(grip.x + grip.width / 2, grip.y - 200, { steps: 4 });
+await page.mouse.up();
+check(Math.abs(await libraryHeight() - (heightAsMade + 203)) <= 4, 'dragging the library\'s top edge up makes it taller', `${heightAsMade} -> ${await libraryHeight()}`);
+await page.mouse.move(grip.x + grip.width / 2, grip.y - 200);
+await page.mouse.down();
+await page.mouse.move(grip.x + grip.width / 2, grip.y - 2000, { steps: 4 });
+await page.mouse.up();
+check(await page.locator('.tree').evaluate((el) => Math.round(el.getBoundingClientRect().height)) >= 120, 'the library cannot be dragged over the whole file tree', String(await libraryHeight()));
+await shot('03d-library-tall');
+await page.mouse.move(grip.x + grip.width / 2, await page.locator('.library .splitter').evaluate((el) => el.getBoundingClientRect().top + 3));
+await page.mouse.down();
+await page.mouse.move(grip.x + grip.width / 2, 2000, { steps: 4 });
+await page.mouse.up();
+check(await libraryHeight() === 96, 'the library keeps a least height while its list is showing', String(await libraryHeight()));
+// The library is left tall enough for the rows that later steps click.
+await page.mouse.move(grip.x + grip.width / 2, await page.locator('.library .splitter').evaluate((el) => el.getBoundingClientRect().top + 3));
+await page.mouse.down();
+await page.mouse.move(grip.x + grip.width / 2, 560, { steps: 4 });
+await page.mouse.up();
+
+// ---- the job panel can be shown again, and the toolbar's icons say what they do
+check(await page.locator('.dock').count() === 0, 'Close hides the job panel');
+const panelButton = page.locator('.titlebar').getByRole('button', { name: 'Job panel' });
+await panelButton.hover();
+check(await panelButton.evaluate((el) => getComputedStyle(el, '::after').display !== 'none' && getComputedStyle(el, '::after').content.includes('Show the job panel')), 'the job panel button has a label that appears at once');
+await panelButton.click();
+check(await page.locator('.dock .outcome').count() === 1, 'the button in the title bar shows the job panel again, with the last job in it');
+await panelButton.click();
+check(await page.locator('.dock').count() === 0, 'the same button hides the job panel');
+const actionNames = await page.locator('.toolbar .actions button').evaluateAll((buttons) => buttons.map((b) => b.getAttribute('aria-label')));
+check(actionNames.join(' | ') === 'Regenerate… | Animate… | Export HTML | Open in browser | Reveal in .codjiva', 'the actions on the version are icons in the toolbar', actionNames.join(' | '));
+const exportButton = page.locator('.toolbar').getByRole('button', { name: 'Export HTML' });
+await exportButton.hover();
+check(await exportButton.evaluate((el) => getComputedStyle(el, '::after').display === 'block' && getComputedStyle(el, '::after').content.includes('Export as an HTML file')), 'an icon shows its label as soon as the pointer is over it');
+await shot('03d-toolbar-tip');
+// The page inside the frame is see-through around its drawing, so the grid shows there.
+check(await page.locator('.canvas iframe').evaluate((el) => getComputedStyle(el).colorScheme === 'light'), 'the frame of an artifact has the colour scheme of its page, which keeps it see-through');
+// The toolbar is as wide as the editor area and the inspector together, and the tabs stay where
+// they are when the inspector goes away.
+const placeOf = (selector) => page.locator(selector).evaluate((el) => { const box = el.getBoundingClientRect(); return [Math.round(box.left), Math.round(box.right), Math.round(box.bottom)]; });
+const tabsWithInspector = await placeOf('.toolbar .tabs');
+const barWithInspector = await placeOf('.toolbar');
+const inspectorTop = await page.locator('.inspector').evaluate((el) => Math.round(el.getBoundingClientRect().top));
+check(inspectorTop === barWithInspector[2] && barWithInspector[1] === page.viewportSize().width, 'the inspector is below the toolbar, which reaches the right edge of the window', JSON.stringify({ inspectorTop, barWithInspector }));
+await page.locator('.tab', { hasText: 'Film' }).click();
+await page.locator('.empty').waitFor();
+check(await page.locator('.inspector').count() === 0 && JSON.stringify(await placeOf('.toolbar .tabs')) === JSON.stringify(tabsWithInspector), 'the tabs do not move when the inspector closes', JSON.stringify([tabsWithInspector, await placeOf('.toolbar .tabs')]));
+await page.locator('.tab', { hasText: 'Visual' }).click();
+await page.locator('.inspector').waitFor();
 
 // ---- the visual: select a part, follow a code reference, switch a layer
 const visual = page.frameLocator('.canvas iframe');
@@ -140,7 +210,7 @@ await page.locator('.tab', { hasText: 'Visual' }).click();
 await page.locator('.inspector').waitFor();
 
 // ---- regenerate adds a version; the instructions are remembered
-await page.locator('.insp-actions').getByRole('button', { name: 'Regenerate…' }).click();
+await page.locator('.toolbar').getByRole('button', { name: 'Regenerate…' }).click();
 check((await page.locator('#instructions-text').inputValue()) === typed, 'Regenerate starts from the instructions of the version on screen');
 await page.getByRole('dialog').getByRole('button', { name: 'Regenerate' }).click();
 await page.locator('.dock .outcome').waitFor({ timeout: 40000 });
@@ -160,7 +230,7 @@ check((await page.locator('.toolbar select option').count()) === 2, 'a stale vis
 await shot('03e-stale');
 
 // ---- a running job can be cancelled
-await page.locator('.insp-actions').getByRole('button', { name: 'Regenerate…' }).click();
+await page.locator('.toolbar').getByRole('button', { name: 'Regenerate…' }).click();
 await page.getByRole('dialog').getByRole('button', { name: 'Regenerate' }).click();
 await page.locator('.dock .step.now').first().waitFor();
 await page.getByRole('button', { name: 'Cancel' }).click();
@@ -277,7 +347,7 @@ check((await page.locator('.toolbar select option').count()) === 2 && (await pag
 await page.getByRole('button', { name: 'Close' }).click();
 
 // ---- changing the outline restarts the film with the edited outline
-await page.locator('.insp-actions').getByRole('button', { name: 'Regenerate…' }).click();
+await page.locator('.toolbar').getByRole('button', { name: 'Regenerate…' }).click();
 await page.getByRole('dialog').getByText('Make the film again for handler.go').waitFor();
 check(await page.locator('.companions .check input:checked').count() === 3, 'making a film again starts from the companions of the film on screen');
 await page.getByRole('dialog').getByRole('button', { name: 'Make it again' }).click();
@@ -406,7 +476,7 @@ check((await page.locator('.row.selected .name').textContent()) != null, 'arrow 
 
 // ---- sidebar resize
 const before = (await page.locator('.sidebar').boundingBox()).width;
-const edge = await page.locator('.splitter').boundingBox();
+const edge = await page.getByRole('separator', { name: 'Resize the sidebar' }).boundingBox();
 await page.mouse.move(edge.x + 3, edge.y + 200);
 await page.mouse.down();
 await page.mouse.move(edge.x + 123, edge.y + 200, { steps: 4 });

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { api } from '$lib/ipc';
   import { showsFilm } from '$lib/artifacts';
   import { formatBytes, formatTime } from '$lib/tree';
   import { app } from '$lib/state/app.svelte';
@@ -10,7 +9,8 @@
   // For a visual with a part selected, it explains that part and links to its code. For a
   // film, it lists the chapters, which seek the film when clicked, and the companion files the
   // film was made from. For both it shows the modes and limits the agent found, the outcome of
-  // the checks, the feedback box and the actions on this version.
+  // the checks and the feedback box. The actions on the version, such as Regenerate and Export,
+  // are in Toolbar.svelte.
   const detail = $derived(app.detail);
   const artifact = $derived(app.currentArtifact);
   const node = $derived(detail?.definition?.nodes?.find((n) => n.id === app.selectedNode) ?? null);
@@ -167,12 +167,5 @@
       <p class="muted">You are looking at an earlier version.</p>
       <button class="btn small" onclick={() => app.makeCurrent()}>Make this the current version</button>
     {/if}
-    <div class="insp-actions">
-      <button class="btn small" onclick={() => app.askRegenerate()}>{isPipeline ? 'Compose again…' : 'Regenerate…'}</button>
-      {#if !isFilm && !isPipeline && !app.selectedIsFolder}<button class="btn small" onclick={() => app.askAnimate()}>Animate…</button>{/if}
-      <button class="btn small" onclick={() => app.exportArtifact()}>Export HTML</button>
-      <button class="btn small" onclick={() => api.artifactOpenInBrowser(artifact.id, detail.manifest.version).catch((e) => app.fail(e))}>Open in browser</button>
-      <button class="btn small" onclick={() => api.artifactReveal(artifact.id, detail.manifest.version).catch((e) => app.fail(e))}>Reveal in {app.info?.dotDir ?? '.codjiva'}</button>
-    </div>
   </aside>
 {/if}

@@ -52,6 +52,10 @@
   const showArtifact = $derived(!app.example && !!app.currentArtifact && !!app.detail && app.tab !== 'source' && app.shownVersion != null && app.detail.manifest.artifactId === app.currentArtifact.id);
   const showInspector = $derived(showArtifact && !app.theater);
   const showDock = $derived(!!app.job && app.dockOpen && !app.theater);
+  // The toolbar is a row of its own across the editor area and the inspector, so that it keeps
+  // its width when the inspector appears or goes away. An example hides it in full screen, and
+  // the welcome screen has none.
+  const showToolbar = $derived(app.example ? !app.theater : !!app.workspace);
 
   function onKey(event: KeyboardEvent) {
     const mod = event.metaKey || event.ctrlKey;
@@ -66,14 +70,14 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="app" class:theater={app.theater} style:--sidebar-w="{showSidebar ? app.sidebarWidth : 0}px"
+<div class="app" class:theater={app.theater} style:--sidebar-w="{showSidebar ? app.sidebarWidth : 0}px" style:--bar-h="{showToolbar ? 44 : 0}px"
   style:--inspector-w="{showInspector ? INSPECTOR_WIDTH : 0}px" style:--dock-h="{showDock ? (app.job?.request.kind === 'animate' || (app.job?.request.kind === 'compose' && app.job.request.film) ? DOCK_HEIGHT_FILM : DOCK_HEIGHT) : 0}px">
   {#if !app.theater}<TitleBar />{/if}
 
   {#if showSidebar}
     <aside class="sidebar">
       <div class="side-head"><span>Explorer</span><span class="grow"></span>
-        <button class="tb-btn" title="Go to file ({app.info?.platform === 'macos' ? '⌘' : 'Ctrl+'}P)" aria-label="Go to file" onclick={() => (app.dialog = 'quickopen')}><Icon name="search" /></button>
+        <button class="tb-btn tip-end" data-tip="Go to file ({app.info?.platform === 'macos' ? '⌘' : 'Ctrl+'}P)" aria-label="Go to file" onclick={() => (app.dialog = 'quickopen')}><Icon name="search" /></button>
       </div>
       <FileTree />
       <Library />
@@ -82,9 +86,10 @@
       ondrag={(dx) => (app.sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, widthAtDragStart + dx)))} />
   {/if}
 
+  {#if showToolbar}<Toolbar />{/if}
+
   <main class="main" class:wide={!showSidebar}>
     {#if app.example}
-      {#if !app.theater}<Toolbar />{/if}
       {#if app.example === 'film'}
         <FilmPlayer src={api.artifactUrl('reference/film') + '?embed=1'} title="Example film" />
       {:else}
@@ -93,7 +98,6 @@
     {:else if !app.workspace}
       <Welcome />
     {:else}
-      <Toolbar />
       {#if !app.selected}
         <div class="canvas"><div class="empty"><div class="card"><div class="path">Select a file in the explorer to see what Codjiva can draw from it.</div></div></div></div>
       {:else if app.tab === 'source' && !app.selectedPipelineId}

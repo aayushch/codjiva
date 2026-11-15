@@ -19,7 +19,7 @@ code { font-family:var(--font) }
 .titlebar .agent .tb-btn:first-of-type { margin-left:8px }
 
 /* ---------- layout ---------- */
-.app.theater { grid-template-rows:0 1fr 0 }
+.app.theater { grid-template-rows:0 var(--bar-h, 0px) 1fr 0 }
 .main.wide { grid-column:1 / -1 }
 .app { position:relative }
 /* The handle lies over the line between the sidebar and the editor area, below the title bar. */
@@ -139,7 +139,6 @@ code { font-family:var(--font) }
 .inspector button.layer { border:0; background:none; font:inherit; color:var(--ink); width:100%; cursor:pointer }
 .inspector .problem { font-size:12px; color:var(--shell-text-2); margin:0 0 6px; overflow-wrap:anywhere }
 .inspector .problem.error { color:var(--main) }
-.insp-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px }
 
 /* ---------- library ---------- */
 .library { flex:none }
@@ -209,3 +208,48 @@ code { font-family:var(--font) }
 .feedback .line { display:flex; gap:8px; flex-wrap:wrap }
 .feedback .picking { color:var(--accent); font-size:12px; margin:6px 0 }
 .player .scrub .pin { position:absolute; top:1px; width:0; height:0; margin-left:-5px; border-left:5px solid transparent; border-right:5px solid transparent; border-top:7px solid var(--accent) }
+
+/* ---- the toolbar's artifact controls, and labels that appear at once */
+.toolbar .crumb { flex:0 1 auto; min-width:0 }
+.toolbar .actions { display:flex; align-items:center; gap:2px; flex:none }
+.toolbar .tb-btn { width:30px; height:30px }
+.toolbar .divider { width:1px; height:20px; flex:none; background:var(--shell-border) }
+.toolbar .tabs { flex:none }
+.tb-btn { cursor:pointer }
+.tb-btn.on { background:var(--shell-button); color:var(--main) }
+/* The bars lie above the editor area, so that a label that hangs below a bar is not covered. */
+.titlebar { position:relative; z-index:8 }
+.toolbar { position:relative; z-index:7 }
+/* A control with a `data-tip` attribute shows that text in a small label below itself as soon
+   as the pointer is over it or it has keyboard focus. The class `tip-end` lines the label up
+   with the control's right edge, for a control near the right edge of the window. */
+[data-tip] { position:relative }
+[data-tip]::after { content:attr(data-tip); position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%); z-index:30; display:none;
+  padding:4px 8px; border-radius:6px; background:var(--shell-button); border:1px solid var(--shell-border); box-shadow:0 4px 12px var(--drop);
+  color:var(--second); font:400 12px/1.4 var(--font); letter-spacing:0; text-transform:none; white-space:nowrap; pointer-events:none }
+[data-tip]:hover::after, [data-tip]:focus-visible::after { display:block }
+[data-tip].tip-end::after { left:auto; right:0; transform:none }
+
+/* A folder that has a file with a visual or a film somewhere inside it. The tint is on every
+   folder above such a file, so the way to it can be followed through closed folders. */
+.row.holds { background:color-mix(in srgb, var(--main) 10%, transparent); color:var(--second) }
+.row.holds .ico { color:var(--main) }
+.row.holds:hover, .row.holds.selected { background:color-mix(in srgb, var(--main) 18%, var(--shell-button)) }
+
+/* ---- the library: a heading that opens and closes it, a list that scrolls, an edge to drag */
+.library { position:relative; display:flex; flex-direction:column; overflow:visible; min-height:36px }
+.library.sized { max-height:none }
+.library .side-head { flex:none }
+.lib-list { flex:1; min-height:0; overflow:auto }
+.lib-toggle { display:flex; align-items:center; gap:6px; border:0; background:none; padding:0; font:inherit; letter-spacing:inherit; text-transform:inherit; color:inherit; cursor:pointer }
+.lib-toggle:hover { color:var(--second) }
+.lib-toggle .chev { width:12px; color:var(--shell-tick); letter-spacing:0 }
+.lib-toggle .count { padding:0 6px; border-radius:8px; background:var(--chip); color:var(--shell-text-2); letter-spacing:0 }
+/* The handle of a panel that is dragged up and down lies over the panel's top edge. */
+.splitter.level { top:-3px; bottom:auto; left:0; right:0; width:auto; height:6px; cursor:row-resize }
+
+/* An artifact page declares no colour scheme of its own, which a browser treats as light. A
+   frame that is given a different colour scheme from its page is drawn with an opaque white
+   background in some browsers, so every frame is given the light scheme. The frame then stays
+   see-through and the grid behind it shows around the drawing. */
+iframe { color-scheme:light }

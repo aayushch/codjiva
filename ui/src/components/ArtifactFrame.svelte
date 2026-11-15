@@ -53,8 +53,13 @@
       if (!message || typeof message !== 'object' || typeof message.cj !== 'string') return;
       // `ready` carries the palette in `theme`, and the answer to a theme request carries it in
       // `mode`. A page that names no palette is an older page, which is always dark.
-      if (message.cj === 'ready') stageTheme = message.theme === 'light' ? 'light' : 'dark';
-      else if (message.cj === 'theme') stageTheme = message.mode === 'light' ? 'light' : 'dark';
+      if (message.cj === 'ready') {
+        stageTheme = message.theme === 'light' ? 'light' : 'dark';
+        // A film starts to listen for messages only after it has prepared its scenes, which can
+        // be later than the request `onload` sent. Such a page reports `ready` in its default
+        // palette, so the request is sent again. A page that names no palette cannot change it.
+        if (followTheme && message.theme && message.theme !== app.theme) send({ cj: 'theme', mode: app.theme });
+      } else if (message.cj === 'theme') stageTheme = message.mode === 'light' ? 'light' : 'dark';
       onmessage(message);
     };
     window.addEventListener('message', handler);
