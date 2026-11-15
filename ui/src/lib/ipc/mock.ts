@@ -683,6 +683,28 @@ export const mockApi: Api = {
   async feedbackCapture() {
     return null;
   },
+  // A made-up estimate. It grows with the length of a film and with the
+  // number of companion files, so the interface can be seen to follow both.
+  // The end-to-end test sets `window.__mockEstimateSamples` to make the
+  // estimate say that it was corrected with that many earlier jobs.
+  async jobEstimate(request) {
+    const typical =
+      request.kind === 'feedback'
+        ? 60
+        : request.kind === 'visualise'
+          ? 200
+          : (request.kind === 'compose' ? 60 : 240) +
+            (request.kind === 'compose' && !request.film
+              ? 0
+              : 2 * (request.lengthSeconds ?? 180)) +
+            30 * (request.companions?.length ?? 0);
+    return {
+      lowSeconds: Math.round(typical * 0.6),
+      highSeconds: Math.round(typical * 1.5),
+      typicalSeconds: typical,
+      samples: (window as any).__mockEstimateSamples ?? 0,
+    };
+  },
   // Plays a made-up job: the phases and log lines of a real one, then a
   // self-test of a bundled reference page in the window's hidden frame, then a
   // result. A Visualise job shows the reference visual, an Animate job the
@@ -1049,6 +1071,10 @@ if (typeof window !== 'undefined') {
   // and reads `window.__mockRelaunched` to see that a restart was asked for.
   // Lets the end-to-end test simulate that a file was deleted, and read the
   // settings that were last saved.
+  // Lets the end-to-end test give a file other text, for example a long one.
+  (window as any).__mockSetFile = (relPath: string, text: string) => {
+    FILES[relPath] = text;
+  };
   (window as any).__mockDeleteFile = (relPath: string) => {
     delete FILES[relPath];
   };

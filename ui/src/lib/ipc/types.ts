@@ -253,6 +253,17 @@ export type JobRequest = {
   film?: boolean;
 };
 
+// How long a job is expected to take, in seconds. Most jobs like it finish
+// between `lowSeconds` and `highSeconds`. `samples` is the number of earlier
+// jobs on this computer the estimate was corrected with. With 0 it comes from
+// the size of the code alone.
+export type Estimate = {
+  lowSeconds: number;
+  highSeconds: number;
+  typicalSeconds: number;
+  samples: number;
+};
+
 // What a Visualise job on a whole folder would have to read.
 export type FolderInfo = {
   // The folder, relative to the workspace root, without a trailing slash.
@@ -525,6 +536,9 @@ export interface Api {
     request: JobRequest,
     onEvent: (event: JobEvent) => void,
   ): Promise<string>;
+  // Estimates how long `request` would take if it were started now. Returns
+  // null when no agent is available. Nothing is started.
+  jobEstimate(request: JobRequest): Promise<Estimate | null>;
   jobCancel(jobId: string): Promise<void>;
   jobValidated(token: string, report: ValidationReport): Promise<void>;
   artifactList(): Promise<ArtifactSummary[]>;

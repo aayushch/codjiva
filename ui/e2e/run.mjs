@@ -792,8 +792,48 @@ check(
     .isChecked(),
   'any file can be added as a companion',
 );
+// The dialog says how long the film usually takes to make. The range follows
+// the length the user picks.
+const estimateLine = page.locator('.dialog.animate .estimate');
+const rangeOf = async () =>
+  ((await estimateLine.textContent()) ?? '').match(
+    /Usually takes (\d+–\d+ min) to make\./,
+  )?.[1];
+await page.getByRole('button', { name: 'Deep · ~5 min' }).click();
+await page.waitForFunction(() =>
+  /Usually takes \d+–\d+ min to make/.test(
+    document.querySelector('.dialog.animate .estimate')?.textContent ?? '',
+  ),
+);
+const deepRange = await rangeOf();
+check(
+  !!deepRange &&
+    /first estimate from the size of the code/.test(
+      (await estimateLine.textContent()) ?? '',
+    ),
+  'the Animate dialog says how long the film usually takes to make',
+  await estimateLine.textContent(),
+);
+await page.evaluate(() => (window.__mockEstimateSamples = 4));
 await page.locator('#animate-text').fill('Follow one order to the store');
 await page.getByRole('button', { name: 'Short · ~1 min' }).click();
+await page.waitForFunction(
+  (deep) =>
+    !(
+      document.querySelector('.dialog.animate .estimate')?.textContent ?? deep
+    ).includes(deep),
+  deepRange,
+);
+const shortRange = await rangeOf();
+check(
+  !!shortRange &&
+    parseInt(shortRange) < parseInt(deepRange) &&
+    /Going by 4 earlier jobs with Mock Agent on this computer/.test(
+      ((await estimateLine.textContent()) ?? '').replace(/\s+/g, ' '),
+    ),
+  'the estimate is shorter for a shorter film and names the earlier jobs it goes by',
+  `${deepRange} then ${await estimateLine.textContent()}`,
+);
 await shot('09-animate-dialog');
 await page
   .getByRole('dialog')
@@ -821,6 +861,12 @@ check(
 await page
   .locator('.dock .step.now', { hasText: 'Animating chapter' })
   .waitFor();
+check(
+  (await page.locator('.dock .pill.estimate').textContent()) ===
+    `usually ${shortRange}`,
+  'the dock says how long the running job usually takes',
+  await page.locator('.dock .pill.estimate').textContent(),
+);
 await shot('09b-animate-job');
 // The user reads the source while the film is being made. The finished film
 // replaces the source view without a click.
@@ -890,8 +936,59 @@ check(
   'Forward is disabled at the newest place and Back is enabled',
   String(leftAt),
 );
+// Every companion file is given 600 lines, so that the file that opens is
+// much longer than the window.
+await page.evaluate(() => {
+  const text = Array.from(
+    { length: 600 },
+    (_, i) => `    total += lines[${i}].price // line ${i + 1}`,
+  ).join('\n');
+  for (const name of [
+    'internal/billing/ledger.py',
+    'internal/orders/store.go',
+    'internal/orders/limiter.go',
+    'internal/orders/handler_test.go',
+  ])
+    window.__mockSetFile(name, text + '\n');
+});
 await page.locator('.inspector .companion .ref').first().click();
 await page.locator('.tab.on', { hasText: 'Source' }).waitFor();
+await page.locator('.source-line').first().waitFor();
+// Scrolls the source view to its end and measures where things are.
+const longSource = await page.evaluate(async () => {
+  const source = document.querySelector('.source');
+  source.scrollTop = source.scrollHeight;
+  await new Promise((done) => setTimeout(done, 200));
+  const box = source.getBoundingClientRect();
+  const lines = Array.from(source.querySelectorAll('.source-line'));
+  const last = lines[lines.length - 1];
+  return {
+    pageScrolls: document.scrollingElement.scrollHeight - window.innerHeight,
+    sourceBottom: Math.round(box.bottom),
+    barTop: Math.round(
+      document.querySelector('.source-bar').getBoundingClientRect().top,
+    ),
+    windowHeight: window.innerHeight,
+    lastNumber: last.querySelector('.source-num').textContent,
+    gapAfterLastLine: Math.round(
+      box.bottom - last.getBoundingClientRect().bottom,
+    ),
+  };
+});
+check(
+  longSource.pageScrolls <= 0 &&
+    longSource.barTop < longSource.windowHeight &&
+    longSource.sourceBottom === longSource.barTop,
+  'a long file scrolls inside the source view and the bar under it stays in the window',
+  JSON.stringify(longSource),
+);
+check(
+  longSource.lastNumber === '600' &&
+    longSource.gapAfterLastLine >= 0 &&
+    longSource.gapAfterLastLine < 20,
+  'the last line of a long file is at the bottom of the source view when it is scrolled to its end',
+  JSON.stringify(longSource),
+);
 check(
   /ledger\.py|store\.go|limiter\.go|handler_test\.go/.test(
     await page.locator('.toolbar .crumb').textContent(),
@@ -1846,6 +1943,33 @@ await page.locator('.zoomctl').waitFor();
 await page.waitForTimeout(800);
 await page.getByRole('button', { name: 'Zoom in' }).click();
 await page.waitForTimeout(200);
+// The zoom buttons are in the bottom right corner of the visual. Each
+// tooltip must lie inside the visual's area, or its end is cut off.
+const zoomTips = [];
+for (const name of ['Zoom out', 'Fit', 'Zoom in']) {
+  const button = page.getByRole('button', { name, exact: true });
+  await button.hover();
+  zoomTips.push(
+    await button.evaluate((el) => {
+      const tip = getComputedStyle(el, '::after');
+      const area = el.closest('.canvas').getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      // The tooltip's right edge is `right` pixels left of the button's.
+      const right = box.right - parseFloat(tip.right);
+      const left = right - parseFloat(tip.width);
+      return {
+        shown: tip.display === 'block',
+        inside: left >= area.left && right <= area.right,
+        text: tip.content,
+      };
+    }),
+  );
+}
+check(
+  zoomTips.every((tip) => tip.shown && tip.inside),
+  'the tooltips of the zoom buttons lie inside the visual and are not cut off',
+  JSON.stringify(zoomTips),
+);
 await shot('08-visual');
 await page.getByRole('button', { name: 'Close example' }).click();
 await page.getByRole('button', { name: 'Open folder…' }).waitFor();

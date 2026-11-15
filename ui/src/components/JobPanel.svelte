@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { formatElapsed, JOB_NAMES, stepStates, stepsFor } from '$lib/jobs';
+  import {
+    estimateNote,
+    formatElapsed,
+    JOB_NAMES,
+    stepStates,
+    stepsFor,
+  } from '$lib/jobs';
   import { app } from '$lib/state/app.svelte';
   import { PIPELINE_PREFIX } from '$lib/artifacts';
   import { nameOf } from '$lib/tree';
@@ -23,7 +29,10 @@
         : 'visual',
   );
 
-  // The time on the clock, refreshed every second while the job runs.
+  // The time on the clock, refreshed every second while the job runs. Next to
+  // the time the job has run, the dock says how long such a job usually takes,
+  // once that estimate has arrived. When the job has run longer than the
+  // estimate's upper end, it says "longer than usual" instead.
   let now = $state(Date.now());
   $effect(() => {
     if (job?.status !== 'running') return;
@@ -112,6 +121,10 @@
         <span class="pill"
           >{formatElapsed((job.endedAt ?? now) - job.startedAt)}</span
         >
+        {#if job.status === 'running' && job.estimate}<span
+            class="pill estimate"
+            >{estimateNote(job.estimate, now - job.startedAt)}</span
+          >{/if}
         {#if job.usage?.costUsd != null}<span class="pill"
             >${job.usage.costUsd.toFixed(2)}</span
           >{/if}

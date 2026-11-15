@@ -60,6 +60,7 @@ export const tauriApi: Api = {
     channel.onmessage = onEvent;
     return invoke<string>('job_start', { request, onEvent: channel });
   },
+  jobEstimate: (request) => invoke('job_estimate', { request }),
   jobCancel: (jobId) => invoke('job_cancel', { jobId }),
   jobValidated: (token, report) => invoke('job_validated', { token, report }),
   artifactList: () => invoke('artifact_list'),

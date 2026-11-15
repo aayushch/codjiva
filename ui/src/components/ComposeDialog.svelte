@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type ArtifactPorts, type Join } from '$lib/ipc';
   import { app, FILM_SECONDS } from '$lib/state/app.svelte';
+  import JobEstimate from './JobEstimate.svelte';
 
   // The step before a pipeline is made. It lists the chosen artifacts in the
   // order work flows through them, the joins the app proposes between their
@@ -129,18 +130,38 @@
     manualTo = '';
   }
 
-  function start() {
-    if (!chosen.length) return;
-    // Only artifacts that take part in a ticked join become parts of the
-    // pipeline.
-    const used = parts
+  // Only artifacts that take part in a ticked join become parts of the
+  // pipeline.
+  const used = $derived(
+    parts
       .filter((p) =>
         chosen.some(
           (j) =>
             j.fromArtifact === p.artifactId || j.toArtifact === p.artifactId,
         ),
       )
-      .map((p) => p.artifactId);
+      .map((p) => p.artifactId),
+  );
+  const lengthSeconds = $derived(
+    FILM_SECONDS[app.settings?.filmLength ?? 'standard'],
+  );
+  // The job as it would start now, without the joins and the instructions,
+  // for the line that says how long the pipeline usually takes to make. It
+  // is null while no join is ticked, because there is then nothing to start.
+  const planned = $derived(
+    chosen.length
+      ? {
+          kind: 'compose' as const,
+          subject: [],
+          parts: used,
+          film,
+          lengthSeconds,
+        }
+      : null,
+  );
+
+  function start() {
+    if (!chosen.length) return;
     app.startJob(
       {
         kind: 'compose',
@@ -149,7 +170,7 @@
         joins: chosen,
         film,
         instructions: text.trim(),
-        lengthSeconds: FILM_SECONDS[app.settings?.filmLength ?? 'standard'],
+        lengthSeconds,
       },
       'pipeline',
     );
@@ -260,6 +281,7 @@
             ? 'A film follows one piece of work through every part. It takes several minutes to make.'
             : 'A still pipeline shows every part and each crossing at once. It is the quicker one to make.'}
         </div>
+        <JobEstimate request={planned} />
       </div>
       <div class="field">
         <label for="compose-text"

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { JobEvent } from './ipc';
 import {
+  estimateNote,
   formatElapsed,
+  formatEstimate,
   newJob,
   reduceJob,
   stepsFor,
@@ -212,5 +214,34 @@ describe('formatElapsed', () => {
       formatElapsed(102_400),
       formatElapsed(600_000),
     ]).toEqual(['0:00', '1:42', '10:00']);
+  });
+});
+
+describe('formatEstimate', () => {
+  const range = (lowSeconds: number, highSeconds: number) => ({
+    lowSeconds,
+    highSeconds,
+    typicalSeconds: (lowSeconds + highSeconds) / 2,
+    samples: 0,
+  });
+
+  it('says a range in whole minutes', () => {
+    expect(formatEstimate(range(480, 790))).toBe('8–13 min');
+    expect(formatEstimate(range(100, 250))).toBe('2–4 min');
+  });
+
+  it('says one number when both ends round to it', () => {
+    expect(formatEstimate(range(160, 200))).toBe('about 3 min');
+  });
+
+  it('never says less than a minute', () => {
+    expect(formatEstimate(range(20, 50))).toBe('about a minute');
+    expect(formatEstimate(range(20, 130))).toBe('1–2 min');
+  });
+
+  it('turns into "longer than usual" past the upper end', () => {
+    expect(estimateNote(range(480, 790), 60_000)).toBe('usually 8–13 min');
+    expect(estimateNote(range(480, 790), 790_000)).toBe('usually 8–13 min');
+    expect(estimateNote(range(480, 790), 791_000)).toBe('longer than usual');
   });
 });

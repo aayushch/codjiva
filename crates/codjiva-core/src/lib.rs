@@ -18,6 +18,7 @@ pub mod prompts;
 pub mod reference;
 pub mod settings;
 pub mod store;
+pub mod timing;
 pub mod util;
 pub mod watch;
 pub mod workspace;

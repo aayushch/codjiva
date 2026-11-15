@@ -2,6 +2,7 @@
   import { api, type Suggestion } from '$lib/ipc';
   import { app, FILM_SECONDS } from '$lib/state/app.svelte';
   import IgnoreDialog from './IgnoreDialog.svelte';
+  import JobEstimate from './JobEstimate.svelte';
 
   // The step between clicking Animate and the job starting. The user chooses
   // which other files the agent reads with the file, says what the film should
@@ -137,6 +138,20 @@
     hits = [];
   }
 
+  // The job as it would start now, without the instructions, for the line
+  // that says how long the film usually takes to make. It is null while the
+  // companion files are still being looked for.
+  const planned = $derived(
+    ask && !loading
+      ? {
+          kind: 'animate' as const,
+          subject: [ask.subject],
+          companions: chosen,
+          lengthSeconds: FILM_SECONDS[length],
+        }
+      : null,
+  );
+
   function start() {
     if (!ask || tooMany) return;
     if (app.settings && length !== app.settings.filmLength)
@@ -262,6 +277,7 @@
               onclick={() => (length = value)}>{label}</button
             >{/each}
         </div>
+        <JobEstimate request={planned} />
       </div>
       {#if app.visualArtifact}<div class="why">
           The film starts from the visual this file already has, so the two show

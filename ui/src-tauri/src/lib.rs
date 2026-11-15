@@ -375,6 +375,7 @@ pub fn run() {
             reveal,
             jobs::agents_detect,
             jobs::job_start,
+            jobs::job_estimate,
             jobs::job_cancel,
             jobs::job_validated,
             jobs::api_providers,

@@ -43,6 +43,13 @@ Open **Settings** (the sliders icon in the title bar, or Cmd/Ctrl+,) to see whic
 6. **Compose.** Tick two or more artifacts in the library and click **Compose**. Codjiva proposes joins between
    their ports, and you confirm them.
 
+**How long a job takes.** Before a job starts, its dialog says how long it usually takes to make, as a range
+such as "8–13 min", and the job panel repeats that next to the running clock. The first estimates come from
+how long the code is, how much it branches and, for a film, the length you chose. Codjiva then notes how
+long each of your jobs really took and corrects the estimate with them, separately for each agent and
+model. Those notes are kept in `timings.json` in the app's settings folder. They hold numbers and the names
+of the agent and the model, and no file names or code.
+
 To visualise a **whole folder**, hover the folder in the explorer and click the small icon on its row. Codjiva
 tells you how many files and roughly how many tokens that means before you start, because a folder costs more
 than a file.

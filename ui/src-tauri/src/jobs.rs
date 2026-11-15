@@ -14,12 +14,14 @@ use codjiva_core::env::ShellEnv;
 use codjiva_core::error::{AppError, Result};
 use codjiva_core::jobs::{self, JobContext, JobEvent, JobRequest, Validator};
 use codjiva_core::settings::Settings;
+use codjiva_core::timing::{self, Estimate, Timing};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::oneshot;
@@ -435,19 +437,16 @@ impl Validator for WindowValidator {
     }
 }
 
-/// Starts a job and returns its id at once. Everything the job does arrives on
-/// `on_event`.
-#[tauri::command]
-pub async fn job_start(
-    request: JobRequest,
-    on_event: Channel<JobEvent>,
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<String> {
-    let workspace = state.workspace()?;
-    let settings = state.settings();
+/// Finds the agent that runs the next job and the model it is asked for. The
+/// model is `None` when Settings names none for that agent.
+async fn agent_for_next_job(
+    app: &AppHandle,
+    settings: &Settings,
+) -> Result<(Arc<dyn Backend>, Option<String>)> {
     let detect_app = app.clone();
     let detect_settings = settings.clone();
+    // Looking for agents starts programs and waits for them, so it runs off
+    // the interface's thread.
     let backends = tauri::async_runtime::spawn_blocking(move || {
         use tauri::Manager;
         let state = detect_app.state::<AppState>();
@@ -466,6 +465,78 @@ pub async fn job_start(
         .get(&backend.info().id)
         .cloned()
         .filter(|m| !m.trim().is_empty());
+    Ok((backend, model))
+}
+
+/// Works out what `request` is like for an estimate of its time: how much
+/// code the agent `backend` would read, and with which model. `model` is the
+/// model Settings names for the agent. Without one, the agent's own default
+/// model is recorded.
+async fn shape_of(
+    app: &AppHandle,
+    request: &JobRequest,
+    backend: &Arc<dyn Backend>,
+    model: Option<String>,
+) -> Result<timing::JobShape> {
+    let info = backend.info();
+    let model = model.or(info.default_model);
+    let app = app.clone();
+    let request = request.clone();
+    // Measuring the code reads every file the agent would read.
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let workspace = app.state::<AppState>().workspace()?;
+        Ok(timing::shape(&workspace, &request, &info.id, model))
+    })
+    .await
+    .map_err(|e| {
+        AppError::new("estimate_failed", "Could not measure the code.")
+            .with_detail(e)
+    })?
+}
+
+/// Estimates how long the job `request` would take if it were started now,
+/// with the agent and the model that would run it. Returns `None` when no
+/// agent is available. Nothing is started and nothing is saved.
+#[tauri::command]
+pub async fn job_estimate(
+    request: JobRequest,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<Estimate>> {
+    let settings = state.settings();
+    let Ok((backend, model)) = agent_for_next_job(&app, &settings).await else {
+        return Ok(None);
+    };
+    let shape = shape_of(&app, &request, &backend, model).await?;
+    let history = timing::load(&state.config_dir);
+    Ok(Some(timing::estimate(&shape, &history)))
+}
+
+/// Starts a job and returns its id at once. Everything the job does arrives on
+/// `on_event`.
+///
+/// When the job ends with a saved version, how long it took is added to the
+/// finished jobs that later estimates are corrected with. A job that fails or
+/// is cancelled is not added, and neither is a job run from a recorded
+/// session, which takes no real time.
+#[tauri::command]
+pub async fn job_start(
+    request: JobRequest,
+    on_event: Channel<JobEvent>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String> {
+    let workspace = state.workspace()?;
+    let settings = state.settings();
+    let (backend, model) = agent_for_next_job(&app, &settings).await?;
+    // The shape is read before the job runs, because it says whether a
+    // version existed before this job. A job is not held up when the code
+    // cannot be measured. Its time is then not recorded.
+    let shape = shape_of(&app, &request, &backend, model.clone())
+        .await
+        .ok()
+        .filter(|_| backend.info().kind != "replay");
 
     let job_id = jobs::new_job_id();
     let cancel = CancellationToken::new();
@@ -476,6 +547,9 @@ pub async fn job_start(
         .expect("the jobs lock is not poisoned")
         .insert(job_id.clone(), cancel.clone());
 
+    // Set when the job reports that it saved a version.
+    let saved = Arc::new(AtomicBool::new(false));
+    let saved_by_job = Arc::clone(&saved);
     let ctx = JobContext {
         workspace,
         backend,
@@ -485,6 +559,9 @@ pub async fn job_start(
         }),
         cancel,
         emit: Arc::new(move |event| {
+            if matches!(event, JobEvent::Result { .. }) {
+                saved_by_job.store(true, Ordering::SeqCst);
+            }
             let _ = on_event.send(event);
         }),
         model,
@@ -493,15 +570,29 @@ pub async fn job_start(
         max_fix_iterations: settings.max_fix_iterations,
     };
     let finished_id = job_id.clone();
+    let began = Instant::now();
     tauri::async_runtime::spawn(async move {
         use tauri::Manager;
         jobs::run(ctx, request, finished_id.clone()).await;
-        app.state::<AppState>()
+        let state = app.state::<AppState>();
+        state
             .jobs
             .running
             .lock()
             .expect("the jobs lock is not poisoned")
             .remove(&finished_id);
+        if let Some(shape) = shape.filter(|_| saved.load(Ordering::SeqCst)) {
+            // An estimate is still made without this job, so a failure to
+            // save it is not reported.
+            let _ = timing::record(
+                &state.config_dir,
+                Timing {
+                    shape,
+                    seconds: began.elapsed().as_secs_f64(),
+                    at: codjiva_core::util::now_rfc3339(),
+                },
+            );
+        }
     });
     Ok(job_id)
 }

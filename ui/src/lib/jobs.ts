@@ -3,6 +3,7 @@
 // tested without a window.
 
 import type {
+  Estimate,
   JobEvent,
   JobRequest,
   Outline,
@@ -44,6 +45,9 @@ export type JobView = {
   error: { code: string; message: string } | null;
   startedAt: number;
   endedAt: number | null;
+  // How long the job is expected to take. Null until the estimate arrives,
+  // and when none can be made.
+  estimate: Estimate | null;
 };
 
 export type Step = { phase: string; label: string };
@@ -144,6 +148,7 @@ export function newJob(
     error: null,
     startedAt: now,
     endedAt: null,
+    estimate: null,
   };
 }
 
@@ -281,6 +286,25 @@ export function stepStates(
               : ('todo' as const),
     };
   });
+}
+
+// Says an estimate as a range of whole minutes: "8–13 min". A range that
+// rounds to one number is "about 3 min", and anything up to a minute and a
+// half is "about a minute".
+export function formatEstimate(estimate: Estimate): string {
+  const low = Math.max(1, Math.round(estimate.lowSeconds / 60));
+  const high = Math.max(low, Math.round(estimate.highSeconds / 60));
+  if (high <= 1) return 'about a minute';
+  return low === high ? `about ${low} min` : `${low}–${high} min`;
+}
+
+// What the job panel says about a running job's estimate, given the
+// milliseconds the job has run. It is the usual range until the job has run
+// longer than the top of the range, and "longer than usual" after that.
+export function estimateNote(estimate: Estimate, elapsedMs: number): string {
+  return elapsedMs > estimate.highSeconds * 1000
+    ? 'longer than usual'
+    : `usually ${formatEstimate(estimate)}`;
 }
 
 // Formats elapsed milliseconds as minutes and seconds, "1:42".

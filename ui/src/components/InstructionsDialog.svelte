@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from '$lib/state/app.svelte';
   import { nameOf } from '$lib/tree';
+  import JobEstimate from './JobEstimate.svelte';
 
   // The step between clicking Visualise and the job starting: the user says
   // what this result should show. The field may be left empty.
@@ -22,6 +23,12 @@
   // Set when the subject is a folder: how much code the agent will have to
   // read.
   const folder = $derived(ask?.subject.endsWith('/') ? app.folderInfo : null);
+
+  // The job as it would start now, without the instructions, for the line
+  // that says how long the visual usually takes to make.
+  const planned = $derived(
+    ask ? { kind: ask.kind, subject: [ask.subject] } : null,
+  );
 
   function add(chip: string) {
     const sentence = 'Emphasise ' + chip + '.';
@@ -107,6 +114,7 @@
             onclick={() => add(chip)}>+ {chip}</button
           >{/each}
       </div>
+      <JobEstimate request={planned} />
       <div class="foot">
         <span class="pill version"
           >{app.activeAgent ? app.activeAgent.name : 'No agent available'}</span

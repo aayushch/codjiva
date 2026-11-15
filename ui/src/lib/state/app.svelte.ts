@@ -620,8 +620,18 @@ class AppState {
     this.instructionsAsk = null;
     this.animateAsk = null;
     this.composeAsk = null;
-    this.job = newJob(request, Date.now(), subject);
+    const started = newJob(request, Date.now(), subject);
+    this.job = started;
     this.dockOpen = true;
+    // The estimate is added to the job when it arrives. It is dropped if
+    // another job has started by then. A job runs the same without one.
+    api
+      .jobEstimate(request)
+      .then((estimate) => {
+        if (this.job?.startedAt === started.startedAt)
+          this.job = { ...this.job, estimate };
+      })
+      .catch(() => {});
     try {
       await api.jobStart(request, (event) => {
         if (!this.job) return;
