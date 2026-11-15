@@ -6,8 +6,8 @@
   // On macOS the window's own buttons are drawn over the left end of this bar, so the bar's
   // content starts to the right of them. In full screen those buttons are hidden.
   //
-  // The job panel button is there once a job has been started in this workspace. It shows the
-  // panel at the bottom of the window again after the user has closed it, and hides it.
+  // The job panel button is there while a workspace is open. It shows and hides the panel at
+  // the bottom of the window.
   const mac = $derived(app.info?.platform === 'macos' && !app.theater);
 </script>
 
@@ -28,7 +28,7 @@
     {:else}
       <span class="dot off"></span> Looking for agents…
     {/if}
-    {#if app.job}
+    {#if app.workspace}
       <button class="tb-btn" class:on={app.dockOpen} data-tip={app.dockOpen ? 'Hide the job panel' : 'Show the job panel'} aria-label="Job panel" aria-pressed={app.dockOpen}
         onclick={() => (app.dockOpen = !app.dockOpen)}><Icon name="panel" /></button>
     {/if}

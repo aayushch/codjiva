@@ -127,6 +127,17 @@ code { font-family:var(--font) }
 
 /* ---------- job dock ---------- */
 .dock .steps { overflow:auto }
+.dock { overflow:hidden; grid-template-rows:minmax(0, 1fr) }
+.dock.idle { display:block }
+.idle-note { max-width:560px; padding:14px 16px; color:var(--shell-text-2); font-size:12px; line-height:1.5 }
+.idle-note p { margin:6px 0 12px }
+/* The job panel's handle. The wrapper is a line of no height on the panel's top edge, across
+   the editor area and the inspector. While the panel is closed that edge is the bottom of the
+   window, so the handle lies wholly above it and shows a short grip in its middle. */
+.dock-edge { position:absolute; left:var(--sidebar-w, 280px); right:0; bottom:var(--dock-h, 0px); height:0; z-index:6 }
+.dock-edge.closed .splitter.level { top:-7px; height:7px; cursor:ns-resize }
+.dock-edge.closed .splitter.level::after { content:''; position:absolute; left:50%; bottom:2px; width:48px; height:3px; margin-left:-24px; border-radius:2px; background:var(--shell-tick); opacity:.7 }
+.dock-edge.closed .splitter.level:hover::after, .dock-edge.closed .splitter.level.active::after { background:var(--main); opacity:1 }
 .dock-foot { margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap }
 .log div { min-height:1.45em }
 .log .outcome { margin-top:8px; color:var(--second) }

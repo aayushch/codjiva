@@ -90,6 +90,19 @@ const crumb = (await page.locator('.toolbar .crumb').textContent()).replace(/\s+
 check(crumb === 'internal/orders/handler.go', 'the toolbar shows the path as a breadcrumb', crumb);
 await shot('02-empty-state');
 
+// ---- the job panel before any job: closed, with a handle on the bottom edge of the window
+const dockHandle = page.getByRole('separator', { name: 'Resize the job panel' });
+const dockBox = () => page.locator('.dock').boundingBox();
+const windowHeight = page.viewportSize().height;
+{
+  const closed = await dockHandle.boundingBox();
+  check(await page.locator('.dock').count() === 0 && closed && Math.round(closed.y + closed.height) === windowHeight, 'with the job panel closed, its handle lies on the bottom edge of the window', JSON.stringify(closed));
+  await dockHandle.click();
+  check(/No job has run/.test(await page.locator('.dock.idle').textContent()), 'a click on the handle opens the job panel, which says that nothing has run yet');
+  await page.locator('.dock.idle').getByRole('button', { name: 'Close' }).click();
+  check(await page.locator('.dock').count() === 0, 'the empty job panel closes again');
+}
+
 // ---- Visualise: the .gitignore question once, then the instructions step, then the job
 check(/Mock Agent · ready/.test(await page.locator('.titlebar .agent').textContent()), 'the title bar shows the agent that will run jobs');
 await page.locator('.empty').getByRole('button', { name: 'Visualise', exact: true }).click();
@@ -161,6 +174,30 @@ await page.mouse.up();
 
 // ---- the job panel can be shown again, and the toolbar's icons say what they do
 check(await page.locator('.dock').count() === 0, 'Close hides the job panel');
+{
+  // Dragging the handle up from the bottom edge opens the panel at the height of the drag.
+  const across = (await dockHandle.boundingBox()).x + 300;
+  const drag = async (fromY, toY) => {
+    await page.mouse.move(across, fromY);
+    await page.mouse.down();
+    await page.mouse.move(across, toY, { steps: 6 });
+    await page.mouse.up();
+  };
+  await drag(windowHeight - 3, windowHeight - 300);
+  let box = await dockBox();
+  check(box && Math.abs(box.height - 297) <= 4 && await page.locator('.dock .outcome').count() === 1, 'dragging the handle up from the bottom edge shows the job panel again, with the last job in it', JSON.stringify(box));
+  await drag(box.y, box.y + 100);
+  box = await dockBox();
+  check(box && Math.abs(box.height - 197) <= 4, 'dragging the top edge of the job panel changes its height', JSON.stringify(box));
+  await drag(box.y, 40);
+  box = await dockBox();
+  const mainBox = await page.locator('main.main').boundingBox();
+  check(mainBox.height >= 160, 'the job panel cannot be dragged over the whole editor area', `${mainBox.height} left, panel ${box.height}`);
+  await drag(box.y, windowHeight - 90);
+  check((await dockBox()).height === 120, 'the job panel keeps a least height while it is open', String((await dockBox())?.height));
+  await drag((await dockBox()).y, windowHeight - 20);
+  check(await page.locator('.dock').count() === 0, 'dragging the job panel down to the bottom edge closes it');
+}
 const panelButton = page.locator('.titlebar').getByRole('button', { name: 'Job panel' });
 await panelButton.hover();
 check(await panelButton.evaluate((el) => getComputedStyle(el, '::after').display !== 'none' && getComputedStyle(el, '::after').content.includes('Show the job panel')), 'the job panel button has a label that appears at once');

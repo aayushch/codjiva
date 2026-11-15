@@ -2,7 +2,7 @@
   import { showsFilm } from '$lib/artifacts';
   import { api, inDesktopApp } from '$lib/ipc';
   import { applyTheme, onSystemThemeChange } from '$lib/theme';
-  import { app, DOCK_HEIGHT, DOCK_HEIGHT_FILM, INSPECTOR_WIDTH, SIDEBAR_MAX, SIDEBAR_MIN } from '$lib/state/app.svelte';
+  import { app, DOCK_HEIGHT, DOCK_HEIGHT_FILM, DOCK_MIN, EDITOR_MIN, INSPECTOR_WIDTH, SIDEBAR_MAX, SIDEBAR_MIN } from '$lib/state/app.svelte';
   import AnimateDialog from './components/AnimateDialog.svelte';
   import ComposeDialog from './components/ComposeDialog.svelte';
   import EditorEmpty from './components/EditorEmpty.svelte';
@@ -43,6 +43,10 @@
     if (setting === 'system') return onSystemThemeChange(() => { app.theme = applyTheme('system'); });
   });
 
+  // The heights of the title bar and the toolbar, which the grid in app-shell.css also uses.
+  const TITLE_HEIGHT = 36;
+  const TOOLBAR_HEIGHT = 44;
+
   // The sidebar's width when a drag of its edge began.
   let widthAtDragStart = 0;
 
@@ -51,11 +55,39 @@
   // has an artifact of that kind, and its details are loaded.
   const showArtifact = $derived(!app.example && !!app.currentArtifact && !!app.detail && app.tab !== 'source' && app.shownVersion != null && app.detail.manifest.artifactId === app.currentArtifact.id);
   const showInspector = $derived(showArtifact && !app.theater);
-  const showDock = $derived(!!app.job && app.dockOpen && !app.theater);
   // The toolbar is a row of its own across the editor area and the inspector, so that it keeps
   // its width when the inspector appears or goes away. An example hides it in full screen, and
   // the welcome screen has none.
   const showToolbar = $derived(app.example ? !app.theater : !!app.workspace);
+
+  // The job panel at the bottom of the window. It belongs to an open workspace and is hidden in
+  // full screen. Its handle lies on its top edge while it is open and on the bottom edge of the
+  // window while it is closed, so the user can always drag it.
+  const hasDock = $derived(!!app.workspace && !app.theater);
+  const showDock = $derived(hasDock && app.dockOpen);
+  let windowHeight = $state(window.innerHeight);
+  // The tallest the panel can be: the window without the title bar, the toolbar and the height
+  // that is kept for the editor area.
+  const dockMax = $derived(Math.max(DOCK_MIN, windowHeight - TITLE_HEIGHT - TOOLBAR_HEIGHT - EDITOR_MIN));
+  // The panel's height: the one the user dragged it to or, until they drag it, the height that
+  // suits the kind of job. A film job lists more steps, so its panel is taller.
+  const dockHeight = $derived(Math.min(dockMax, app.dockHeight
+    ?? (app.job?.request.kind === 'animate' || (app.job?.request.kind === 'compose' && app.job.request.film) ? DOCK_HEIGHT_FILM : DOCK_HEIGHT)));
+  // The panel's height when a drag of its handle began, or 0 if the panel was closed then.
+  let dockAtDragStart = 0;
+  // Follows a drag of the panel's handle. `moved` is how far down the pointer is from where the
+  // drag began. A drag to less than half of the least height closes the panel. Any other drag
+  // opens it and sets its height, between the least height and `dockMax`.
+  function dragDock(moved: number) {
+    const wanted = dockAtDragStart - moved;
+    if (wanted < DOCK_MIN / 2) { app.dockOpen = false; return; }
+    app.dockOpen = true;
+    app.dockHeight = Math.min(dockMax, Math.max(DOCK_MIN, wanted));
+  }
+  // A click on the handle of the closed panel, without a drag, opens the panel.
+  function endDockDrag(moved: number) {
+    if (dockAtDragStart === 0 && Math.abs(moved) < 3) app.dockOpen = true;
+  }
 
   function onKey(event: KeyboardEvent) {
     const mod = event.metaKey || event.ctrlKey;
@@ -79,10 +111,10 @@
 </script>
 
 <!-- A mouse with side buttons sends button 3 for Back and button 4 for Forward. -->
-<svelte:window onkeydown={onKey} onmouseup={(e) => { if (app.workspace && !app.dialog && (e.button === 3 || e.button === 4)) { e.preventDefault(); if (e.button === 3) app.goBack(); else app.goForward(); } }} />
+<svelte:window bind:innerHeight={windowHeight} onkeydown={onKey} onmouseup={(e) => { if (app.workspace && !app.dialog && (e.button === 3 || e.button === 4)) { e.preventDefault(); if (e.button === 3) app.goBack(); else app.goForward(); } }} />
 
-<div class="app" class:theater={app.theater} style:--sidebar-w="{showSidebar ? app.sidebarWidth : 0}px" style:--bar-h="{showToolbar ? 44 : 0}px"
-  style:--inspector-w="{showInspector ? INSPECTOR_WIDTH : 0}px" style:--dock-h="{showDock ? (app.job?.request.kind === 'animate' || (app.job?.request.kind === 'compose' && app.job.request.film) ? DOCK_HEIGHT_FILM : DOCK_HEIGHT) : 0}px">
+<div class="app" class:theater={app.theater} style:--sidebar-w="{showSidebar ? app.sidebarWidth : 0}px" style:--bar-h="{showToolbar ? TOOLBAR_HEIGHT : 0}px"
+  style:--inspector-w="{showInspector ? INSPECTOR_WIDTH : 0}px" style:--dock-h="{showDock ? dockHeight : 0}px">
   {#if !app.theater}<TitleBar />{/if}
 
   {#if showSidebar}
@@ -130,6 +162,12 @@
 
   {#if showInspector}<Inspector />{/if}
   {#if showDock}<JobPanel />{/if}
+  {#if hasDock}
+    <div class="dock-edge" class:closed={!showDock}>
+      <Splitter axis="y" label="Resize the job panel" hint={showDock ? undefined : 'Drag up or click to show the job panel'}
+        onstart={() => (dockAtDragStart = showDock ? dockHeight : 0)} ondrag={dragDock} onend={endDockDrag} />
+    </div>
+  {/if}
 </div>
 
 {#if app.dialog === 'quickopen'}<QuickOpen />{/if}

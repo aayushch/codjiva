@@ -21,6 +21,10 @@ export const TREE_MIN = 160;
 export const DOCK_HEIGHT = 220;
 // A film job lists more steps than the other kinds, so its panel is taller.
 export const DOCK_HEIGHT_FILM = 272;
+// The least height the user can drag the job panel to, and the height that is always left for
+// the editor area above it.
+export const DOCK_MIN = 120;
+export const EDITOR_MIN = 160;
 
 // What the instructions dialog is asking about: which file, and the text to start from.
 export type InstructionsAsk = { kind: 'visualise'; subject: string; initial: string; regenerate: boolean };
@@ -135,6 +139,9 @@ class AppState {
   // The job that is running or last ran, and whether its panel is open.
   job = $state<JobView | null>(null);
   dockOpen = $state(false);
+  // The height the user dragged the job panel to. Null until they drag it; the panel then has
+  // the height that suits the kind of job.
+  dockHeight = $state<number | null>(null);
   instructionsAsk = $state<InstructionsAsk | null>(null);
   animateAsk = $state<AnimateAsk | null>(null);
   // Versions the window has been asked to self-test for running jobs, oldest first.

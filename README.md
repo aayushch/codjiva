@@ -30,8 +30,10 @@ Open **Settings** (the sliders icon in the title bar, or Cmd/Ctrl+,) to see whic
 
 1. **Open a folder.** The explorer on the left lists it. Folders named in `.gitignore` are left out.
 2. **Select a file** and click **Visualise**. You can say what the picture should show, or leave that empty.
-   The job panel at the bottom shows what the agent is doing. A visual takes about three minutes. After you
-   close the panel, the panel button in the title bar shows it again.
+   The job panel at the bottom shows what the agent is doing. A visual takes about three minutes. Drag the
+   panel's top edge to change its height, or drag it down to the bottom of the window to close it. A closed
+   panel leaves a short grip on the bottom edge: drag it up or click it to show the panel again. The panel
+   button in the title bar does the same.
 3. **Explore the visual.** Click a part to see its role and a link to the line of code. The **Source** tab shows
    the file itself, read-only.
 4. **Animate** asks which companion files the agent should read, what the film should show, and how long it

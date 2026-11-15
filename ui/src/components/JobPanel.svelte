@@ -9,6 +9,7 @@
   // it. The dock stays after the job ends so the outcome can be read. The finished film or visual
   // is shown above the dock as soon as the job ends, if the user is still on the job's file. If
   // they have selected another file by then, the dock has a button that opens the result.
+  // Before the first job of a workspace, the dock says that nothing has run yet.
   const job = $derived(app.job);
   const steps = $derived(job ? stepStates(job, stepsFor(job)) : []);
   // What the job makes, for the sentences that report its outcome.
@@ -99,5 +100,13 @@
         {/if}
       </div>
     {/if}
+  </section>
+{:else}
+  <section class="dock idle">
+    <div class="idle-note">
+      <div class="kicker">Job panel</div>
+      <p>No job has run since this folder was opened. Select a file and click Visualise or Animate. What the agent does is then shown here, step by step.</p>
+      <button class="btn small" onclick={() => (app.dockOpen = false)}>Close</button>
+    </div>
   </section>
 {/if}
