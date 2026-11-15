@@ -54,10 +54,7 @@ code {
 
 /* ---------- layout ---------- */
 .app.theater {
-  grid-template-rows: 0 var(--bar-h, 0px) 1fr 0;
-}
-.app {
-  position: relative;
+  grid-template-rows: 0 var(--bar-h, 0px) minmax(0, 1fr) 0;
 }
 /* A handle is 6px wide and lies over the line between two panels. Its parent is
    a box of no width on that line. */
@@ -280,9 +277,14 @@ html.dragging-handle iframe {
 /* ---------- source viewer ---------- */
 /* Ligatures are off so code is shown character for character, for example !=
    and not a single glyph. */
+/* The source view scrolls by itself. `min-height: 0` lets it be shorter than
+   the file, and `overscroll-behavior` keeps a scroll that reaches the end of
+   the file from moving anything around the view. */
 .source {
   flex: 1;
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   background: var(--ground);
   font-size: 13px;
   line-height: 20px;
@@ -291,6 +293,15 @@ html.dragging-handle iframe {
 .source-sizer {
   position: relative;
   min-width: max-content;
+}
+/* The lines in view. They are placed at their distance from the top of the
+   file, and take no room of their own: the height of `.source-sizer` alone
+   decides how far the view scrolls. */
+.source-rows {
+  position: absolute;
+  left: 0;
+  min-width: 100%;
+  width: max-content;
 }
 .source-line {
   display: flex;
@@ -346,53 +357,65 @@ html.dragging-handle iframe {
   text-transform: none;
   letter-spacing: 0;
 }
-/* Code is coloured with the palette only: structure in ink, text in cyan,
-   values in amber. */
-.hljs-comment,
-.hljs-quote,
-.hljs-meta {
-  color: var(--shell-tick);
+/* The colours of code in the source view, one for each kind of code that
+   lib/highlight.ts tells apart. Numbers are amber and function names are cyan,
+   as in the app's palette. Keywords, types, strings, parameters and compiler
+   lines have a colour of their own that is used nowhere else, because code
+   needs more distinctions than the palette has. The first block is the dark
+   theme and the second the light theme, where each colour is darker so that
+   it reads on the light ground. */
+:root {
+  --code-comment: color-mix(in srgb, var(--second) 52%, var(--ground));
+  --code-keyword: #b89cf0;
+  --code-operator: color-mix(in srgb, var(--second) 62%, var(--ground));
+  --code-string: #9fcf7a;
+  --code-number: var(--main);
+  --code-function: #6cc4dc;
+  --code-type: #6fd3c0;
+  --code-param: #e3b98a;
+  --code-member: var(--second);
+  --code-meta: #e591a0;
 }
-.hljs-keyword,
-.hljs-selector-tag,
-.hljs-doctag,
-.hljs-section {
-  color: var(--second);
-  font-weight: 700;
+:root[data-theme='light'] {
+  --code-comment: color-mix(in srgb, var(--second) 64%, var(--ground));
+  --code-operator: color-mix(in srgb, var(--second) 72%, var(--ground));
+  --code-keyword: #7446c4;
+  --code-string: #3d7a26;
+  --code-function: #0e7490;
+  --code-type: #0b7d6c;
+  --code-param: #9a5a1a;
+  --code-meta: #b83a58;
 }
-.hljs-string,
-.hljs-regexp,
-.hljs-symbol,
-.hljs-char {
-  color: var(--accent);
+.tk-comment {
+  color: var(--code-comment);
+  font-style: italic;
 }
-.hljs-number,
-.hljs-literal,
-.hljs-bullet,
-.hljs-link {
-  color: var(--main);
+.tk-keyword {
+  color: var(--code-keyword);
 }
-.hljs-title,
-.hljs-name,
-.hljs-attr,
-.hljs-attribute,
-.hljs-selector-id,
-.hljs-selector-class {
-  color: var(--second);
+.tk-operator {
+  color: var(--code-operator);
 }
-.hljs-type,
-.hljs-built_in,
-.hljs-class,
-.hljs-params,
-.hljs-variable,
-.hljs-template-variable {
-  color: var(--ink);
+.tk-string {
+  color: var(--code-string);
 }
-.hljs-addition {
-  color: var(--accent);
+.tk-number {
+  color: var(--code-number);
 }
-.hljs-deletion {
-  color: var(--main);
+.tk-function {
+  color: var(--code-function);
+}
+.tk-type {
+  color: var(--code-type);
+}
+.tk-param {
+  color: var(--code-param);
+}
+.tk-member {
+  color: var(--code-member);
+}
+.tk-meta {
+  color: var(--code-meta);
 }
 
 /* ---------- dialogs ---------- */

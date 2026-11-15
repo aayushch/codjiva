@@ -90,6 +90,8 @@ const LANGS: Record<string, [string, string]> = {
   py: ['Python', 'python'],
   ts: ['TypeScript', 'typescript'],
   md: ['Markdown', 'markdown'],
+  h: ['C++', 'cpp'],
+  cpp: ['C++', 'cpp'],
   mod: ['Go module', ''],
 };
 const langOf = (name: string): [string | null, string] => {

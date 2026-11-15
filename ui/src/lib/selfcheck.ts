@@ -35,6 +35,59 @@ async function until<T>(
 const text = (selector: string) =>
   document.querySelector(selector)?.textContent?.trim() ?? '';
 
+// Checks how the source view on screen scrolls. `prefix` starts the names of
+// the checks, to tell apart the places the tour runs them from.
+//
+// The source view must scroll by itself. The window as a whole must not
+// scroll, and the bar under the source must stay in the window. When the view
+// is scrolled to its end, the last line of the file must be at its bottom.
+async function sourceScrollChecks(
+  prefix: string,
+  record: (name: string, ok: boolean, detail?: string) => void,
+) {
+  const source = document.querySelector('.source') as HTMLElement;
+  source.scrollTop = source.scrollHeight;
+  await sleep(300);
+  const numbers = source.querySelectorAll('.source-num');
+  const lastLine = source.querySelector('.source-line:last-child');
+  const page = document.scrollingElement!;
+  const bar = document.querySelector('.source-bar')!;
+  const measured = {
+    lines: app.fileInfo?.lines ?? 0,
+    lastNumber: Number(numbers[numbers.length - 1]?.textContent),
+    gapAfterLastLine: Math.round(
+      source.getBoundingClientRect().bottom -
+        (lastLine?.getBoundingClientRect().bottom ?? 0),
+    ),
+    sourceHeight: source.clientHeight,
+    contentHeight: source.scrollHeight,
+    pageHeight: page.scrollHeight,
+    pageScrolled: Math.round(page.scrollTop),
+    windowHeight: window.innerHeight,
+    barBottom: Math.round(bar.getBoundingClientRect().bottom),
+  };
+  record(
+    prefix +
+      'the source scrolls inside its own view and the window does not scroll',
+    measured.pageHeight <= measured.windowHeight &&
+      measured.pageScrolled === 0 &&
+      measured.barBottom <= measured.windowHeight &&
+      measured.sourceHeight < measured.windowHeight,
+    JSON.stringify(measured),
+  );
+  // A file shorter than the view ends above its bottom, so the last line is
+  // only checked for a file that fills the view.
+  if (measured.contentHeight > measured.sourceHeight)
+    record(
+      prefix +
+        'scrolled to its end, the source view ends with the last line of the file',
+      measured.lastNumber === measured.lines &&
+        measured.gapAfterLastLine >= 0 &&
+        measured.gapAfterLastLine < 20,
+      JSON.stringify(measured),
+    );
+}
+
 // Runs one Visualise job on `file` and checks what the app shows for it: the
 // job's steps, the result of its checks, the visual in its frame and the
 // inspector beside it.
@@ -591,6 +644,8 @@ async function runSelfCheck(config: SelfCheckConfig): Promise<void> {
         );
         await sleep(300);
         await shot('03-source');
+        await sourceScrollChecks('', record);
+        await shot('03b-source-end');
       } else {
         record('a source file was found to select', false);
       }
@@ -622,6 +677,23 @@ async function runSelfCheck(config: SelfCheckConfig): Promise<void> {
         record,
         shot,
       );
+    // With a film and its inspector on screen and the job panel open, a
+    // click on a file in the inspector opens that file's source.
+    const fileLink = document.querySelector<HTMLElement>(
+      '.inspector button.ref',
+    );
+    if (config.animate && fileLink) {
+      app.dockOpen = true;
+      await tick();
+      fileLink.click();
+      const opened = await until(() => document.querySelector('.source-line'));
+      record('film: a file named in the inspector opens as source', !!opened);
+      if (opened) {
+        await sleep(300);
+        await sourceScrollChecks('film: ', record);
+        await shot('24-source-from-film');
+      }
+    }
 
     // Counts the frames this page is given in one second. A window hidden
     // behind others is given none, and then a film cannot play; the count tells

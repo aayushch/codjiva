@@ -5,7 +5,13 @@
 
   // The source viewer is read-only. Lines are LINE_HEIGHT pixels tall and only
   // the lines in view are in the page, so a file of many thousand lines scrolls
-  // smoothly.
+  // smoothly. OVERSCAN more lines are kept in the page above and below the
+  // view, so that a fast scroll does not show an empty area.
+  //
+  // `scrollTop` and `height` are copies of the view's scroll position and
+  // height. `measure` reads them from the view. It runs when the view scrolls,
+  // when its size changes and when a file has been loaded, so the lines in the
+  // page always follow what the view shows.
   const LINE_HEIGHT = 20;
   const OVERSCAN = 30;
 
@@ -20,8 +26,13 @@
   let scrollTop = $state(0);
   let height = $state(600);
 
+  // The first line in the page is never past the end of the file, whatever
+  // `scrollTop` says.
   const first = $derived(
-    Math.max(0, Math.floor(scrollTop / LINE_HEIGHT) - OVERSCAN),
+    Math.min(
+      Math.max(0, Math.floor(scrollTop / LINE_HEIGHT) - OVERSCAN),
+      Math.max(0, lines.length - 1),
+    ),
   );
   const last = $derived(
     Math.min(
@@ -31,12 +42,20 @@
   );
   const gutter = $derived(String(lines.length).length);
 
-  // Reads and colours the file whenever a different file is shown.
+  function measure() {
+    if (!viewport) return;
+    scrollTop = viewport.scrollTop;
+    height = viewport.clientHeight;
+  }
+
+  // Reads and colours the file whenever a different file is shown. The new
+  // file starts at its top.
   $effect(() => {
     const path = relPath;
     let cancelled = false;
     loading = true;
     problem = null;
+    scrollTop = 0;
     api
       .fileRead(path)
       .then(async (content) => {
@@ -57,30 +76,26 @@
     };
   });
 
-  // Scrolls so the referenced line sits a third of the way down the view.
+  // When a file has been loaded, scrolls so the referenced line sits a third
+  // of the way down the view, or to the top when no line is referenced.
   $effect(() => {
-    if (line == null || loading || !viewport) return;
-    viewport.scrollTop = Math.max(
-      0,
-      (line - 1) * LINE_HEIGHT - viewport.clientHeight / 3,
-    );
+    if (loading || !viewport) return;
+    viewport.scrollTop =
+      line == null
+        ? 0
+        : Math.max(0, (line - 1) * LINE_HEIGHT - viewport.clientHeight / 3);
+    measure();
   });
 
   $effect(() => {
     if (!viewport) return;
-    const observer = new ResizeObserver(() => {
-      height = viewport!.clientHeight;
-    });
+    const observer = new ResizeObserver(measure);
     observer.observe(viewport);
     return () => observer.disconnect();
   });
 </script>
 
-<div
-  class="source"
-  bind:this={viewport}
-  onscroll={() => (scrollTop = viewport!.scrollTop)}
->
+<div class="source" bind:this={viewport} onscroll={measure}>
   {#if problem}
     <div class="source-note">{problem}</div>
   {:else if loading}
@@ -90,7 +105,7 @@
       class="source-sizer"
       style:height="{lines.length * LINE_HEIGHT + (truncated ? 40 : 0)}px"
     >
-      <div style:transform="translateY({first * LINE_HEIGHT}px)">
+      <div class="source-rows" style:top="{first * LINE_HEIGHT}px">
         {#each lines.slice(first, last) as html, i (first + i)}
           {@const number = first + i + 1}
           <div class="source-line" class:ref={number === line}>

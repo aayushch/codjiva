@@ -1506,7 +1506,7 @@ await page
   .waitFor({ timeout: 5000 })
   .catch(() => {});
 check(
-  (await page.locator('.source .hljs-keyword').count()) > 3,
+  (await page.locator('.source .tk-keyword').count()) > 3,
   'the source is coloured',
 );
 await shot('04-source');
@@ -1974,6 +1974,110 @@ await shot('08-visual');
 await page.getByRole('button', { name: 'Close example' }).click();
 await page.getByRole('button', { name: 'Open folder…' }).waitFor();
 check(true, 'closing the example returns to the welcome screen');
+
+// ---- the colours of code, on a C++ header that is added to the workspace
+await page.evaluate(() =>
+  window.__mockSetFile(
+    'internal/billing/index.h',
+    [
+      '#ifndef BILLING_INDEX_H',
+      '#define BILLING_INDEX_H',
+      '#include <map>',
+      '',
+      'namespace billing {',
+      '',
+      '/// Finds the ledger entries of one customer.',
+      'template <typename Id, typename Less = std::less<Id>>',
+      'class Index {',
+      'public:',
+      '    explicit Index(size_t limit) : limit_(limit) {}',
+      '    Index(const Index&) = delete;',
+      '',
+      '    bool add(const Id& id, int cents) {',
+      '        if (cents_.size() >= limit_) return false;',
+      '        cents_[id] += cents * 100;',
+      '        return true;',
+      '    }',
+      '',
+      '    const char* name() const { return "index"; }',
+      '',
+      'private:',
+      '    const size_t limit_;',
+      '    std::map<Id, int, Less> cents_;',
+      '};',
+      '',
+      '} // namespace billing',
+      '',
+      '#endif // BILLING_INDEX_H',
+      '',
+    ].join('\n'),
+  ),
+);
+await page.locator('.recent', { hasText: 'shop' }).click();
+await row('internal').waitFor();
+await page.keyboard.press(`${mod}+p`);
+await page.getByPlaceholder('Go to file…').fill('index.h');
+await page.locator('.quick-row').first().waitFor();
+await page.keyboard.press('Enter');
+await page.locator('.tab', { hasText: 'Source' }).click();
+await page.locator('.source .tk-keyword').first().waitFor();
+// The text of every piece of each kind in the file.
+const coloured = await page.evaluate(() =>
+  Object.fromEntries(
+    ['meta', 'comment', 'keyword', 'type', 'function', 'string', 'number'].map(
+      (kind) => [
+        kind,
+        Array.from(document.querySelectorAll(`.source .tk-${kind}`)).map((el) =>
+          el.textContent.trim(),
+        ),
+      ],
+    ),
+  ),
+);
+check(
+  coloured.keyword.includes('class') &&
+    coloured.keyword.includes('const') &&
+    coloured.type.includes('Index') &&
+    coloured.function.includes('add') &&
+    coloured.string.includes('"index"') &&
+    coloured.number.includes('100') &&
+    coloured.comment.some((text) => text.startsWith('///')) &&
+    coloured.meta.length > 0,
+  'C++ is coloured by kind: keywords, types, function names, strings, numbers, comments and compiler lines',
+  JSON.stringify(coloured),
+);
+const kindColours = await page.evaluate(() =>
+  ['keyword', 'type', 'function', 'string', 'number', 'comment'].map(
+    (kind) =>
+      getComputedStyle(document.querySelector(`.source .tk-${kind}`)).color,
+  ),
+);
+check(
+  new Set(kindColours).size === kindColours.length,
+  'each kind of code has a colour of its own',
+  kindColours.join(' | '),
+);
+await shot('10-source-cpp');
+// In the light theme each kind has a darker colour, which reads on the light
+// ground. The theme is switched on the page itself for this look.
+const themeBefore = await page.evaluate(() => {
+  const before = document.documentElement.getAttribute('data-theme');
+  document.documentElement.setAttribute('data-theme', 'light');
+  return before;
+});
+const lightKeyword = await page.evaluate(
+  () => getComputedStyle(document.querySelector('.source .tk-keyword')).color,
+);
+check(
+  lightKeyword === 'rgb(116, 70, 196)',
+  'in the light theme the code colours are the darker set',
+  lightKeyword,
+);
+await shot('10b-source-cpp-light');
+await page.evaluate((before) => {
+  if (before) document.documentElement.setAttribute('data-theme', before);
+  else document.documentElement.removeAttribute('data-theme');
+}, themeBefore);
 
 check(errors.length === 0, 'the page logged no errors', errors.join(' | '));
 await browser.close();

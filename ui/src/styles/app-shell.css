@@ -9,6 +9,7 @@ html,
 body {
   margin: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--shell-window);
   color: var(--second);
   font: 13px/1.45 var(--font);
@@ -35,11 +36,20 @@ input[type='range'] {
 }
 
 /* ---------- layout ---------- */
+/* The app fills the window and never scrolls as a whole. It is fixed to the
+   four edges of the window, so it keeps its place and its size whatever
+   happens to the page around it, and what does not fit is cut off.
+
+   The third row holds the editor area. It takes the height the other rows
+   leave, and `minmax(0, 1fr)` keeps it at that height when its content is
+   taller, as a long source file is. The content then scrolls inside the row. */
 .app {
   display: grid;
-  height: 100vh;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
   grid-template-columns: var(--sidebar-w, 280px) 1fr var(--inspector-w, 0px);
-  grid-template-rows: 36px var(--bar-h, 0px) 1fr var(--dock-h, 0px);
+  grid-template-rows: 36px var(--bar-h, 0px) minmax(0, 1fr) var(--dock-h, 0px);
   grid-template-areas: 'title title title' 'side bar bar' 'side main insp' 'side dock dock';
 }
 .titlebar {
@@ -209,6 +219,8 @@ input[type='range'] {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--ground);
 }
 .toolbar {

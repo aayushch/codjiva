@@ -21,6 +21,14 @@ export default defineConfig({
       $resources: fileURLToPath(new URL('../resources', import.meta.url)),
     },
   },
-  build: { target: 'es2022', outDir: 'dist', emptyOutDir: true },
+  build: {
+    target: 'es2022',
+    outDir: 'dist',
+    emptyOutDir: true,
+    // The grammar the source view uses for C++ is one file of about 800 kB.
+    // It is loaded only when a C++ file is shown, so its size is accepted
+    // and Vite does not warn about it.
+    chunkSizeWarningLimit: 900,
+  },
   test: { environment: 'node', include: ['src/**/*.test.ts'] },
 });

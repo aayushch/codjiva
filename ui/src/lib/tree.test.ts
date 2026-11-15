@@ -7,7 +7,6 @@ import {
   formatTime,
   parentOf,
 } from './tree';
-import { splitHighlightedLines } from './highlight';
 
 const dir = (relPath: string): TreeEntry => ({
   name: relPath.split('/').pop()!,
@@ -78,21 +77,5 @@ describe('path helpers', () => {
       '1:15',
       '4:30',
     ]);
-  });
-});
-
-describe('splitHighlightedLines', () => {
-  it('keeps a token that spans lines valid on every line', () => {
-    const html =
-      'a <span class="c">/* one\ntwo */</span> b\n<span class="k">x</span>';
-    expect(splitHighlightedLines(html)).toEqual([
-      'a <span class="c">/* one</span>',
-      '<span class="c">two */</span> b',
-      '<span class="k">x</span>',
-    ]);
-  });
-
-  it('returns one line for text without line breaks', () => {
-    expect(splitHighlightedLines('plain')).toEqual(['plain']);
   });
 });
