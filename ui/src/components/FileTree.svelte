@@ -108,7 +108,7 @@
           <Icon name={row.entry.kind === 'dir' ? 'dir' : 'file'} />
           <span class="name">{row.entry.name}</span>
           {#if row.entry.kind === 'dir'}
-            <button class="tb-btn folder-viz" title="Visualise this folder as a whole" aria-label="Visualise the folder {row.entry.name}"
+            <button class="tb-btn folder-viz tip-end" title="" data-tip="Visualise this folder as a whole" aria-label="Visualise the folder {row.entry.name}"
               onclick={(e) => { e.stopPropagation(); cursor = index; app.selectFolder(row.entry.relPath); }}><Icon name="viz" size={13} /></button>
           {/if}
           {#if badges.has(row.entry.relPath)}

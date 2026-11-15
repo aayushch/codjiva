@@ -72,6 +72,7 @@ const DEFAULT_SETTINGS: Settings = {
   agent: null, models: {}, effort: 'auto', apiBaseUrls: {}, agentPaths: {}, maxFixIterations: 3, filmLength: 'standard',
   soundOnByDefault: false, basePlaybackSpeed: 0.6, externalEditorCommand: 'code -g {file}:{line}', maxCompanionFiles: 12,
   companionIgnore: ['vendor/', 'third_party/', 'node_modules/'], theme: 'system', parallelJobs: 1, maxBudgetUsd: null,
+  layout: { sidebarOpen: true, sidebarWidth: 280, inspectorOpen: true, inspectorWidth: 320, dockHeight: null, libraryOpen: true, libraryHeight: null },
 };
 
 // A small stand-in for the desktop app's pattern matching. It knows the three forms the
@@ -480,4 +481,8 @@ if (typeof window !== 'undefined') {
     const dir = relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '';
     fsListeners.forEach((listener) => listener({ dirs: [dir], paths: [relPath] }));
   };
+  // Lets the end-to-end test simulate that a file was deleted, and read the settings that
+  // were last saved.
+  (window as any).__mockDeleteFile = (relPath: string) => { delete FILES[relPath]; };
+  (window as any).__mockSettings = () => settings;
 }

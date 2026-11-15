@@ -257,6 +257,9 @@ html.dragging-handle iframe { pointer-events:none }
   color:var(--second); font:400 12px/1.4 var(--font); letter-spacing:0; text-transform:none; white-space:nowrap; pointer-events:none }
 [data-tip]:hover::after, [data-tip]:focus-visible::after { display:block }
 [data-tip].tip-end::after { left:auto; right:0; transform:none }
+/* The class `tip-up` puts the label above its control, for a control near the bottom of the
+   window. */
+[data-tip].tip-up::after { top:auto; bottom:calc(100% + 6px) }
 
 /* A folder that has a file with a visual or a film somewhere inside it. The tint is on every
    folder above such a file, so the way to it can be followed through closed folders. */

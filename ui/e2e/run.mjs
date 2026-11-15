@@ -419,6 +419,46 @@ check(await forwardButton.isDisabled(), 'a new place replaces the ones Forward l
 await backButton.click();
 await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
 
+// ---- a film continues where it was left when its tab is opened again
+{
+  const filmWasAt = await seconds();
+  await page.locator('.tab', { hasText: 'Source' }).click();
+  await page.locator('.source-line').first().waitFor();
+  await page.locator('.tab', { hasText: 'Film' }).click();
+  await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
+  await page.waitForFunction(() => !/^0:0[0-2] /.test(document.querySelector('.player .time').textContent.trim()), null, { timeout: 5000 }).catch(() => {});
+  check(filmWasAt > 30 && Math.abs(await seconds() - filmWasAt) <= 3, 'a film that is opened again by its tab continues where it was left', `${filmWasAt} -> ${await seconds()}`);
+
+  // The film's buttons name themselves at once, above the bar.
+  const play = page.locator('.player').getByRole('button', { name: /^(Play|Pause)$/ });
+  await play.hover();
+  check(await play.evaluate((el) => { const tip = getComputedStyle(el, '::after'); return tip.display === 'block' && /\(Space\)/.test(tip.content) && parseFloat(tip.bottom) > 0; }), 'the Play button has a label that appears at once, above it');
+
+  // A click inside the film does not take the keyboard away from the app.
+  const stage = await page.locator('.canvas iframe').boundingBox();
+  await page.mouse.click(stage.x + stage.width / 2, stage.y + stage.height / 2);
+  await page.waitForTimeout(200);
+  check(await page.evaluate(() => document.activeElement?.tagName !== 'IFRAME'), 'a click inside the film leaves the keyboard focus with the app');
+  await page.keyboard.press('Alt+ArrowLeft');
+  await page.locator('.tab.on', { hasText: 'Source' }).waitFor({ timeout: 5000 }).catch(() => {});
+  check(await page.locator('.tab.on', { hasText: 'Source' }).count() === 1, 'the key for Back works after a click inside the film');
+  await page.keyboard.press('Alt+ArrowRight');
+  await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
+  if (await page.locator('.player').getByRole('button', { name: 'Pause' }).count()) await page.locator('.player').getByRole('button', { name: 'Pause' }).click();
+
+  // Back passes over a file that was deleted after the user looked at it.
+  await row('README.md').click();
+  await page.locator('.toolbar .crumb', { hasText: 'README.md' }).waitFor();
+  await row('go.mod').click();
+  await page.locator('.toolbar .crumb', { hasText: 'go.mod' }).waitFor();
+  await page.evaluate(() => window.__mockDeleteFile('README.md'));
+  await backButton.click();
+  await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
+  check(/handler\.go/.test(await page.locator('.toolbar .crumb').textContent()) && await page.locator('.toast', { hasText: 'README.md is no longer there.' }).count() === 1,
+    'Back passes over a deleted file, says so, and shows the place before it', await page.locator('.toolbar .crumb').textContent());
+  check(await forwardButton.isEnabled(), 'Forward still leads to the place after the deleted file');
+}
+
 // ---- feedback on the film: a pinned moment, a pointed-at element, then a new version
 const filmScrub = await page.locator('.player .scrub').boundingBox();
 await page.keyboard.down('Alt');
@@ -428,11 +468,11 @@ await page.locator('.feedback .pill', { hasText: 'pinned at 0:41' }).waitFor();
 check(await page.locator('.player .scrub .pin').count() === 1, 'holding Alt while clicking the scrubber pins that moment for feedback');
 await page.getByRole('button', { name: 'Point at…' }).click();
 await page.locator('.feedback .picking').waitFor();
-const filmFrame = page.frameLocator('iframe[title="How an order moves through the orders Handler"]');
+const filmFrame = page.frameLocator('iframe[aria-label="How an order moves through the orders Handler"]');
 await filmFrame.locator('body.picking').waitFor();
 // The camera is zoomed in, so some machines are outside the frame. One whose centre is inside
 // the frame is clicked.
-const frameBox = await page.locator('iframe[title="How an order moves through the orders Handler"]').boundingBox();
+const frameBox = await page.locator('iframe[aria-label="How an order moves through the orders Handler"]').boundingBox();
 const machines = filmFrame.locator('.scene-box:visible [data-cj="machine"]');
 let target = null;
 for (let i = 0; i < await machines.count() && !target; i++) {
@@ -544,7 +584,7 @@ await page.locator('.dock .log', { hasText: 'Done. The pipeline passed every che
 await page.locator('.inspector', { hasText: 'This pipeline' }).waitFor();
 check((await page.locator('.toolbar .crumb').textContent()).replace(/\s+/g, ' ').trim() === 'Pipeline / Orders: from the handler to the store', 'the pipeline opens by itself, under its own name');
 check(await page.locator('.inspector .part-row').count() === 2 && /handler.*→.*store/.test((await page.locator('.inspector .join').first().textContent()).replace(/\s+/g, ' ')), 'the inspector lists the parts and the joins of the pipeline');
-const pipelineFrame = page.frameLocator('iframe[title="Orders: from the handler to the store"]');
+const pipelineFrame = page.frameLocator('iframe[aria-label="Orders: from the handler to the store"]');
 await pipelineFrame.locator('.cj-bay').first().waitFor();
 check(await pipelineFrame.locator('.cj-bay').count() === 2, 'the pipeline shows each part in its own bay');
 check(/pipeline · v1/.test((await page.locator('.lib-item.on').textContent()).replace(/\s+/g, ' ')) && await page.locator('.lib-tick:checked').count() === 0, 'the pipeline is in the library and the ticks are cleared');
@@ -620,6 +660,11 @@ check(Math.abs(after - before - 120) < 3, 'dragging the sidebar edge resizes it'
   check(await page.locator('.sidebar').count() === 0, 'the key for the sidebar hides it');
   await page.keyboard.press(`${mod}+Digit0`);
   check(await page.locator('.sidebar .row').count() > 0, 'the same key shows it again, with the file tree as it was');
+  // The layout is written to the settings a moment after the last change.
+  await page.waitForTimeout(800);
+  const saved = await page.evaluate(() => window.__mockSettings().layout);
+  check(saved.sidebarOpen === true && saved.sidebarWidth === Math.round((await page.locator('.sidebar').boundingBox()).width) && saved.inspectorWidth === 320,
+    'the sizes of the panels are saved with the settings', JSON.stringify(saved));
 }
 
 // ---- settings

@@ -57,10 +57,13 @@
       chapters = message.chapters;
       onready(chapters);
       if (app.settings && !app.settings.soundOnByDefault) frame?.send({ cj: 'mute', on: true });
-      // Back and Forward return to a film at the moment the user left it.
-      if (feedback && app.resumeFilmAt != null) {
-        seek(app.resumeFilmAt);
+      // A film that was on screen before continues where the user left it. Back and Forward
+      // name that moment in `app.resumeFilmAt`. Without it, the time this film last reported is
+      // used. A film that had reached its end starts again from the beginning.
+      if (feedback) {
+        const resumeAt = app.resumeFilmAt ?? app.filmTimes.get(src) ?? null;
         app.resumeFilmAt = null;
+        if (resumeAt != null && resumeAt > 0 && resumeAt < duration - 1) seek(resumeAt);
       }
     } else if (message.cj === 'time') {
       if (!dragging) t = message.t;
@@ -69,6 +72,7 @@
       playing = message.playing;
       muted = message.muted;
       rate = message.rate;
+      if (feedback && ready) app.filmTimes.set(src, message.t);
       if (feedback) app.filmMoment = { t: message.t, chapter: message.chapter, chapterTitle: chapters[message.chapter]?.title ?? '', scene: message.scene ?? '', sceneT: message.sceneT ?? 0 };
     } else if (message.cj === 'picked' && feedback) {
       app.picked = message.selector || message.part ? { ...message, cj: undefined } : null;
@@ -139,7 +143,7 @@
   {#if problem}<div class="frame-problem">{problem}</div>{/if}
 </div>
 <div class="player" class:waiting={!ready}>
-  <button class="ibtn" aria-label={playing ? 'Pause' : 'Play'} title="Play / pause (Space)" onclick={toggle}><Icon name={playing ? 'pause' : 'play'} size={16} /></button>
+  <button class="ibtn tip-up tip-start" aria-label={playing ? 'Pause' : 'Play'} data-tip="{playing ? 'Pause' : 'Play'} (Space)" onclick={toggle}><Icon name={playing ? 'pause' : 'play'} size={16} /></button>
   <span class="chap">{chapters.length ? `${chapter + 1} / ${chapters.length} · ${chapters[chapter]?.name ?? ''}` : ''}</span>
   <div class="scrub" bind:this={bar} role="slider" tabindex="0" aria-label="Position" aria-valuemin={0} aria-valuemax={Math.round(duration)} aria-valuenow={Math.round(t)}
     title={feedback ? 'Click to seek. Hold Alt and click to pin a moment for your feedback.' : 'Seek'}
@@ -155,6 +159,6 @@
   <select class="select" aria-label="Speed" title="Playback speed" value={String(rate)} onchange={(e) => setSpeed(Number(e.currentTarget.value))}>
     {#each SPEEDS as speed}<option value={String(speed)} disabled={speed > fastest}>{speed}×</option>{/each}
   </select>
-  <button class="ibtn" aria-label={muted ? 'Turn sound on' : 'Mute'} title="Sound (M)" onclick={() => frame?.send({ cj: 'mute', on: !muted })}><Icon name={muted ? 'sound-off' : 'sound-on'} size={16} /></button>
-  <button class="ibtn" aria-label="Full screen" title="Full screen (F)" onclick={() => app.setTheater(!app.theater)}><Icon name="full" size={16} /></button>
+  <button class="ibtn tip-up" aria-label={muted ? 'Turn sound on' : 'Mute'} data-tip="{muted ? 'Turn sound on' : 'Mute'} (M)" onclick={() => frame?.send({ cj: 'mute', on: !muted })}><Icon name={muted ? 'sound-off' : 'sound-on'} size={16} /></button>
+  <button class="ibtn tip-up tip-end" aria-label="Full screen" data-tip="{app.theater ? 'Leave full screen' : 'Full screen'} (F)" onclick={() => app.setTheater(!app.theater)}><Icon name="full" size={16} /></button>
 </div>

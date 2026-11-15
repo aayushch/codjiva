@@ -16,6 +16,14 @@
   // class to keep the area behind the frame dark when the rest of the window is light.
   //
   // With `followTheme` set to false the page is never asked, and it stays dark.
+  //
+  // Keyboard. A click inside the frame gives the keyboard focus to the page inside, and keys
+  // pressed after that would not reach this window, so the app's shortcuts would stop working.
+  // The page needs no keys of its own here, because FilmPlayer handles the film's keys in this
+  // window. So whenever the frame receives the focus, the focus is taken away from it again.
+  //
+  // The frame is named with `aria-label` and not with `title`, because a browser shows a title
+  // as a tooltip over the whole frame.
   let { src, title, onmessage, followTheme = true }: { src: string; title: string; onmessage: (message: any) => void; followTheme?: boolean } = $props();
 
   let frame: HTMLIFrameElement | undefined = $state();
@@ -45,6 +53,19 @@
     if (followTheme) send({ cj: 'theme', mode });
   });
 
+  // This window gets a `blur` event when the focus moves into the frame. Chromium takes the
+  // focus back when the frame is blurred, and WebKit when this window is focused, so both are
+  // done.
+  $effect(() => {
+    const takeFocusBack = () => setTimeout(() => {
+      if (!frame || document.activeElement !== frame) return;
+      frame.blur();
+      window.focus();
+    }, 0);
+    window.addEventListener('blur', takeFocusBack);
+    return () => window.removeEventListener('blur', takeFocusBack);
+  });
+
   $effect(() => {
     const handler = (event: MessageEvent) => {
       // Only messages from this frame's own page are accepted.
@@ -67,4 +88,5 @@
   });
 </script>
 
-<iframe bind:this={frame} {src} {title} class:dark-stage={stageTheme === 'dark'} sandbox="allow-scripts" {onload}></iframe>
+<!-- svelte-ignore a11y_missing_attribute -->
+<iframe bind:this={frame} {src} aria-label={title} class:dark-stage={stageTheme === 'dark'} sandbox="allow-scripts" {onload}></iframe>

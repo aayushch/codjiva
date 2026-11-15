@@ -102,6 +102,29 @@ fn effort_setting<'de, D: serde::Deserializer<'de>>(deserializer: D) -> std::res
     Ok(Option::<EffortSetting>::deserialize(deserializer)?.unwrap_or(EffortSetting::Agent))
 }
 
+/// The panels around the editor area as the user left them: which are open, and their sizes in
+/// pixels. The window is laid out from this when the app starts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Layout {
+    pub sidebar_open: bool,
+    pub sidebar_width: u32,
+    pub inspector_open: bool,
+    pub inspector_width: u32,
+    /// The height the user dragged the job panel to. `None` means the height the app chooses by
+    /// the kind of job.
+    pub dock_height: Option<u32>,
+    pub library_open: bool,
+    /// The height the user dragged the library to. `None` means as tall as its list needs.
+    pub library_height: Option<u32>,
+}
+
+impl Default for Layout {
+    fn default() -> Self {
+        Layout { sidebar_open: true, sidebar_width: 280, inspector_open: true, inspector_width: 320, dock_height: None, library_open: true, library_height: None }
+    }
+}
+
 /// Every setting has a default, and a settings file may leave any of them out.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -139,6 +162,7 @@ pub struct Settings {
     pub parallel_jobs: u32,
     /// The most a single job may spend, in US dollars, for agents that can enforce a budget.
     pub max_budget_usd: Option<f64>,
+    pub layout: Layout,
 }
 
 impl Default for Settings {
@@ -160,6 +184,7 @@ impl Default for Settings {
             theme: Theme::System,
             parallel_jobs: 1,
             max_budget_usd: None,
+            layout: Layout::default(),
         }
     }
 }
@@ -212,6 +237,7 @@ mod tests {
         assert_eq!(settings.effort, EffortSetting::Auto);
         assert_eq!(settings.theme, Theme::System);
         assert!(settings.companion_ignore.contains(&"vendor/".to_string()));
+        assert_eq!(settings.layout, Layout::default());
         std::fs::write(dir.path().join("settings.json"), r#"{"effort": null}"#).unwrap();
         assert_eq!(Settings::load(dir.path()).unwrap().effort, EffortSetting::Agent);
         std::fs::write(dir.path().join("settings.json"), r#"{"effort": "high"}"#).unwrap();

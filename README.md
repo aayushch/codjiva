@@ -55,6 +55,7 @@ The sidebar on the left, the inspector on the right and the job panel at the bot
 - Drag that edge all the way to the side of the window to close the panel.
 - A closed panel leaves a short grip on the edge of the window. Drag the grip into the window, or click it,
   to show the panel again.
+- The sizes of the panels, and which of them are open, are remembered for the next time the app starts.
 - The title bar has a button for each panel. The keys are ⌘0 for the sidebar, ⌥⌘0 for the inspector and ⇧⌘Y
   for the job panel on macOS, and the same with Ctrl in place of ⌘ elsewhere.
 
@@ -65,8 +66,9 @@ make the artifact again, export it as one HTML file, open it in the browser and 
 what it does when the pointer is over it.
 
 **Back** and **Forward**, at the left end of the toolbar, move through the files, tabs and pipelines you have
-looked at (⌘[ and ⌘] on macOS, Alt+← and Alt+→ elsewhere). Going back to a film continues it from the moment
-you left it, for example after you followed a link to a line of code.
+looked at (⌘[ and ⌘] on macOS, Alt+← and Alt+→ elsewhere). A film that you return to continues
+from the moment you left it, for example after you followed a link to a line of code or looked at the Source
+tab.
 
 In the explorer, a file that has a visual or a film has a dot, and every folder above it is tinted, so a closed
 folder shows that it leads to one. The library under the explorer lists everything that was made. Click its

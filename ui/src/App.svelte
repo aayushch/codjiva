@@ -84,6 +84,14 @@
     app.inspectorOpen = true;
     app.inspectorWidth = Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, wanted));
   }
+  // Saves the panels' sizes and open states half a second after the last change, so that a
+  // drag writes the settings file once and not on every pixel.
+  $effect(() => {
+    void [app.sidebarOpen, app.sidebarWidth, app.inspectorOpen, app.inspectorWidth, app.dockHeight, app.libraryOpen, app.libraryHeight];
+    const timer = setTimeout(() => app.saveLayout(), 500);
+    return () => clearTimeout(timer);
+  });
+
   // The pointer was released within this many pixels of where it went down, which makes the
   // press a click and not a drag.
   const CLICK_SLACK = 3;

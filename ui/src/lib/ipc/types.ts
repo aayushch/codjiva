@@ -68,6 +68,19 @@ export type Settings = {
   theme: 'system' | 'light' | 'dark';
   parallelJobs: number;
   maxBudgetUsd: number | null;
+  layout: Layout;
+};
+
+// The panels around the editor area as the user left them: which are open, and their sizes in
+// pixels. A height of null means the height the app chooses.
+export type Layout = {
+  sidebarOpen: boolean;
+  sidebarWidth: number;
+  inspectorOpen: boolean;
+  inspectorWidth: number;
+  dockHeight: number | null;
+  libraryOpen: boolean;
+  libraryHeight: number | null;
 };
 
 // An agent that could run jobs, as found on this machine.

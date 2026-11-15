@@ -41,8 +41,8 @@
   <ArtifactFrame bind:this={frame} {src} {title} {onmessage} />
   {#if problem}<div class="frame-problem">{problem}</div>{/if}
   <div class="zoomctl">
-    <button class="btn" aria-label="Zoom out" title="Zoom out" onclick={() => send({ cj: 'zoom', factor: 0.8 })}>−</button>
-    <button class="btn" aria-label="Fit" title="Fit" onclick={() => send({ cj: 'fit' })}>⤢</button>
-    <button class="btn" aria-label="Zoom in" title="Zoom in" onclick={() => send({ cj: 'zoom', factor: 1.25 })}>+</button>
+    <button class="btn tip-up" aria-label="Zoom out" data-tip="Zoom out" onclick={() => send({ cj: 'zoom', factor: 0.8 })}>−</button>
+    <button class="btn tip-up" aria-label="Fit" data-tip="Fit the whole visual" onclick={() => send({ cj: 'fit' })}>⤢</button>
+    <button class="btn tip-up tip-end" aria-label="Zoom in" data-tip="Zoom in" onclick={() => send({ cj: 'zoom', factor: 1.25 })}>+</button>
   </div>
 </div>

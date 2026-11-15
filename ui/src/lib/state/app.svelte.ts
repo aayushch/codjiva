@@ -1,7 +1,7 @@
 // The interface's state: what is open, what is selected and which panels are showing. One
 // instance, `app`, is shared by every component.
 
-import { api, type AgentInfo, type ApiProvider, type AppError, type AppInfo, type ArtifactDetail, type ArtifactSummary, type Changes, type Feedback, type FileInfo, type FolderInfo, type Join, type JobRequest, type Outline, type PickedElement, type RecentWorkspace, type Settings, type TreeEntry, type ValidateRequest, type WorkspaceInfo } from '$lib/ipc';
+import { api, type AgentInfo, type ApiProvider, type AppError, type AppInfo, type ArtifactDetail, type ArtifactSummary, type Changes, type Feedback, type FileInfo, type FolderInfo, type Join, type JobRequest, type Layout, type Outline, type PickedElement, type RecentWorkspace, type Settings, type TreeEntry, type ValidateRequest, type WorkspaceInfo } from '$lib/ipc';
 import { PIPELINE_PREFIX, showsFilm } from '$lib/artifacts';
 import { newJob, reduceJob, type JobView } from '$lib/jobs';
 import { ancestorsOf, flattenTree, parentOf } from '$lib/tree';
@@ -159,6 +159,10 @@ class AppState {
   // The time, in real seconds, the film player seeks to when its film is ready. Back and
   // Forward set it so that a film continues where the user left it.
   resumeFilmAt = $state<number | null>(null);
+  // The time each film on screen has reached, by the address of its page. A film that is shown
+  // again, for example after a look at the Source tab, continues from this time. A new version
+  // of a film has a new address and starts at the beginning.
+  filmTimes = new Map<string, number>();
   // How many changes of place are under way. A change can be made of others: opening an
   // artifact selects its file and then switches the tab. The place is recorded once, when the
   // outermost change has finished.
@@ -190,6 +194,7 @@ class AppState {
     try {
       this.info = await api.appInfo();
       this.settings = await api.settingsGet();
+      this.applyLayout(this.settings.layout);
       this.recents = await api.workspaceRecent();
       this.stopWatching = await api.onFsChanged((changes) => this.onFsChanged(changes));
       this.stopValidating = await api.onValidateRequest((request) => { this.validateQueue.push(request); });
@@ -267,14 +272,35 @@ class AppState {
     this.placeIndex = this.places.length - 1;
   }
 
-  goBack() { return this.goToPlace(this.placeIndex - 1); }
-  goForward() { return this.goToPlace(this.placeIndex + 1); }
+  goBack(): Promise<void> { return this.goToPlace(this.placeIndex - 1); }
+  goForward(): Promise<void> { return this.goToPlace(this.placeIndex + 1); }
+
+  // Whether the file or pipeline of a place is still there. A folder is not checked.
+  private async placeExists(place: Place) {
+    if (place.selected.startsWith(PIPELINE_PREFIX)) return this.artifacts.some((a) => a.id === place.selected.slice(PIPELINE_PREFIX.length));
+    if (place.selected.endsWith('/')) return true;
+    try {
+      await api.fileInfo(place.selected);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   // Shows the place at `index` of `places` again: its file, folder or pipeline, its tab, the
   // line of the source view, and the moment of its film.
-  private async goToPlace(index: number) {
+  private async goToPlace(index: number): Promise<void> {
     const place = this.places[index];
     if (!place) return;
+    // A file or pipeline that was deleted since the user looked at it is taken out of `places`.
+    // The user is told, and the next place in the same direction is shown.
+    if (!(await this.placeExists(place))) {
+      const back = index < this.placeIndex;
+      this.places = this.places.filter((_, i) => i !== index);
+      if (back) this.placeIndex--;
+      this.notify(`${place.selected.startsWith(PIPELINE_PREFIX) ? 'That pipeline' : place.selected} is no longer there.`);
+      return back ? this.goBack() : this.goForward();
+    }
     this.leavePlace();
     this.placeIndex = index;
     // `moves` is raised without `move`, so that the selections below record no new place.
@@ -609,6 +635,7 @@ class AppState {
       this.dockOpen = false;
       this.places = [];
       this.placeIndex = -1;
+      this.filmTimes.clear();
       await this.loadDir('');
       await this.reloadArtifacts();
       await this.syncWatched();
@@ -826,6 +853,33 @@ class AppState {
       // The panels are hidden either way; a window that cannot go full screen still shows the
       // film as large as the window allows.
     }
+  }
+
+  // Lays the panels out as a settings file has them. Widths outside the limits are brought
+  // back inside them.
+  private applyLayout(layout: Layout | undefined) {
+    if (!layout) return;
+    this.sidebarOpen = layout.sidebarOpen;
+    this.sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, layout.sidebarWidth));
+    this.inspectorOpen = layout.inspectorOpen;
+    this.inspectorWidth = Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, layout.inspectorWidth));
+    this.dockHeight = layout.dockHeight;
+    this.libraryOpen = layout.libraryOpen;
+    this.libraryHeight = layout.libraryHeight;
+  }
+
+  // Writes the panels' sizes and open states to the settings, if they differ from what the
+  // settings hold, so that the window looks the same the next time the app starts.
+  async saveLayout() {
+    if (!this.settings) return;
+    const whole = (size: number | null) => (size == null ? null : Math.round(size));
+    const layout: Layout = {
+      sidebarOpen: this.sidebarOpen, sidebarWidth: Math.round(this.sidebarWidth),
+      inspectorOpen: this.inspectorOpen, inspectorWidth: Math.round(this.inspectorWidth),
+      dockHeight: whole(this.dockHeight), libraryOpen: this.libraryOpen, libraryHeight: whole(this.libraryHeight),
+    };
+    if (JSON.stringify(layout) === JSON.stringify(this.settings.layout)) return;
+    await this.saveSettings({ ...this.settings, layout });
   }
 
   dispose() {
