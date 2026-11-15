@@ -14,6 +14,8 @@ export type Toast = { id: number; kind: 'info' | 'error'; text: string };
 export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 480;
 export const INSPECTOR_WIDTH = 320;
+export const INSPECTOR_MIN = 240;
+export const INSPECTOR_MAX = 560;
 // The least height of the library while its list is showing, and the height that is always left
 // for the file tree above it.
 export const LIBRARY_MIN = 96;
@@ -163,6 +165,16 @@ class AppState {
   private moves = 0;
 
   sidebarWidth = $state(280);
+  // Whether the user has the sidebar and the inspector showing. Each can be closed with its
+  // button in the title bar or by dragging its edge to the side of the window.
+  sidebarOpen = $state(true);
+  inspectorOpen = $state(true);
+  inspectorWidth = $state(INSPECTOR_WIDTH);
+  // An artifact of the selected file is on screen: the open tab is Visual or Film, the file
+  // has an artifact of that kind, and its details are loaded. The inspector describes that
+  // artifact, so it can only show while this is true.
+  artifactShown = $derived(!this.example && !!this.currentArtifact && !!this.detail && this.tab !== 'source' && this.shownVersion != null
+    && this.detail.manifest.artifactId === this.currentArtifact.id);
   // The library at the bottom of the sidebar: whether its list is showing, and its height in
   // pixels once the user has dragged its top edge. Until then the library is as tall as its
   // list, up to a share of the sidebar.

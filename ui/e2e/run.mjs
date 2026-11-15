@@ -197,6 +197,46 @@ check(await page.locator('.dock').count() === 0, 'Close hides the job panel');
   check((await dockBox()).height === 120, 'the job panel keeps a least height while it is open', String((await dockBox())?.height));
   await drag((await dockBox()).y, windowHeight - 20);
   check(await page.locator('.dock').count() === 0, 'dragging the job panel down to the bottom edge closes it');
+  await page.keyboard.press(`${mod}+Shift+Y`);
+  check(await page.locator('.dock').count() === 1, 'the key for the job panel shows it');
+  await page.keyboard.press(`${mod}+Shift+Y`);
+  check(await page.locator('.dock').count() === 0, 'the same key hides it');
+}
+
+// ---- the inspector: the same handle on its left edge, a button and a key
+{
+  const windowWidth = page.viewportSize().width;
+  const handle = page.getByRole('separator', { name: 'Resize the inspector' });
+  const width = async () => (await page.locator('.inspector').boundingBox())?.width ?? 0;
+  const drag = async (fromX, toX) => {
+    await page.mouse.move(fromX, 400);
+    await page.mouse.down();
+    await page.mouse.move(toX, 400, { steps: 6 });
+    await page.mouse.up();
+  };
+  const edgeOf = async () => { const box = await handle.boundingBox(); return box.x + box.width / 2; };
+  check(await width() === 320, 'the inspector starts 320 pixels wide', String(await width()));
+  await drag(await edgeOf(), windowWidth - 420);
+  check(Math.abs(await width() - 420) <= 3, 'dragging the left edge of the inspector changes its width', String(await width()));
+  await drag(await edgeOf(), 300);
+  check(await width() === 560, 'the inspector has a greatest width', String(await width()));
+  await drag(await edgeOf(), windowWidth - 200);
+  check(await width() === 240, 'the inspector keeps a least width while it is open', String(await width()));
+  await drag(await edgeOf(), windowWidth - 10);
+  const closed = await handle.boundingBox();
+  check(await page.locator('.inspector').count() === 0 && Math.round(closed.x + closed.width) === windowWidth, 'dragging the inspector to the right edge closes it and leaves its handle there', JSON.stringify(closed));
+  await drag(windowWidth - 4, windowWidth - 330);
+  check(Math.abs(await width() - 326) <= 4, 'dragging the handle in from the right edge shows the inspector again', String(await width()));
+  const button = page.locator('.titlebar').getByRole('button', { name: 'Inspector' });
+  await button.click();
+  check(await page.locator('.inspector').count() === 0, 'the inspector button in the title bar hides the inspector');
+  await handle.click();
+  check(await page.locator('.inspector').count() === 1, 'a click on the handle at the right edge shows it');
+  await page.keyboard.press(`${mod}+Alt+Digit0`);
+  check(await page.locator('.inspector').count() === 0, 'the key for the inspector hides it');
+  await button.click();
+  await drag(await edgeOf(), windowWidth - 320);
+  check(await width() === 320, 'the inspector is back at its first width', String(await width()));
 }
 const panelButton = page.locator('.titlebar').getByRole('button', { name: 'Job panel' });
 await panelButton.hover();
@@ -553,6 +593,33 @@ await page.mouse.move(edge.x + 123, edge.y + 200, { steps: 4 });
 await page.mouse.up();
 const after = (await page.locator('.sidebar').boundingBox()).width;
 check(Math.abs(after - before - 120) < 3, 'dragging the sidebar edge resizes it', `${before} -> ${after}`);
+{
+  const handle = page.getByRole('separator', { name: 'Resize the sidebar' });
+  const drag = async (fromX, toX) => {
+    await page.mouse.move(fromX, edge.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(toX, edge.y + 200, { steps: 6 });
+    await page.mouse.up();
+  };
+  const mainLeft = async () => (await page.locator('main.main').boundingBox()).x;
+  await drag((await handle.boundingBox()).x + 3, 150);
+  check((await page.locator('.sidebar').boundingBox()).width === 200, 'the sidebar keeps a least width while it is open');
+  await drag((await handle.boundingBox()).x + 3, 20);
+  const closed = await handle.boundingBox();
+  check(await page.locator('.sidebar').count() === 0 && await mainLeft() === 0 && closed.x === 0, 'dragging the sidebar to the left edge closes it and leaves its handle there', JSON.stringify(closed));
+  check((await page.locator('.toolbar').boundingBox()).x === 0, 'the toolbar and the editor area take the room of the closed sidebar');
+  await drag(4, 300);
+  check(Math.abs((await page.locator('.sidebar').boundingBox()).width - 296) <= 4, 'dragging the handle in from the left edge shows the sidebar again');
+  const button = page.locator('.titlebar').getByRole('button', { name: 'Sidebar' });
+  await button.click();
+  check(await page.locator('.sidebar').count() === 0, 'the sidebar button in the title bar hides the sidebar');
+  await handle.click();
+  check(await page.locator('.sidebar').count() === 1, 'a click on the handle at the left edge shows it');
+  await page.keyboard.press(`${mod}+Digit0`);
+  check(await page.locator('.sidebar').count() === 0, 'the key for the sidebar hides it');
+  await page.keyboard.press(`${mod}+Digit0`);
+  check(await page.locator('.sidebar .row').count() > 0, 'the same key shows it again, with the file tree as it was');
+}
 
 // ---- settings
 await page.keyboard.press(`${mod}+,`);

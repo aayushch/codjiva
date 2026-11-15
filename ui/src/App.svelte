@@ -2,7 +2,7 @@
   import { showsFilm } from '$lib/artifacts';
   import { api, inDesktopApp } from '$lib/ipc';
   import { applyTheme, onSystemThemeChange } from '$lib/theme';
-  import { app, DOCK_HEIGHT, DOCK_HEIGHT_FILM, DOCK_MIN, EDITOR_MIN, INSPECTOR_WIDTH, SIDEBAR_MAX, SIDEBAR_MIN } from '$lib/state/app.svelte';
+  import { app, DOCK_HEIGHT, DOCK_HEIGHT_FILM, DOCK_MIN, EDITOR_MIN, INSPECTOR_MAX, INSPECTOR_MIN, SIDEBAR_MAX, SIDEBAR_MIN } from '$lib/state/app.svelte';
   import AnimateDialog from './components/AnimateDialog.svelte';
   import ComposeDialog from './components/ComposeDialog.svelte';
   import EditorEmpty from './components/EditorEmpty.svelte';
@@ -47,22 +47,52 @@
   const TITLE_HEIGHT = 36;
   const TOOLBAR_HEIGHT = 44;
 
-  // The sidebar's width when a drag of its edge began.
-  let widthAtDragStart = 0;
+  // The three panels around the editor area: the sidebar on the left, the inspector on the
+  // right and the job panel at the bottom. They share one behaviour.
+  //   - Dragging a panel's inner edge changes its size, between a least and a greatest size.
+  //   - Dragging that edge to less than half of the least size closes the panel.
+  //   - A closed panel leaves its handle on the edge of the window. Dragging the handle into
+  //     the window, or clicking it, opens the panel again.
+  //   - A button in the title bar and a key open and close each panel.
+  //
+  // `hasSidebar`, `hasInspector` and `hasDock` say whether the panel belongs on the screen at
+  // all, and so whether its handle is there. `showSidebar`, `showInspector` and `showDock` say
+  // whether the panel is open. Full screen hides all three. The inspector also needs an
+  // artifact on screen to describe.
+  const hasSidebar = $derived(!!app.workspace && !app.theater);
+  const showSidebar = $derived(hasSidebar && app.sidebarOpen);
+  const showArtifact = $derived(app.artifactShown);
+  const hasInspector = $derived(showArtifact && !app.theater);
+  const showInspector = $derived(hasInspector && app.inspectorOpen);
 
-  const showSidebar = $derived(!!app.workspace && !app.theater);
-  // An artifact of the selected file is on screen: the open tab is Visual or Film, the file
-  // has an artifact of that kind, and its details are loaded.
-  const showArtifact = $derived(!app.example && !!app.currentArtifact && !!app.detail && app.tab !== 'source' && app.shownVersion != null && app.detail.manifest.artifactId === app.currentArtifact.id);
-  const showInspector = $derived(showArtifact && !app.theater);
+  // The sidebar's width when a drag of its handle began, or 0 if the sidebar was closed then.
+  let sidebarAtDragStart = 0;
+  // `moved` is how far right the pointer is from where the drag began.
+  function dragSidebar(moved: number) {
+    const wanted = sidebarAtDragStart + moved;
+    if (wanted < SIDEBAR_MIN / 2) { app.sidebarOpen = false; return; }
+    app.sidebarOpen = true;
+    app.sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, wanted));
+  }
+  // The inspector's width when a drag of its handle began, or 0 if the inspector was closed.
+  let inspectorAtDragStart = 0;
+  // `moved` is how far right the pointer is from where the drag began, so a drag to the left
+  // makes the inspector wider.
+  function dragInspector(moved: number) {
+    const wanted = inspectorAtDragStart - moved;
+    if (wanted < INSPECTOR_MIN / 2) { app.inspectorOpen = false; return; }
+    app.inspectorOpen = true;
+    app.inspectorWidth = Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, wanted));
+  }
+  // The pointer was released within this many pixels of where it went down, which makes the
+  // press a click and not a drag.
+  const CLICK_SLACK = 3;
   // The toolbar is a row of its own across the editor area and the inspector, so that it keeps
   // its width when the inspector appears or goes away. An example hides it in full screen, and
   // the welcome screen has none.
   const showToolbar = $derived(app.example ? !app.theater : !!app.workspace);
 
-  // The job panel at the bottom of the window. It belongs to an open workspace and is hidden in
-  // full screen. Its handle lies on its top edge while it is open and on the bottom edge of the
-  // window while it is closed, so the user can always drag it.
+  // The job panel at the bottom of the window belongs to an open workspace.
   const hasDock = $derived(!!app.workspace && !app.theater);
   const showDock = $derived(hasDock && app.dockOpen);
   let windowHeight = $state(window.innerHeight);
@@ -86,7 +116,7 @@
   }
   // A click on the handle of the closed panel, without a drag, opens the panel.
   function endDockDrag(moved: number) {
-    if (dockAtDragStart === 0 && Math.abs(moved) < 3) app.dockOpen = true;
+    if (dockAtDragStart === 0 && Math.abs(moved) < CLICK_SLACK) app.dockOpen = true;
   }
 
   function onKey(event: KeyboardEvent) {
@@ -104,6 +134,16 @@
       if (back || forward) { event.preventDefault(); if (back) app.goBack(); else app.goForward(); return; }
     }
     if (!mod) return;
+    // The panels. The key with 0 shows and hides the sidebar, with Alt as well the inspector,
+    // and the key with Shift and Y the job panel. Outside macOS, Control with Alt is how some
+    // keyboards type a character, so that combination is left alone in a text field.
+    if (app.workspace && !app.dialog && event.code === 'Digit0') {
+      if (!event.altKey) { event.preventDefault(); app.sidebarOpen = !app.sidebarOpen; return; }
+      if (app.info?.platform === 'macos' || !(event.target as HTMLElement).closest('input, textarea, select')) {
+        event.preventDefault(); app.inspectorOpen = !app.inspectorOpen; return;
+      }
+    }
+    if (app.workspace && !app.dialog && key === 'y' && event.shiftKey) { event.preventDefault(); app.dockOpen = !app.dockOpen; return; }
     if (key === 'p' && app.workspace) { event.preventDefault(); app.dialog = app.dialog === 'quickopen' ? null : 'quickopen'; }
     else if (key === 'o') { event.preventDefault(); app.pickAndOpen(); }
     else if (key === ',') { event.preventDefault(); app.dialog = 'settings'; }
@@ -114,7 +154,7 @@
 <svelte:window bind:innerHeight={windowHeight} onkeydown={onKey} onmouseup={(e) => { if (app.workspace && !app.dialog && (e.button === 3 || e.button === 4)) { e.preventDefault(); if (e.button === 3) app.goBack(); else app.goForward(); } }} />
 
 <div class="app" class:theater={app.theater} style:--sidebar-w="{showSidebar ? app.sidebarWidth : 0}px" style:--bar-h="{showToolbar ? TOOLBAR_HEIGHT : 0}px"
-  style:--inspector-w="{showInspector ? INSPECTOR_WIDTH : 0}px" style:--dock-h="{showDock ? dockHeight : 0}px">
+  style:--inspector-w="{showInspector ? app.inspectorWidth : 0}px" style:--dock-h="{showDock ? dockHeight : 0}px">
   {#if !app.theater}<TitleBar />{/if}
 
   {#if showSidebar}
@@ -125,13 +165,18 @@
       <FileTree />
       <Library />
     </aside>
-    <Splitter label="Resize the sidebar" onstart={() => (widthAtDragStart = app.sidebarWidth)}
-      ondrag={(dx) => (app.sidebarWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, widthAtDragStart + dx)))} />
+  {/if}
+  {#if hasSidebar}
+    <div class="side-edge" class:closed={!showSidebar}>
+      <Splitter label="Resize the sidebar" hint={showSidebar ? undefined : 'Drag right or click to show the sidebar'}
+        onstart={() => (sidebarAtDragStart = showSidebar ? app.sidebarWidth : 0)} ondrag={dragSidebar}
+        onend={(moved) => { if (sidebarAtDragStart === 0 && Math.abs(moved) < CLICK_SLACK) app.sidebarOpen = true; }} />
+    </div>
   {/if}
 
   {#if showToolbar}<Toolbar />{/if}
 
-  <main class="main" class:wide={!showSidebar}>
+  <main class="main">
     {#if app.example}
       {#if app.example === 'film'}
         <FilmPlayer src={api.artifactUrl('reference/film') + '?embed=1'} title="Example film" />
@@ -161,6 +206,13 @@
   </main>
 
   {#if showInspector}<Inspector />{/if}
+  {#if hasInspector}
+    <div class="insp-edge" class:closed={!showInspector}>
+      <Splitter label="Resize the inspector" hint={showInspector ? undefined : 'Drag left or click to show the inspector'}
+        onstart={() => (inspectorAtDragStart = showInspector ? app.inspectorWidth : 0)} ondrag={dragInspector}
+        onend={(moved) => { if (inspectorAtDragStart === 0 && Math.abs(moved) < CLICK_SLACK) app.inspectorOpen = true; }} />
+    </div>
+  {/if}
   {#if showDock}<JobPanel />{/if}
   {#if hasDock}
     <div class="dock-edge" class:closed={!showDock}>

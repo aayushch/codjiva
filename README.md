@@ -30,10 +30,7 @@ Open **Settings** (the sliders icon in the title bar, or Cmd/Ctrl+,) to see whic
 
 1. **Open a folder.** The explorer on the left lists it. Folders named in `.gitignore` are left out.
 2. **Select a file** and click **Visualise**. You can say what the picture should show, or leave that empty.
-   The job panel at the bottom shows what the agent is doing. A visual takes about three minutes. Drag the
-   panel's top edge to change its height, or drag it down to the bottom of the window to close it. A closed
-   panel leaves a short grip on the bottom edge: drag it up or click it to show the panel again. The panel
-   button in the title bar does the same.
+   The job panel at the bottom shows what the agent is doing. A visual takes about three minutes.
 3. **Explore the visual.** Click a part to see its role and a link to the line of code. The **Source** tab shows
    the file itself, read-only.
 4. **Animate** asks which companion files the agent should read, what the film should show, and how long it
@@ -49,6 +46,17 @@ Open **Settings** (the sliders icon in the title bar, or Cmd/Ctrl+,) to see whic
 To visualise a **whole folder**, hover the folder in the explorer and click the small icon on its row. Codjiva
 tells you how many files and roughly how many tokens that means before you start, because a folder costs more
 than a file.
+
+### The three panels
+
+The sidebar on the left, the inspector on the right and the job panel at the bottom work the same way.
+
+- Drag a panel's inner edge to change its size.
+- Drag that edge all the way to the side of the window to close the panel.
+- A closed panel leaves a short grip on the edge of the window. Drag the grip into the window, or click it,
+  to show the panel again.
+- The title bar has a button for each panel. The keys are ⌘0 for the sidebar, ⌥⌘0 for the inspector and ⇧⌘Y
+  for the job panel on macOS, and the same with Ctrl in place of ⌘ elsewhere.
 
 ### Versions and staleness
 
