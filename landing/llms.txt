@@ -24,6 +24,9 @@ Codjiva contains no AI model. It runs a coding agent installed on the computer (
 - Companion files for a film are suggested from imports, tests and usages. An ignore list (patterns like `.gitignore` lines, for example `vendor/`) keeps third-party code out of the suggestions.
 - API keys are stored in the operating system's credential store, never in a file.
 - Tested end to end with Claude Code and Cursor Agent. The other agents and the API-key providers are implemented but not yet confirmed against the real services.
+- The window is laid out like an IDE: a file explorer and a library of artifacts on the left, an inspector on the right and a job panel at the bottom. Each panel can be resized, closed and reopened by dragging its edge, and the layout is remembered. Back and Forward move through the files, tabs and pipelines the user looked at, and a film continues where it was left.
+- A file that has a visual or a film has a dot in the explorer, and the folders above it are tinted.
+- The window, the visuals and the films follow a light or a dark theme.
 - Built with Tauri 2, Rust and Svelte 5.
 
 ## Links
