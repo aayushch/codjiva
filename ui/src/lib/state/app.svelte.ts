@@ -33,6 +33,12 @@ export type AnimateAsk = { subject: string; initial: string; companions: string[
 // same moment as the id and animation time of the scene.
 export type FilmMoment = { t: number; chapter: number; chapterTitle: string; scene: string; sceneT: number };
 
+// One place the user has been, for the Back and Forward buttons: what was selected, the tab,
+// the line the source view was at, and for a film how far it had played when the user left.
+export type Place = { selected: string; tab: ViewTab; line: number | null; filmTime: number | null };
+// How many places are remembered. The oldest are dropped first.
+const PLACES_KEPT = 100;
+
 // The length of a film in real seconds for each choice in Settings.
 export const FILM_SECONDS = { short: 60, standard: 180, deep: 300 } as const;
 
@@ -134,6 +140,21 @@ class AppState {
   // Versions the window has been asked to self-test for running jobs, oldest first.
   validateQueue = $state<ValidateRequest[]>([]);
 
+  // The places the user has been in this workspace, oldest first, and which of them is on
+  // screen. Back and Forward move `placeIndex` through `places`. Going somewhere new from the
+  // middle of the list drops the places after `placeIndex`.
+  places = $state<Place[]>([]);
+  placeIndex = $state(-1);
+  canGoBack = $derived(this.placeIndex > 0);
+  canGoForward = $derived(this.placeIndex < this.places.length - 1);
+  // The time, in real seconds, the film player seeks to when its film is ready. Back and
+  // Forward set it so that a film continues where the user left it.
+  resumeFilmAt = $state<number | null>(null);
+  // How many changes of place are under way. A change can be made of others: opening an
+  // artifact selects its file and then switches the tab. The place is recorded once, when the
+  // outermost change has finished.
+  private moves = 0;
+
   sidebarWidth = $state(280);
   // The library at the bottom of the sidebar: whether its list is showing, and its height in
   // pixels once the user has dragged its top edge. Until then the library is as tall as its
@@ -186,11 +207,69 @@ class AppState {
   // Switches the tab. Going from the visual to the film, or back, shows the other artifact, so
   // its details are loaded.
   async setTab(tab: ViewTab) {
-    const before = this.currentArtifact?.id;
-    this.tab = tab;
-    if (this.currentArtifact?.id !== before) {
-      this.pickedVersion = null;
-      await this.loadDetail();
+    await this.move(async () => {
+      const before = this.currentArtifact?.id;
+      this.tab = tab;
+      if (this.currentArtifact?.id !== before) {
+        this.pickedVersion = null;
+        await this.loadDetail();
+      }
+    });
+  }
+
+  // Runs a change of what is on screen, and records the place it leads to for the Back and
+  // Forward buttons. Every method that selects something or switches the tab goes through here.
+  private async move(change: () => Promise<void>) {
+    if (this.moves === 0) this.leavePlace();
+    this.moves++;
+    try {
+      await change();
+    } finally {
+      this.moves--;
+      if (this.moves === 0) this.recordPlace();
+    }
+  }
+
+  // Called before the user leaves the place on screen. If that place is a film, the time it has
+  // reached is kept with the place, so that Back can continue the film from there.
+  private leavePlace() {
+    const here = this.places[this.placeIndex];
+    if (here && this.tab === 'film' && this.filmMoment) here.filmTime = this.filmMoment.t;
+    this.resumeFilmAt = null;
+  }
+
+  // Adds the place on screen after `placeIndex`, unless it is the place already there.
+  private recordPlace() {
+    if (!this.selected) return;
+    const place: Place = { selected: this.selected, tab: this.tab, line: this.tab === 'source' ? this.sourceLine : null, filmTime: null };
+    const here = this.places[this.placeIndex];
+    if (here && here.selected === place.selected && here.tab === place.tab && here.line === place.line) return;
+    this.places = [...this.places.slice(0, this.placeIndex + 1), place].slice(-PLACES_KEPT);
+    this.placeIndex = this.places.length - 1;
+  }
+
+  goBack() { return this.goToPlace(this.placeIndex - 1); }
+  goForward() { return this.goToPlace(this.placeIndex + 1); }
+
+  // Shows the place at `index` of `places` again: its file, folder or pipeline, its tab, the
+  // line of the source view, and the moment of its film.
+  private async goToPlace(index: number) {
+    const place = this.places[index];
+    if (!place) return;
+    this.leavePlace();
+    this.placeIndex = index;
+    // `moves` is raised without `move`, so that the selections below record no new place.
+    this.moves++;
+    try {
+      if (place.tab === 'film') this.resumeFilmAt = place.filmTime;
+      if (place.selected.startsWith(PIPELINE_PREFIX)) await this.selectPipeline(place.selected.slice(PIPELINE_PREFIX.length));
+      else if (place.selected.endsWith('/')) await this.selectFolder(place.selected);
+      else {
+        await this.selectFile(place.selected, place.tab === 'source' && place.line != null ? place.line : undefined);
+        if (this.tab !== place.tab) await this.setTab(place.tab);
+      }
+    } finally {
+      this.moves--;
     }
   }
 
@@ -198,22 +277,26 @@ class AppState {
   // for a visual.
   async openArtifact(artifact: ArtifactSummary) {
     if (artifact.kind === 'pipeline') return this.selectPipeline(artifact.id);
-    await this.selectFile(artifact.subject[0]);
-    await this.setTab(artifact.kind === 'film' ? 'film' : 'visual');
+    await this.move(async () => {
+      await this.selectFile(artifact.subject[0]);
+      await this.setTab(artifact.kind === 'film' ? 'film' : 'visual');
+    });
   }
 
   // Shows a pipeline. It takes the place of a file in the selection, because it explains
   // several files and belongs to none of them.
   async selectPipeline(id: string) {
-    this.example = null;
-    this.selected = PIPELINE_PREFIX + id;
-    this.tab = 'visual';
-    this.sourceLine = null;
-    this.pickedVersion = null;
-    this.detail = null;
-    this.fileInfo = null;
-    this.folderInfo = null;
-    await this.loadDetail();
+    await this.move(async () => {
+      this.example = null;
+      this.selected = PIPELINE_PREFIX + id;
+      this.tab = 'visual';
+      this.sourceLine = null;
+      this.pickedVersion = null;
+      this.detail = null;
+      this.fileInfo = null;
+      this.folderInfo = null;
+      await this.loadDetail();
+    });
   }
 
   // Ticks or unticks an artifact in the library for a pipeline.
@@ -344,9 +427,11 @@ class AppState {
       return this.selectPipeline(made.id);
     }
     if (this.selected !== job.subject) return;
-    this.tab = made?.kind === 'film' ? 'film' : 'visual';
-    this.pickedVersion = null;
-    await this.loadDetail();
+    await this.move(async () => {
+      this.tab = made?.kind === 'film' ? 'film' : 'visual';
+      this.pickedVersion = null;
+      await this.loadDetail();
+    });
   }
 
   // Opens the artifact the last job made, selecting its file if the user has moved to another.
@@ -503,6 +588,8 @@ class AppState {
       this.pickedVersion = null;
       this.job = null;
       this.dockOpen = false;
+      this.places = [];
+      this.placeIndex = -1;
       await this.loadDir('');
       await this.reloadArtifacts();
       await this.syncWatched();
@@ -518,6 +605,8 @@ class AppState {
     this.selected = null;
     this.fileInfo = null;
     this.example = null;
+    this.places = [];
+    this.placeIndex = -1;
     this.recents = await api.workspaceRecent();
   }
 
@@ -553,6 +642,11 @@ class AppState {
   // source viewer to that line and switches to it.
   async selectFile(relPath: string, line?: number) {
     if (relPath.endsWith('/')) return this.selectFolder(relPath);
+    await this.move(() => this.showFile(relPath, line));
+  }
+
+  // The work of `selectFile` for a path that is a file.
+  private async showFile(relPath: string, line?: number) {
     try {
       this.folderInfo = null;
       for (const dir of ancestorsOf(relPath)) {
@@ -581,6 +675,11 @@ class AppState {
   // Selects a folder, to make or show a visual of the whole folder. A folder has no source
   // view and no film, so the Visual tab is the only one.
   async selectFolder(relDir: string) {
+    await this.move(() => this.showFolder(relDir));
+  }
+
+  // The work of `selectFolder`.
+  private async showFolder(relDir: string) {
     const dir = relDir.replace(/\/+$/, '');
     try {
       for (const parent of ancestorsOf(dir)) {

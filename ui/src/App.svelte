@@ -61,6 +61,16 @@
     const mod = event.metaKey || event.ctrlKey;
     const key = event.key.toLowerCase();
     if (event.key === 'Escape' && app.dialog && app.dialog !== 'gitignore') { app.dialog = null; return; }
+    // Back and Forward. Command with [ and ] on macOS, Alt with the left and right arrows
+    // elsewhere. The arrows are left alone in a text field, where Alt with an arrow moves the
+    // caret by a word.
+    if (app.workspace && !app.dialog) {
+      const mac = app.info?.platform === 'macos';
+      const inText = !!(event.target as HTMLElement).closest('input, textarea, select');
+      const back = mac ? event.metaKey && event.key === '[' : event.altKey && event.key === 'ArrowLeft' && !inText;
+      const forward = mac ? event.metaKey && event.key === ']' : event.altKey && event.key === 'ArrowRight' && !inText;
+      if (back || forward) { event.preventDefault(); if (back) app.goBack(); else app.goForward(); return; }
+    }
     if (!mod) return;
     if (key === 'p' && app.workspace) { event.preventDefault(); app.dialog = app.dialog === 'quickopen' ? null : 'quickopen'; }
     else if (key === 'o') { event.preventDefault(); app.pickAndOpen(); }
@@ -68,7 +78,8 @@
   }
 </script>
 
-<svelte:window onkeydown={onKey} />
+<!-- A mouse with side buttons sends button 3 for Back and button 4 for Forward. -->
+<svelte:window onkeydown={onKey} onmouseup={(e) => { if (app.workspace && !app.dialog && (e.button === 3 || e.button === 4)) { e.preventDefault(); if (e.button === 3) app.goBack(); else app.goForward(); } }} />
 
 <div class="app" class:theater={app.theater} style:--sidebar-w="{showSidebar ? app.sidebarWidth : 0}px" style:--bar-h="{showToolbar ? 44 : 0}px"
   style:--inspector-w="{showInspector ? INSPECTOR_WIDTH : 0}px" style:--dock-h="{showDock ? (app.job?.request.kind === 'animate' || (app.job?.request.kind === 'compose' && app.job.request.film) ? DOCK_HEIGHT_FILM : DOCK_HEIGHT) : 0}px">

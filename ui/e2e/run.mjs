@@ -308,6 +308,39 @@ check(await speed.inputValue() === '4' && await speed.locator('option[value="4"]
 await speed.selectOption('1');
 await shot('09c-film');
 
+// ---- Back and Forward: a code link leaves the film, Back returns to it where it was
+const seconds = async () => { const [m, sec] = (await page.locator('.player .time').textContent()).trim().split(' / ')[0].split(':').map(Number); return m * 60 + sec; };
+const backButton = page.locator('.toolbar').getByRole('button', { name: 'Back', exact: true });
+const forwardButton = page.locator('.toolbar').getByRole('button', { name: 'Forward', exact: true });
+const leftAt = await seconds();
+check(leftAt > 30 && await forwardButton.isDisabled() && await backButton.isEnabled(), 'Forward is disabled at the newest place and Back is enabled', String(leftAt));
+await page.locator('.inspector .companion .ref').first().click();
+await page.locator('.tab.on', { hasText: 'Source' }).waitFor();
+check(/ledger\.py|store\.go|limiter\.go|handler_test\.go/.test(await page.locator('.toolbar .crumb').textContent()) && await page.locator('.player').count() === 0, 'a companion file opens in the source view', await page.locator('.toolbar .crumb').textContent());
+const companionCrumb = await page.locator('.toolbar .crumb').textContent();
+await backButton.hover();
+check(await backButton.evaluate((el) => getComputedStyle(el, '::after').display === 'block' && /^"Back \(/.test(getComputedStyle(el, '::after').content)), 'the Back button says what it does and names its keys');
+await shot('09c-back-tip');
+await backButton.click();
+await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
+await page.waitForFunction(() => !/^0:0[0-2] /.test(document.querySelector('.player .time').textContent.trim()), null, { timeout: 5000 }).catch(() => {});
+check(/handler\.go/.test(await page.locator('.toolbar .crumb').textContent()) && await page.locator('.tab.on', { hasText: 'Film' }).count() === 1, 'Back returns to the film the link was clicked in');
+check(Math.abs(await seconds() - leftAt) <= 3, 'the film continues from the moment it was left at', `${leftAt} -> ${await seconds()}`);
+check(await forwardButton.isEnabled(), 'Forward is enabled after going back');
+await forwardButton.click();
+await page.locator('.tab.on', { hasText: 'Source' }).waitFor();
+check(await page.locator('.toolbar .crumb').textContent() === companionCrumb, 'Forward goes to the companion file again');
+// The browser build is not macOS to the app, so Back is Alt with the left arrow.
+await page.keyboard.press('Alt+ArrowLeft');
+await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
+check(await page.locator('.tab.on', { hasText: 'Film' }).count() === 1, 'the keyboard goes back as well');
+// Going somewhere new from the middle of the list drops the places after it.
+await page.locator('.tab', { hasText: 'Visual' }).click();
+await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
+check(await forwardButton.isDisabled(), 'a new place replaces the ones Forward led to');
+await backButton.click();
+await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
+
 // ---- feedback on the film: a pinned moment, a pointed-at element, then a new version
 const filmScrub = await page.locator('.player .scrub').boundingBox();
 await page.keyboard.down('Alt');

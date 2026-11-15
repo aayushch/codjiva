@@ -57,6 +57,11 @@
       chapters = message.chapters;
       onready(chapters);
       if (app.settings && !app.settings.soundOnByDefault) frame?.send({ cj: 'mute', on: true });
+      // Back and Forward return to a film at the moment the user left it.
+      if (feedback && app.resumeFilmAt != null) {
+        seek(app.resumeFilmAt);
+        app.resumeFilmAt = null;
+      }
     } else if (message.cj === 'time') {
       if (!dragging) t = message.t;
       if (message.chapter !== chapter) onchapter(message.chapter);
@@ -114,6 +119,8 @@
   function onKey(event: KeyboardEvent) {
     const el = event.target as HTMLElement;
     if (app.dialog || el.closest('input, textarea, select, [role="tree"]')) return;
+    // A key pressed with Alt, Control or Command belongs to the app, for example Back.
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.code === 'Space') { event.preventDefault(); toggle(); }
     else if (event.key === 'ArrowRight') seek(t + 5);
     else if (event.key === 'ArrowLeft') seek(t - 5);

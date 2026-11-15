@@ -54,6 +54,10 @@ Every job adds a version; nothing is overwritten. The version list is in the too
 make the artifact again, export it as one HTML file, open it in the browser and show its files. Each icon says
 what it does when the pointer is over it.
 
+**Back** and **Forward**, at the left end of the toolbar, move through the files, tabs and pipelines you have
+looked at (⌘[ and ⌘] on macOS, Alt+← and Alt+→ elsewhere). Going back to a film continues it from the moment
+you left it, for example after you followed a link to a line of code.
+
 In the explorer, a file that has a visual or a film has a dot, and every folder above it is tinted, so a closed
 folder shows that it leads to one. The library under the explorer lists everything that was made. Click its
 heading to close it, or drag its top edge to change its height.

@@ -1,6 +1,6 @@
 <script lang="ts">
   // The app's line icons, drawn inline. Every icon is a 16 x 16 outline with a 1.5 px stroke.
-  type Name = 'dir' | 'file' | 'viz' | 'search' | 'play' | 'pause' | 'sound-on' | 'sound-off' | 'full' | 'settings' | 'close' | 'external' | 'target' | 'folder-open' | 'film' | 'reveal' | 'again' | 'export' | 'panel';
+  type Name = 'dir' | 'file' | 'viz' | 'search' | 'play' | 'pause' | 'sound-on' | 'sound-off' | 'full' | 'settings' | 'close' | 'external' | 'target' | 'folder-open' | 'film' | 'reveal' | 'again' | 'export' | 'panel' | 'back' | 'forward';
 
   let { name, size = 14 }: { name: Name; size?: number } = $props();
 
@@ -28,6 +28,8 @@
     export: 'M8 2v8 M4.5 6.5 8 10l3.5-3.5 M2.5 11.5v2h11v-2',
     // A window with a panel along its bottom edge.
     panel: 'M2.5 2.5h11v11h-11z M2.5 10h11',
+    back: 'M13 8H3 M7 4 3 8l4 4',
+    forward: 'M3 8h10 M9 4l4 4-4 4',
   };
 </script>
 

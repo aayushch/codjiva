@@ -4,8 +4,8 @@
   import { app } from '$lib/state/app.svelte';
   import Icon from './Icon.svelte';
 
-  // The bar above the editor area and the inspector. From left to right it holds the path of
-  // what is selected, the controls of the artifact on screen, and the Visual, Film and Source
+  // The bar above the editor area and the inspector. From left to right it holds the Back and
+  // Forward buttons, the path of what is selected, the controls of the artifact on screen, and the Visual, Film and Source
   // tabs. The tabs are last so that they stay at the right end of the bar, in the same place
   // whether or not the selected file has an artifact to show controls for.
 
@@ -13,6 +13,8 @@
   // its last part.
   const parts = $derived(app.selected ? app.selected.replace(/\/$/, '').split('/') : []);
   const artifact = $derived(app.currentArtifact);
+  // The keys for Back and Forward, as the buttons' labels show them. App.svelte handles the keys.
+  const mac = $derived(app.info?.platform === 'macos');
   const shown = $derived(artifact?.versions.find((v) => v.version === app.shownVersion) ?? null);
   const isPipeline = $derived(artifact?.kind === 'pipeline');
   // A visual of a single file can be turned into a film. A folder, a film and a pipeline cannot.
@@ -53,6 +55,12 @@
 {/snippet}
 
 <div class="toolbar">
+  {#if !app.example}
+    <span class="history">
+      <button class="tb-btn tip-start" data-tip="Back ({mac ? '⌘[' : 'Alt+←'})" aria-label="Back" disabled={!app.canGoBack} onclick={() => app.goBack()}><Icon name="back" size={16} /></button>
+      <button class="tb-btn tip-start" data-tip="Forward ({mac ? '⌘]' : 'Alt+→'})" aria-label="Forward" disabled={!app.canGoForward} onclick={() => app.goForward()}><Icon name="forward" size={16} /></button>
+    </span>
+  {/if}
   {#if app.example}
     <span class="crumb">Example / <b>{app.example === 'film' ? 'How an order moves through the orders Handler' : 'Handler.Submit, a still visual'}</b></span>
     <span class="spacer"></span>

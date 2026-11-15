@@ -253,3 +253,10 @@ code { font-family:var(--font) }
    background in some browsers, so every frame is given the light scheme. The frame then stays
    see-through and the grid behind it shows around the drawing. */
 iframe { color-scheme:light }
+
+/* ---- Back and Forward, at the left end of the toolbar */
+.toolbar .history { display:flex; gap:2px; flex:none; margin-left:-4px }
+.tb-btn:disabled { opacity:.35; cursor:default; background:none; color:var(--shell-text-2) }
+/* The class `tip-start` lines a label up with its control's left edge, for a control near the
+   left edge of the window. */
+[data-tip].tip-start::after { left:0; transform:none }
