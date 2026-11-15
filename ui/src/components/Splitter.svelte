@@ -12,18 +12,36 @@
     ondrag: (moved: number) => void; onstart?: () => void; onend?: (moved: number) => void; label: string; hint?: string; axis?: 'x' | 'y';
   } = $props();
 
+  //
+  // While the handle is dragged, the page's root element has the class `dragging-handle`. The
+  // style sheet uses that class to stop the drag from selecting the text the pointer passes
+  // over, and to keep the pointer's events away from the frames that show visuals and films.
   let origin = 0;
   let moved = 0;
   let active = $state(false);
   const positionOf = (event: PointerEvent) => (axis === 'x' ? event.clientX : event.clientY);
+  function start(event: PointerEvent & { currentTarget: HTMLElement }) {
+    // Cancelling the press keeps the browser from starting a text selection at the handle.
+    event.preventDefault();
+    window.getSelection()?.removeAllRanges();
+    active = true;
+    moved = 0;
+    origin = positionOf(event);
+    document.documentElement.classList.add('dragging-handle');
+    onstart();
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
   function end() {
     if (!active) return;
     active = false;
+    document.documentElement.classList.remove('dragging-handle');
     onend(moved);
   }
+  // Removes the class if the handle goes away in the middle of a drag.
+  $effect(() => () => { if (active) document.documentElement.classList.remove('dragging-handle'); });
 </script>
 
 <div class="splitter" class:level={axis === 'y'} class:active role="separator" aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'} aria-label={label} title={hint}
-  onpointerdown={(e) => { active = true; moved = 0; origin = positionOf(e); onstart(); e.currentTarget.setPointerCapture(e.pointerId); }}
+  onpointerdown={start}
   onpointermove={(e) => { if (active) { moved = positionOf(e) - origin; ondrag(moved); } }}
   onpointerup={end} onpointercancel={end}></div>

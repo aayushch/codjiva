@@ -24,6 +24,10 @@ code { font-family:var(--font) }
 /* A handle is 6px wide and lies over the line between two panels. Its parent is a box of no
    width on that line. */
 .splitter { position:absolute; top:0; bottom:0; left:-3px; width:6px; cursor:col-resize; z-index:5 }
+/* While a handle is dragged, no text can be selected and the frames ignore the pointer. */
+html.dragging-handle, html.dragging-handle * { user-select:none; -webkit-user-select:none }
+html.dragging-handle iframe { pointer-events:none }
+.splitter { touch-action:none }
 .splitter:hover, .splitter.active { background:color-mix(in srgb, var(--main) 35%, transparent) }
 /* The lines the handles of the sidebar and the inspector lie on. The sidebar's line runs from
    the title bar to the bottom of the window. The inspector's line runs from the toolbar to the

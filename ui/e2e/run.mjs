@@ -184,6 +184,7 @@ check(await page.locator('.dock').count() === 0, 'Close hides the job panel');
     await page.mouse.up();
   };
   await drag(windowHeight - 3, windowHeight - 300);
+  check(await page.evaluate(() => String(window.getSelection())) === '', 'dragging a handle does not select the text the pointer passes over', await page.evaluate(() => String(window.getSelection()).slice(0, 80)));
   let box = await dockBox();
   check(box && Math.abs(box.height - 297) <= 4 && await page.locator('.dock .outcome').count() === 1, 'dragging the handle up from the bottom edge shows the job panel again, with the last job in it', JSON.stringify(box));
   await drag(box.y, box.y + 100);
