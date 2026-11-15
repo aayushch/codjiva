@@ -111,7 +111,7 @@ agent run.
 | Setting | Default | |
 |---|---|---|
 | Agent | the first one found | Claude Code is used first when it is installed. |
-| Model | `sonnet` for Claude Code | Faster and much cheaper than the largest models, with results of the same quality in our tests. Type another model's name to use that one. |
+| Model | `sonnet` for Claude Code | The model a job asks the agent for. Type another model's name to use that one. |
 | Thinking effort | Automatic | Low for a visual, medium for a film or a pipeline. |
 | Fix rounds | 3 | How often a result that fails its checks is sent back to the agent. |
 | Spending limit per job | none | For agents that can enforce one. |

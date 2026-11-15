@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Codjiva — See what your code does, not just what it says</title>
-<meta name="description" content="Codjiva is a free, open-source desktop app that turns a source file into an explorable blueprint and a narrated film of how work moves through it. Drawn by the coding agent you already use: Claude Code, Cursor Agent and others.">
+<meta name="description" content="Codjiva is a free, open-source desktop app that turns a source file into an explorable blueprint and a narrated film of how work moves through it. It works with a coding agent installed on your computer, or with an API key.">
 <meta property="og:title" content="Codjiva — see what your code does">
 <meta property="og:description" content="Open a folder, pick a file, and watch one request move through it. Blueprints and narrated films of your code, drawn by the coding agent you already use. Free, open source, local.">
 <meta property="og:url" content="https://aayushch.github.io/codjiva/">
@@ -106,8 +106,8 @@
 
 <section class="section wrap" id="demo">
 	<span class="eyebrow">Live example · not a recording</span>
-	<h2>This is a real Codjiva film. Press play.</h2>
-	<p class="lead">Claude Code made it from <a href="https://github.com/aayushch/codjiva/blob/main/fixtures/go-orders/internal/orders/handler.go" target="_blank" rel="noopener">one Go file</a>, a made-up order handler with a batch, a rate limiter and a soft and a hard memory limit. Nothing here was drawn by hand. The page below is the same single HTML file the app saves, with its own player.</p>
+	<h2>An example film. Press play.</h2>
+	<p class="lead">This film was made from <a href="https://github.com/aayushch/codjiva/blob/main/fixtures/go-orders/internal/orders/handler.go" target="_blank" rel="noopener">one Go file</a>, a made-up order handler with a batch, a rate limiter and a soft and a hard memory limit. The page below is the single HTML file the app saved for it, with its own player.</p>
 	<div class="demo-head">
 		<div class="tabs" role="tablist" aria-label="Examples">
 			<button type="button" class="tab" role="tab" aria-selected="true" data-demo="film">Film</button>
@@ -133,7 +133,7 @@
 <section class="section wrap" id="modes">
 	<span class="eyebrow">Three things it makes</span>
 	<h2>A picture, a film, and the pipeline between files.</h2>
-	<p class="lead">Every one is drawn with the same small set of parts, so a tank always means a shared limit and a press always means an ordered step. Once you have read one, you can read them all.</p>
+	<p class="lead">Every one is drawn with the same small set of parts, so a tank always means a shared limit and a press always means an ordered step.</p>
 	<div class="modes">
 		<div class="mode">
 			<span class="n">01 · VISUALISE</span>
@@ -188,14 +188,14 @@
 
 <section class="section wrap" id="app">
 	<span class="eyebrow">The app</span>
-	<h2>It works like the editor you already know.</h2>
-	<p class="lead">Codjiva is laid out like an IDE, and it behaves like one. The only thing that is different is what you see in the middle.</p>
+	<h2>The window is laid out like an IDE.</h2>
+	<p class="lead">The explorer, the tabs and the panels are where an IDE has them. The middle shows the visual or the film of the selected file, and its source on a tab of its own.</p>
 	<div class="facts">
 		<div class="fact"><b>Three panels you can move</b><span>The explorer on the left, the inspector on the right and the job panel at the bottom. Drag an edge to resize a panel, drag it to the side of the window to close it, and pull it back out when you want it. The layout is remembered.</span></div>
 		<div class="fact"><b>Back and Forward</b><span>Follow a link from a film to the line of code it is about, then go back. The film continues at the second you left it.</span></div>
 		<div class="fact"><b>See where the pictures are</b><span>A file with a visual or a film has a dot in the explorer, and every folder above it is tinted, so a closed folder still shows the way. The library lists everything that was made.</span></div>
 		<div class="fact"><b>Watch the agent work</b><span>The job panel shows each step, every file the agent reads, what the write guard found and what the job cost. When the film is ready, it opens by itself.</span></div>
-		<div class="fact"><b>Every version, one click away</b><span>The toolbar holds the version list and the actions on it: make it again, export it as one HTML file, open it in the browser, show its files.</span></div>
+		<div class="fact"><b>Versions and actions in the toolbar</b><span>The toolbar holds the version list and the actions on it: make it again, export it as one HTML file, open it in the browser, show its files.</span></div>
 		<div class="fact"><b>Light and dark</b><span>The window follows your system, or your own choice, and the visuals and films are drawn in the same theme.</span></div>
 	</div>
 </section>
@@ -206,9 +206,9 @@
 	<div class="facts">
 		<div class="fact"><b>One folder, plain files</b><span>Everything is saved under <code>.codjiva/</code> in the folder you opened. A film is a single HTML file that opens offline in any browser.</span></div>
 		<div class="fact"><b>Your code is never changed</b><span>Agents are confined to that folder. After every job the write guard compares the rest of the workspace with how it was.</span></div>
-		<div class="fact"><b>Films cannot phone home</b><span>Every picture and film runs in a sandboxed frame that has no access to the network, your files or the app.</span></div>
+		<div class="fact"><b>Films have no network access</b><span>Every picture and film runs in a sandboxed frame that has no access to the network, your files or the app.</span></div>
 		<div class="fact"><b>No account, no telemetry</b><span>Codjiva has no server. Your code goes only to the agent or provider you chose, under your own account with them. The app's only other request asks GitHub whether a newer version exists, and you can switch that off.</span></div>
-		<div class="fact"><b>It tells you when a picture is old</b><span>Each version records a hash of the files it was made from. Change a file and the picture is marked stale. Nothing is regenerated behind your back.</span></div>
+		<div class="fact"><b>It tells you when a picture is old</b><span>Each version records a hash of the files it was made from. Change a file and the picture is marked stale. Nothing is regenerated automatically.</span></div>
 		<div class="fact"><b>Keys stay in the keychain</b><span>If you use an API key, it is kept in your system's credential store, never in a file.</span></div>
 	</div>
 	<div class="two">
@@ -231,7 +231,7 @@
 	<table class="agents">
 		<thead><tr><th>Agent</th><th>How</th><th>Status</th><th>Notes</th></tr></thead>
 		<tbody>
-			<tr><td>Claude Code</td><td><code>claude</code></td><td><span class="pill ok">tested</span></td><td>Confined to <code>.codjiva/</code> by its own permission rules. A visual takes about three to five minutes, a one-minute film about six.</td></tr>
+			<tr><td>Claude Code</td><td><code>claude</code></td><td><span class="pill ok">tested</span></td><td>Confined to <code>.codjiva/</code> by its own permission rules.</td></tr>
 			<tr><td>Cursor Agent</td><td><code>cursor-agent</code></td><td><span class="pill ok">tested</span></td><td>Works. It cannot be confined as tightly, so the write guard is what protects your files.</td></tr>
 			<tr><td>Codex CLI</td><td><code>codex</code></td><td><span class="pill">not yet confirmed</span></td><td rowspan="4">Supported through definition files that have not been run against the real programs yet. Settings marks them so.</td></tr>
 			<tr><td>Gemini CLI</td><td><code>gemini</code></td><td><span class="pill">not yet confirmed</span></td></tr>
@@ -254,7 +254,7 @@
 			<div class="assets" id="assets">
 				<a class="asset" href="https://github.com/aayushch/codjiva/releases/latest" target="_blank" rel="noopener"><span>All downloads on GitHub</span><small>releases/latest</small></a>
 			</div>
-			<p class="footnote">You also need one coding agent installed and signed in, or an API key. Claude Code is the one Codjiva is tested with most.</p>
+			<p class="footnote">You also need one coding agent installed and signed in, or an API key. The table above says which of them Codjiva has been tested with.</p>
 			<p class="footnote">Once installed, Codjiva updates itself: it offers each new release in its title bar, checks the download's signature and installs it.</p>
 		</div>
 		<div>
