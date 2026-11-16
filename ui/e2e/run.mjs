@@ -1257,8 +1257,28 @@ check(
   (await page.locator('.player .scrub .pin').count()) === 1,
   'holding Alt while clicking the scrubber pins that moment for feedback',
 );
+// Where the two buttons of the feedback box are, measured from the top left
+// corner of the text box above them, as "x,y x,y". Measuring from the text box
+// leaves out how far the inspector is scrolled.
+const feedbackButtons = () =>
+  page.locator('.feedback').evaluate((box) => {
+    const origin = box.querySelector('textarea').getBoundingClientRect();
+    return Array.from(box.querySelectorAll('.line .btn'))
+      .map((button) => button.getBoundingClientRect())
+      .map(
+        (at) => `${Math.round(at.x - origin.x)},${Math.round(at.y - origin.y)}`,
+      )
+      .join(' ');
+  });
+const buttonsBefore = await feedbackButtons();
 await page.getByRole('button', { name: 'Point at…' }).click();
 await page.locator('.feedback .picking').waitFor();
+await page.getByRole('button', { name: 'Stop pointing' }).waitFor();
+check(
+  (await feedbackButtons()) === buttonsBefore,
+  'the buttons of the feedback box stay in place when "Point at…" is clicked',
+  `${buttonsBefore} -> ${await feedbackButtons()}`,
+);
 const filmFrame = page.frameLocator(
   'iframe[aria-label="How an order moves through the orders Handler"]',
 );
@@ -1283,6 +1303,11 @@ for (let i = 0; i < (await machines.count()) && !target; i++) {
 }
 await page.mouse.click(target[0], target[1]);
 await page.locator('.feedback .pill', { hasText: 'points at:' }).waitFor();
+check(
+  (await feedbackButtons()) === buttonsBefore,
+  'the buttons stay in place when the pointed-at element is attached',
+  `${buttonsBefore} -> ${await feedbackButtons()}`,
+);
 check(
   (await filmFrame.locator('body.picking').count()) === 0,
   'pointing at an element attaches it and ends point-at mode',

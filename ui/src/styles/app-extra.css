@@ -1066,6 +1066,9 @@ html.dragging-handle iframe {
   gap: 6px;
   margin: 8px 0;
 }
+.feedback .attached:empty {
+  display: none;
+}
 .feedback .attached .pill {
   display: inline-flex;
   align-items: center;
@@ -1093,11 +1096,19 @@ html.dragging-handle iframe {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  margin: 8px 0;
+}
+.feedback .point {
+  display: inline-grid;
+}
+.feedback .point span {
+  grid-area: 1 / 1;
+}
+.feedback .point span.off {
+  visibility: hidden;
 }
 .feedback .picking {
   color: var(--accent);
-  font-size: 12px;
-  margin: 6px 0;
 }
 .player .scrub .pin {
   position: absolute;

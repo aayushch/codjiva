@@ -54,6 +54,29 @@
     placeholder={isFilm
       ? 'What should change? For example: the bubble covers the gauge here'
       : 'What should change? For example: this label is cut off'}></textarea>
+  <!-- The buttons come directly after the text box, and everything that
+       appears or changes while the user works comes after the buttons. So the
+       buttons stay where they are when the user clicks one of them. -->
+  <div class="line">
+    <!-- The button holds both of its labels in the same place and shows one of
+         them. Its width is that of the longer label, so "Send feedback" beside
+         it does not move when the label changes. -->
+    <button
+      class="btn small point"
+      aria-pressed={app.picking}
+      onclick={() => (app.picking ? app.cancelPick() : app.startPick())}
+    >
+      <span class:off={app.picking} aria-hidden={app.picking}>Point at…</span>
+      <span class:off={!app.picking} aria-hidden={!app.picking}
+        >Stop pointing</span
+      >
+    </button>
+    <button
+      class="btn small primary"
+      disabled={!text.trim() || running || !app.activeAgent}
+      onclick={send}>Send feedback</button
+    >
+  </div>
   <div class="attached">
     {#if isFilm && app.pinnedTime != null}
       <span class="pill"
@@ -79,29 +102,15 @@
       >
     {/if}
   </div>
-  {#if app.picking}<div class="picking">
+  {#if app.picking}
+    <p class="picking">
       Click the element in the {isFilm ? 'film' : 'visual'} that your feedback is
       about.
-    </div>{/if}
-  <div class="line">
-    {#if app.picking}
-      <button class="btn small" onclick={() => app.cancelPick()}
-        >Stop pointing</button
-      >
-    {:else}
-      <button class="btn small" onclick={() => app.startPick()}
-        >Point at…</button
-      >
-    {/if}
-    <button
-      class="btn small primary"
-      disabled={!text.trim() || running || !app.activeAgent}
-      onclick={send}>Send feedback</button
-    >
-  </div>
-  <p class="muted">
-    A new version is made with only this change. The version on screen is kept.{isFilm
-      ? ' Hold Alt and click the scrubber to pin a moment.'
-      : ''}
-  </p>
+    </p>
+  {:else}
+    <p class="muted">
+      A new version is made with only this change. The version on screen is
+      kept.{isFilm ? ' Hold Alt and click the scrubber to pin a moment.' : ''}
+    </p>
+  {/if}
 </div>
