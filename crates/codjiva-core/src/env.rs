@@ -189,6 +189,7 @@ fn login_shell_env() -> Option<BTreeMap<String, String>> {
 /// Parses `NAME=value` entries separated by NUL bytes, as `env -0` prints them.
 /// Entries for exported shell functions are skipped; their values are code, not
 /// settings.
+#[cfg(unix)]
 fn parse_null_separated(bytes: &[u8]) -> BTreeMap<String, String> {
     bytes
         .split(|b| *b == 0)
@@ -242,6 +243,7 @@ pub fn run_capture(command: &mut Command, limit: Duration) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn parses_env_output_and_skips_shell_functions() {
         let vars = parse_null_separated(b"PATH=/bin:/usr/bin\0EDITOR=vim -f\0BASH_FUNC_x%%=() { :; }\0EMPTY=\0");

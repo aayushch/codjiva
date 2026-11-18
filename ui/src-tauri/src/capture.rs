@@ -14,7 +14,12 @@ use serde::Deserialize;
 
 /// The area to capture, in the page's own CSS pixels, relative to the top-left
 /// of the window's content.
+///
+/// Only the macOS implementation of [`capture`] reads the fields. On other
+/// systems `capture` always fails, so the compiler would report the fields as
+/// unused there.
 #[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub struct Rect {
     pub x: f64,
     pub y: f64,
