@@ -1,0 +1,12 @@
+# Git stores every text file with LF line endings and checks it out with LF on
+# every platform, including Windows. A file added with CRLF line endings is
+# converted to LF when it is committed. The app embeds prompt and schema files
+# in the binary, so their line endings must be the same on every machine that
+# builds it.
+* text=auto eol=lf
+
+# Images, icons and fonts are never converted.
+*.png binary
+*.ico binary
+*.icns binary
+*.woff2 binary

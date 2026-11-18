@@ -1295,9 +1295,11 @@ fn pipeline_values(
 }
 
 /// Every file of the workspace, relative to its root, found by walking it now
-/// with the same ignore rules as the file tree.
+/// with the same ignore rules as the file tree. The paths are sorted, because
+/// the order in which a folder's entries are read differs between operating
+/// systems, and the prompt for a whole folder lists its files in this order.
 fn list_files(ws: &Workspace) -> Vec<String> {
-    crate::workspace::walker(ws.root())
+    let mut files: Vec<String> = crate::workspace::walker(ws.root())
         .build()
         .flatten()
         .filter(|item| item.file_type().is_some_and(|t| t.is_file()))
@@ -1307,7 +1309,9 @@ fn list_files(ws: &Workspace) -> Vec<String> {
                 .ok()
                 .map(crate::workspace::to_rel_string)
         })
-        .collect()
+        .collect();
+    files.sort_unstable();
+    files
 }
 
 /// Copies every file under `from` to the same relative path under `to`.

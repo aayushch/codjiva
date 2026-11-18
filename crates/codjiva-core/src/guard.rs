@@ -371,6 +371,10 @@ mod tests {
         if !run(&["init", "-q"]) {
             return;
         }
+        // Git for Windows converts LF to CRLF on checkout by default. This
+        // test compares the restored file byte for byte, so the conversion is
+        // turned off in this repository.
+        assert!(run(&["config", "core.autocrlf", "false"]));
         assert!(run(&[
             "-c",
             "user.email=t@example.com",
