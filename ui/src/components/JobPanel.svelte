@@ -5,19 +5,25 @@
     JOB_NAMES,
     stepStates,
     stepsFor,
+    type JobView,
   } from '$lib/jobs';
   import { app } from '$lib/state/app.svelte';
   import { PIPELINE_PREFIX } from '$lib/artifacts';
   import { nameOf } from '$lib/tree';
 
-  // The bottom dock: what the running job is doing, step by step, with the
-  // agent's activity as it happens. A film job also shows its story outline
-  // here as soon as the agent has written it. The dock stays after the job ends
-  // so the outcome can be read. The finished film or visual is shown above the
-  // dock as soon as the job ends, if the user is still on the job's file. If
-  // they have selected another file by then, the dock has a button that opens
-  // the result. Before the first job of a workspace, the dock says that nothing
+  // The bottom dock: what one job is doing, step by step, with the agent's
+  // activity as it happens. A film job also shows its story outline here as
+  // soon as the agent has written it. The dock stays after the job ends so the
+  // outcome can be read. The finished film or visual is shown above the dock
+  // as soon as the job ends, if the user is still on the job's file. If they
+  // have selected another file by then, the dock has a button that opens the
+  // result. Before the first job of a workspace, the dock says that nothing
   // has run yet.
+  //
+  // Several jobs can run at the same time. When `app.jobs` holds more than one
+  // job, the dock has a list of them at its left edge. Clicking a job in the
+  // list shows that job in the rest of the dock. A job that has ended has a
+  // button in the list that removes it from the list.
   const job = $derived(app.job);
   const steps = $derived(job ? stepStates(job, stepsFor(job)) : []);
   // What the job makes, for the sentences that report its outcome.
@@ -49,13 +55,24 @@
     if (logEl) logEl.scrollTop = logEl.scrollHeight;
   });
 
-  const fileName = $derived(
-    job?.request.kind === 'compose'
-      ? `${job.request.parts?.length ?? 0} parts`
-      : job?.subject.startsWith(PIPELINE_PREFIX)
-        ? 'pipeline'
-        : nameOf(job?.subject ?? ''),
-  );
+  // What a job is called in the dock: the kind of job and what it is about,
+  // such as "Visualise · handler.go".
+  function titleOf(one: JobView): string {
+    const about =
+      one.request.kind === 'compose'
+        ? `${one.request.parts?.length ?? 0} parts`
+        : one.subject.startsWith(PIPELINE_PREFIX)
+          ? 'pipeline'
+          : nameOf(one.subject);
+    return `${JOB_NAMES[one.request.kind]} · ${about}`;
+  }
+  // How a job's status is said in the list of jobs.
+  const STATUS_WORDS: Record<JobView['status'], string> = {
+    running: 'running',
+    done: 'done',
+    failed: 'failed',
+    cancelled: 'cancelled',
+  };
   const errors = $derived(
     job?.report
       ? [
@@ -82,9 +99,39 @@
 </script>
 
 {#if job}
-  <section class="dock" class:with-outline={!!job.outline}>
+  <section
+    class="dock"
+    class:with-outline={!!job.outline}
+    class:with-jobs={app.jobs.length > 1}
+  >
+    {#if app.jobs.length > 1}
+      <div class="job-list" role="list" aria-label="Jobs">
+        {#each app.jobs as one (one.key)}
+          <div class="job-row" class:on={one.key === job.key} role="listitem">
+            <button
+              class="job-pick"
+              aria-current={one.key === job.key}
+              title="{titleOf(one)} ({STATUS_WORDS[one.status]})"
+              onclick={() => app.showJob(one.key)}
+            >
+              <span class="state {one.status}"></span><span class="name"
+                >{titleOf(one)}</span
+              >
+            </button>
+            {#if one.status !== 'running'}
+              <button
+                class="job-drop"
+                aria-label="Remove {titleOf(one)} from the list"
+                title="Remove from the list"
+                onclick={() => app.dismissJob(one.key)}>✕</button
+              >
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/if}
     <div class="steps">
-      <div class="kicker">{JOB_NAMES[job.request.kind]} · {fileName}</div>
+      <div class="kicker">{titleOf(job)}</div>
       {#each steps as step}
         <div
           class="step"
@@ -159,15 +206,23 @@
             · {error}
           </div>{/each}
       {/if}
-      {#if job.status === 'failed' && job.violations.length}
+      <!-- The files outside the job's version folder that changed while the
+           job ran. The app cannot tell who changed a file. It may have been
+           the agent, or the user in their editor. -->
+      {#if job.status !== 'running' && job.violations.length}
         <div class="outcome">
+          <div>
+            Changed while the job ran. If you did not change these files
+            yourself, the agent did:
+          </div>
           {#each job.violations as v}<div class="warn">
               {v.change} · {v.path}{v.tracked ? '' : ' (git cannot restore it)'}
             </div>{/each}
           {#if job.violations.some((v) => v.tracked)}<button
               class="btn small"
+              title="Restores each file that git tracks to its last committed content. Changes you made to these files since the last commit are lost."
               onclick={() => app.revertViolations()}
-              >Revert these changes</button
+              >Revert to the last commit</button
             >{/if}
         </div>
       {/if}

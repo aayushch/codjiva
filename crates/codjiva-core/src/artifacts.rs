@@ -87,6 +87,12 @@ pub struct ValidationRecord {
     pub warnings: u32,
 }
 
+/// Recorded in [`Manifest::sources`] in place of a content hash, for a source
+/// file that changed while its version was being made and whose content from
+/// before the change is not known. It equals no real hash, so the version
+/// counts as stale until it is made again.
+pub const CHANGED_DURING_JOB: &str = "changed-during-job";
+
 /// The contents of a version's `manifest.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,7 +107,8 @@ pub struct Manifest {
     pub companions: Vec<Companion>,
     /// The content hash of every source file this version was made from, by
     /// path. An artifact is stale when a file's current hash differs from the
-    /// one recorded here.
+    /// one recorded here. A file that changed while the version was being made
+    /// may have [`CHANGED_DURING_JOB`] here in place of a hash.
     pub sources: BTreeMap<String, String>,
     /// What the user asked this version to show, in their words.
     #[serde(default)]

@@ -25,7 +25,13 @@ import {
   type WorkspaceInfo,
 } from '$lib/ipc';
 import { PIPELINE_PREFIX, showsFilm } from '$lib/artifacts';
-import { newJob, reduceJob, type JobView } from '$lib/jobs';
+import {
+  newJob,
+  reduceJob,
+  targetOf,
+  targetOfArtifact,
+  type JobView,
+} from '$lib/jobs';
 import { ancestorsOf, flattenTree, parentOf } from '$lib/tree';
 
 export type ViewTab = 'visual' | 'film' | 'source';
@@ -235,8 +241,21 @@ class AppState {
   picking = $state(false);
   picked = $state<PickedElement | null>(null);
 
-  // The job that is running or last ran, and whether its panel is open.
-  job = $state<JobView | null>(null);
+  // Every job that was started since this folder was opened and that the user
+  // has not removed from the job panel, oldest first. Any number of them can
+  // be running at the same time.
+  jobs = $state<JobView[]>([]);
+  // The `key` of the job that the job panel shows. Null while `jobs` is empty.
+  shownJobKey = $state<number | null>(null);
+  // The job that the job panel shows.
+  job = $derived(this.jobs.find((job) => job.key === this.shownJobKey) ?? null);
+  // How many jobs are running now.
+  runningJobs = $derived(
+    this.jobs.filter((job) => job.status === 'running').length,
+  );
+  // The `key` the next job gets.
+  private nextJobKey = 1;
+  // Whether the job panel is open.
   dockOpen = $state(false);
   // The height the user dragged the job panel to. Null until they drag it; the
   // panel then has the height that suits the kind of job.
@@ -605,18 +624,49 @@ class AppState {
     else this.askInstructions(true);
   }
 
-  // Starts a job. `subject` is the file the job is about; a feedback request
-  // does not carry it.
+  // True while a job is running that makes a version of the artifact that
+  // `target` names. `target` comes from `targetOf` or `targetOfArtifact`.
+  isBusy(target: string): boolean {
+    return this.jobs.some(
+      (job) => job.status === 'running' && job.target === target,
+    );
+  }
+
+  // True while a job is making a new version of the artifact on screen.
+  // Regenerating it and sending feedback about it are disabled meanwhile.
+  artifactBusy = $derived(
+    !!this.currentArtifact &&
+      this.isBusy(targetOfArtifact(this.currentArtifact)),
+  );
+
+  // Replaces the job whose key is `key` by what `change` returns for it. Does
+  // nothing when that job is no longer in `jobs`. That is the case when the
+  // user removed the job from the panel, or opened another folder, before one
+  // of the job's events arrived.
+  private updateJob(key: number, change: (job: JobView) => JobView) {
+    const at = this.jobs.findIndex((job) => job.key === key);
+    if (at >= 0) this.jobs[at] = change(this.jobs[at]);
+  }
+
+  // Starts a job and shows it in the job panel. `subject` is the file the job
+  // is about; a feedback request does not carry it.
+  //
+  // Any number of jobs can run at the same time, with one exception. While a
+  // job is making a version of an artifact, a second job for the same artifact
+  // is not started. The user is told, and the panel shows the running job.
   async startJob(
     request: JobRequest,
     subject: string = request.subject[0] ?? '',
   ) {
-    // One job runs at a time. A second one would take over the job panel and
-    // leave the first running out of sight.
-    if (this.job?.status === 'running') {
+    const target = targetOf(request, this.artifacts);
+    const running = this.jobs.find(
+      (job) => job.status === 'running' && job.target === target,
+    );
+    if (running) {
       this.notify(
-        'A job is still running. Wait for it to finish, or cancel it in the panel below.',
+        'A new version of this is already being made. Wait for that job to finish, or cancel it in the panel below.',
       );
+      this.shownJobKey = running.key;
       this.dockOpen = true;
       return;
     }
@@ -624,47 +674,66 @@ class AppState {
     this.instructionsAsk = null;
     this.animateAsk = null;
     this.composeAsk = null;
-    const started = newJob(request, Date.now(), subject);
-    this.job = started;
+    const key = this.nextJobKey++;
+    // An earlier job for the same artifact has ended. The new job takes its
+    // place in the panel.
+    this.jobs = [
+      ...this.jobs.filter((job) => job.target !== target),
+      newJob(request, Date.now(), subject, key, target),
+    ];
+    this.shownJobKey = key;
     this.dockOpen = true;
-    // The estimate is added to the job when it arrives. It is dropped if
-    // another job has started by then. A job runs the same without one.
+    // The estimate is added to the job when it arrives. A job runs the same
+    // without one.
     api
       .jobEstimate(request)
-      .then((estimate) => {
-        if (this.job?.startedAt === started.startedAt)
-          this.job = { ...this.job, estimate };
-      })
+      .then((estimate) => this.updateJob(key, (job) => ({ ...job, estimate })))
       .catch(() => {});
     try {
       await api.jobStart(request, (event) => {
-        if (!this.job) return;
-        this.job = reduceJob(this.job, event, Date.now());
-        if (event.type === 'result') this.onJobResult();
+        this.updateJob(key, (job) => reduceJob(job, event, Date.now()));
+        if (event.type === 'result') this.onJobResult(key);
       });
     } catch (error) {
       const failure = error as AppError;
-      this.job = reduceJob(
-        this.job,
-        {
-          type: 'failed',
-          code: failure.code ?? 'error',
-          message: messageOf(error),
-        },
-        Date.now(),
+      this.updateJob(key, (job) =>
+        reduceJob(
+          job,
+          {
+            type: 'failed',
+            code: failure.code ?? 'error',
+            message: messageOf(error),
+          },
+          Date.now(),
+        ),
       );
     }
   }
 
-  // The artifact the last job made, once the job has finished and the artifact
-  // is listed.
+  // Shows another job in the job panel.
+  showJob(key: number) {
+    this.shownJobKey = key;
+  }
+
+  // Removes a job that has ended from the job panel. If the panel was showing
+  // it, the panel shows the newest job that is left. A running job is not
+  // removed.
+  dismissJob(key: number) {
+    this.jobs = this.jobs.filter(
+      (job) => job.key !== key || job.status === 'running',
+    );
+    if (!this.job) this.shownJobKey = this.jobs.at(-1)?.key ?? null;
+  }
+
+  // The artifact that the job in the job panel made, once the job has finished
+  // and the artifact is listed.
   jobArtifact = $derived(
     this.job?.status === 'done'
       ? (this.artifacts.find((a) => a.id === this.job?.artifactId) ?? null)
       : null,
   );
-  // True when the artifact the last job made is not the one on screen. The job
-  // panel then offers a button that opens it.
+  // True when the artifact that the job in the job panel made is not the one
+  // on screen. The job panel then offers a button that opens it.
   jobResultElsewhere = $derived(
     !!this.jobArtifact &&
       (this.example !== null ||
@@ -672,17 +741,17 @@ class AppState {
         this.currentArtifact?.id !== this.jobArtifact.id),
   );
 
-  // After a job made a version: reads the artifacts again and shows the new
-  // version.
-  private async onJobResult() {
+  // After the job whose key is `key` made a version: reads the artifacts again
+  // and shows the new version.
+  private async onJobResult(key: number) {
     await this.reloadArtifacts();
-    await this.showJobResult();
+    await this.showJobResult(key);
   }
 
-  // Shows the version the last job made, on the tab of its kind: the Film tab
-  // for a film, the Visual tab for a visual.
-  private async showJobResult() {
-    const job = this.job;
+  // Shows the version that the job whose key is `key` made, on the tab of its
+  // kind: the Film tab for a film, the Visual tab for a visual.
+  private async showJobResult(key: number) {
+    const job = this.jobs.find((one) => one.key === key);
     if (!job || job.status !== 'done') return;
     const made = this.artifacts.find((a) => a.id === job.artifactId);
     // A new pipeline is opened wherever the user is, because nothing else shows
@@ -703,26 +772,26 @@ class AppState {
     });
   }
 
-  // Opens the artifact the last job made, selecting its file if the user has
-  // moved to another.
+  // Opens the artifact that the job in the job panel made, selecting its file
+  // if the user has moved to another.
   async openJobResult() {
     if (this.jobArtifact) await this.openArtifact(this.jobArtifact);
   }
 
-  // Starts the film again from an outline the user edited. The running job, if
-  // any, is cancelled first: its film would follow the outline the user has
-  // just changed.
+  // Starts the film of the job in the job panel again, from an outline the
+  // user edited. If that job is still running it is cancelled first, because
+  // its film would follow the outline the user has just changed.
   async restartWithOutline(outline: Outline, instructions: string) {
     const job = this.job;
     if (!job || job.request.kind !== 'animate') return;
     if (job.status === 'running') {
       await this.cancelJob();
       // The job reports that it has stopped a moment after it was asked to.
-      for (
-        let waited = 0;
-        this.job?.status === 'running' && waited < 10000;
-        waited += 100
-      )
+      const stillRunning = () =>
+        this.jobs.some(
+          (one) => one.key === job.key && one.status === 'running',
+        );
+      for (let waited = 0; stillRunning() && waited < 10000; waited += 100)
         await new Promise((done) => setTimeout(done, 100));
     }
     await this.startJob({ ...job.request, instructions, outline });
@@ -793,6 +862,7 @@ class AppState {
     );
   }
 
+  // Asks the job in the job panel to stop, if it is running.
   async cancelJob() {
     if (this.job?.jobId && this.job.status === 'running')
       await api.jobCancel(this.job.jobId);
@@ -859,7 +929,8 @@ class AppState {
     this.frameSend?.({ cj: 'layers', on: { [layer]: on } });
   }
 
-  // Undoes what a failed job's agent changed outside .codjiva/, where git can.
+  // Restores the files that the job in the job panel reported as changed while
+  // it ran to their last committed content, where git can.
   async revertViolations() {
     if (!this.job?.violations.length) return;
     try {
@@ -913,7 +984,8 @@ class AppState {
       this.artifacts = [];
       this.detail = null;
       this.pickedVersion = null;
-      this.job = null;
+      this.jobs = [];
+      this.shownJobKey = null;
       this.dockOpen = false;
       this.places = [];
       this.placeIndex = -1;

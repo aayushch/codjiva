@@ -75,9 +75,15 @@
         {/if}
       </span>
     {/if}
-    {#if app.job?.status === 'running'}
+    {#if app.runningJobs > 0}
       <span class="dot"></span>
-      {app.job.agent ?? app.activeAgent?.name ?? 'Agent'} · working
+      {#if app.runningJobs === 1}
+        {app.jobs.find((job) => job.status === 'running')?.agent ??
+          app.activeAgent?.name ??
+          'Agent'} · working
+      {:else}
+        {app.runningJobs} jobs running
+      {/if}
     {:else if app.activeAgent}
       <span class="dot cool"></span> {app.activeAgent.name} · ready
     {:else if app.agentsLoaded}

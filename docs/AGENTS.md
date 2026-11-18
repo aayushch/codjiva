@@ -82,4 +82,9 @@ see `resources/adapters/cursor-agent.json`.
 - Print its progress as one JSON object per line, in a format one of the parsers understands.
 
 Codjiva does not rely on the agent to stay inside its folder. After every run it compares the project with a
-snapshot taken before, and discards the result if anything else changed.
+snapshot taken before.
+
+- If a file of an already saved version changed, the job fails and its result is discarded.
+- If a file of the project's own code changed, the job continues. Codjiva cannot tell whether the agent or you
+  changed the file, so the job panel lists the changed files and offers to restore them from git. A visual or
+  film that was made from a changed file is shown as stale.

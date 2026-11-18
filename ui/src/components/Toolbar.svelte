@@ -1,5 +1,6 @@
 <script lang="ts">
   import { showsFilm } from '$lib/artifacts';
+  import { targetOfArtifact } from '$lib/jobs';
   import { api } from '$lib/ipc';
   import { app } from '$lib/state/app.svelte';
   import Icon from './Icon.svelte';
@@ -28,6 +29,13 @@
   // pipeline cannot.
   const canAnimate = $derived(
     !!artifact && !isPipeline && !showsFilm(artifact) && !app.selectedIsFolder,
+  );
+
+  // True while a job is making the film of the file on screen. The button that
+  // makes a film of the file is disabled meanwhile.
+  const filmBusy = $derived(
+    !!artifact &&
+      app.isBusy(targetOfArtifact({ kind: 'film', subject: artifact.subject })),
   );
 
   // Describes when a version was made, relative to today: "today 14:05",
@@ -89,6 +97,7 @@
         class="tb-btn"
         data-tip={isPipeline ? 'Compose again…' : 'Regenerate…'}
         aria-label={isPipeline ? 'Compose again…' : 'Regenerate…'}
+        disabled={app.artifactBusy}
         onclick={() => app.askRegenerate()}
         ><Icon name="again" size={16} /></button
       >
@@ -96,6 +105,7 @@
           class="tb-btn"
           data-tip="Make a film of this file…"
           aria-label="Animate…"
+          disabled={filmBusy}
           onclick={() => app.askAnimate()}
           ><Icon name="film" size={16} /></button
         >{/if}

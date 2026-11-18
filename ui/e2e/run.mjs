@@ -253,7 +253,7 @@ check(
   (await page.locator('.dock .log').textContent()).slice(-200),
 );
 check(
-  /write guard: 0 writes outside \.codjiva\//.test(
+  /write guard: no file outside the version folder changed/.test(
     await page.locator('.dock .log').textContent(),
   ),
   'the job log shows the write guard result',
@@ -760,6 +760,102 @@ check(
   'a cancelled job adds no version',
 );
 await page.getByRole('button', { name: 'Close' }).click();
+
+// ---- several jobs at the same time: a second file can be visualised while
+// the first job runs, and only a second job for the same visual is refused
+await page
+  .locator('.toolbar')
+  .getByRole('button', { name: 'Regenerate…' })
+  .click();
+await page
+  .getByRole('dialog')
+  .getByRole('button', { name: 'Regenerate' })
+  .click();
+await page.locator('.dock .step.now').first().waitFor();
+check(
+  await page
+    .locator('.toolbar')
+    .getByRole('button', { name: 'Regenerate…' })
+    .isDisabled(),
+  'a visual cannot be regenerated while a job is making a version of it',
+);
+await row('store.go').click();
+const visualiseOther = page
+  .locator('.empty')
+  .getByRole('button', { name: 'Visualise', exact: true });
+await visualiseOther.waitFor();
+check(
+  !(await visualiseOther.isDisabled()),
+  'another file can be visualised while that job runs',
+);
+await visualiseOther.click();
+await page
+  .getByRole('dialog')
+  .getByRole('button', { name: 'Visualise' })
+  .click();
+await page.locator('.dock .job-row').nth(1).waitFor();
+check(
+  (await page.locator('.dock .job-row').count()) === 2 &&
+    (await page.locator('.dock .job-pick .state.running').count()) === 2,
+  'the job panel lists both running jobs',
+);
+check(
+  /2 jobs running/.test(await page.locator('.titlebar .agent').textContent()),
+  'the title bar says how many jobs are running',
+);
+check(
+  /store\.go/.test(await page.locator('.dock .steps .kicker').textContent()) &&
+    (await page.locator('.dock .job-row.on').textContent()).includes(
+      'store.go',
+    ),
+  'the job panel shows the job that was started last',
+);
+check(
+  await page
+    .locator('.empty')
+    .getByRole('button', { name: 'Visualising…' })
+    .isDisabled(),
+  'the second file shows that a job is running for it',
+);
+await page.locator('.dock .log .tool').first().waitFor();
+await shot('03f-two-jobs');
+await page.locator('.dock .job-pick', { hasText: 'handler.go' }).click();
+check(
+  /handler\.go/.test(await page.locator('.dock .steps .kicker').textContent()),
+  'clicking a job in the list shows that job',
+);
+await page.getByRole('button', { name: 'Cancel' }).click();
+await page
+  .locator('.dock .log', { hasText: 'Cancelled.' })
+  .waitFor({ timeout: 5000 });
+check(
+  (await page.locator('.dock .job-pick .state.running').count()) === 1 &&
+    /Mock Agent · working/.test(
+      await page.locator('.titlebar .agent').textContent(),
+    ),
+  'cancelling one job leaves the other running',
+);
+await page.locator('.dock .job-pick', { hasText: 'store.go' }).click();
+await page.getByRole('button', { name: 'Cancel' }).click();
+await page
+  .locator('.dock .log', { hasText: 'Cancelled.' })
+  .waitFor({ timeout: 5000 });
+await page.locator('.dock .job-row.on .job-drop').click();
+check(
+  (await page.locator('.dock .job-list').count()) === 0 &&
+    /handler\.go/.test(
+      await page.locator('.dock .steps .kicker').textContent(),
+    ),
+  'a job that has ended can be removed from the list',
+);
+await page.getByRole('button', { name: 'Close' }).click();
+await row('handler.go').click();
+await page.locator('.toolbar select').waitFor();
+check(
+  (await page.locator('.toolbar select option').count()) === 2 &&
+    (await page.locator('.lib-item').count()) === 1,
+  'the cancelled jobs added nothing',
+);
 
 // ---- Animate: companions, instructions and length, then the outline, then the
 // film

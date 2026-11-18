@@ -348,7 +348,10 @@
           ? ' Regenerate the part it belongs to first, then compose again.'
           : ''}
       </p>
-      <button class="btn small" onclick={() => app.askRegenerate()}
+      <button
+        class="btn small"
+        disabled={app.artifactBusy}
+        onclick={() => app.askRegenerate()}
         >{isPipeline ? 'Compose again…' : 'Regenerate…'}</button
       >
     {/if}

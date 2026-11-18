@@ -116,7 +116,6 @@ const DEFAULT_SETTINGS: Settings = {
   maxCompanionFiles: 12,
   companionIgnore: ['vendor/', 'third_party/', 'node_modules/'],
   theme: 'system',
-  parallelJobs: 1,
   maxBudgetUsd: null,
   layout: {
     sidebarOpen: true,
@@ -429,6 +428,9 @@ let opened = false;
 const fsListeners = new Set<(changes: Changes) => void>();
 // How to stop each running mock job, by job id.
 const cancelledJobs = new Map<string, () => void>();
+// How many mock jobs have been started. The count is part of each job's id, so
+// that two jobs started in the same millisecond get different ids.
+let mockJobsStarted = 0;
 
 export const mockApi: Api = {
   async appInfo() {
@@ -753,7 +755,7 @@ export const mockApi: Api = {
   // result. A Visualise job shows the reference visual, an Animate job the
   // reference film, and a feedback job adds a version to the artifact it names.
   async jobStart(request, onEvent) {
-    const jobId = `mock-${Date.now()}`;
+    const jobId = `mock-${Date.now()}-${++mockJobsStarted}`;
     (window as any).__mockLastRequest = request;
     const base =
       request.kind === 'feedback'

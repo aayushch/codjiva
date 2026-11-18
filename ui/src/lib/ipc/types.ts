@@ -74,7 +74,6 @@ export type Settings = {
   companionIgnore: string[];
   // The colours of the app's own window. `system` follows the operating system.
   theme: 'system' | 'light' | 'dark';
-  parallelJobs: number;
   maxBudgetUsd: number | null;
   layout: Layout;
   // Whether the app looks for a newer version by itself. With false it looks

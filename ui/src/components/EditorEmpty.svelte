@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { targetOfArtifact } from '$lib/jobs';
   import { app } from '$lib/state/app.svelte';
   import Icon from './Icon.svelte';
 
@@ -9,21 +10,21 @@
   const info = $derived(app.fileInfo);
   const folder = $derived(app.folderInfo);
   const onFilmTab = $derived(app.tab === 'film');
-  // True while a job is running for the file or folder on screen.
-  const busy = $derived(
-    app.job?.status === 'running' && app.job.subject === app.selected,
+  // True while a job is making the visual of the file or folder on screen,
+  // and true while a job is making the film of the file on screen. The button
+  // that would start the same job again is disabled meanwhile and says what
+  // is being made. Jobs for other files do not disable anything here.
+  const visualBusy = $derived(
+    !!app.selected &&
+      app.isBusy(targetOfArtifact({ kind: 'visual', subject: [app.selected] })),
   );
-  const busyLabel = $derived(
-    app.job?.request.kind === 'animate'
-      ? 'Animating…'
-      : app.job?.request.kind === 'feedback'
-        ? 'Changing…'
-        : 'Visualising…',
+  const filmBusy = $derived(
+    !!app.selected &&
+      app.isBusy(targetOfArtifact({ kind: 'film', subject: [app.selected] })),
   );
   const noAgent = $derived(app.agentsLoaded && !app.activeAgent);
-  const blocked = $derived(
-    !info || info.binary || noAgent || app.job?.status === 'running',
-  );
+  // True when no job can be started for the file on screen.
+  const blocked = $derived(!info || info.binary || noAgent);
   const has = $derived(
     app.visualArtifact && app.filmArtifact
       ? 'a visual and a film'
@@ -39,6 +40,35 @@
       ? 'under a thousand tokens'
       : `about ${Math.round(n / 1000).toLocaleString()} thousand tokens`;
 </script>
+
+<!-- The button that starts a visual of the selected file. `primary` draws it
+     as the main action of the tab. -->
+{#snippet visualise(primary: boolean)}
+  <button
+    class="btn"
+    class:primary
+    disabled={blocked || visualBusy}
+    onclick={() => app.askInstructions()}
+  >
+    {#if visualBusy}Visualising…{:else}<Icon
+        name="viz"
+        size={16}
+      />Visualise{/if}
+  </button>
+{/snippet}
+
+<!-- The button that starts a film of the selected file. -->
+{#snippet animate(primary: boolean)}
+  <button
+    class="btn"
+    class:primary
+    disabled={blocked || filmBusy}
+    onclick={() => app.askAnimate()}
+  >
+    {#if filmBusy}Animating…{:else}<Icon name="play" size={16} />Animate with
+      companions…{/if}
+  </button>
+{/snippet}
 
 <div class="empty">
   <div class="card">
@@ -56,15 +86,12 @@
           <span>{tokens(folder.estimatedTokens)}</span>
         </div>
         <div class="actions">
-          {#if busy}
+          {#if visualBusy}
             <button class="btn" disabled>Visualising…</button>
           {:else}
             <button
               class="btn primary"
-              disabled={folder.tooLarge ||
-                folder.files.length === 0 ||
-                noAgent ||
-                app.job?.status === 'running'}
+              disabled={folder.tooLarge || folder.files.length === 0 || noAgent}
               onclick={() => app.askInstructions()}
               ><Icon name="viz" size={16} />Visualise this folder…</button
             >
@@ -122,34 +149,12 @@
           <span>{has}</span>
         </div>
         <div class="actions">
-          {#if busy}
-            <button class="btn" disabled>{busyLabel}</button>
-          {:else if onFilmTab}
-            <button
-              class="btn primary"
-              disabled={blocked}
-              onclick={() => app.askAnimate()}
-              ><Icon name="play" size={16} />Animate with companions…</button
-            >
-            {#if !app.visualArtifact}<button
-                class="btn"
-                disabled={blocked}
-                onclick={() => app.askInstructions()}
-                ><Icon name="viz" size={16} />Visualise</button
-              >{/if}
+          {#if onFilmTab}
+            {@render animate(true)}
+            {#if !app.visualArtifact}{@render visualise(false)}{/if}
           {:else}
-            <button
-              class="btn primary"
-              disabled={blocked}
-              onclick={() => app.askInstructions()}
-              ><Icon name="viz" size={16} />Visualise</button
-            >
-            <button
-              class="btn"
-              disabled={blocked}
-              onclick={() => app.askAnimate()}
-              ><Icon name="play" size={16} />Animate with companions…</button
-            >
+            {@render visualise(true)}
+            {@render animate(false)}
           {/if}
         </div>
         {#if noAgent}

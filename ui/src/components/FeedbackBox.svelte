@@ -13,7 +13,9 @@
   let text = $state('');
   const artifact = $derived(app.currentArtifact);
   const isFilm = $derived(showsFilm(artifact));
-  const running = $derived(app.job?.status === 'running');
+  // True while a job is making a new version of the artifact on screen.
+  // Feedback cannot be sent meanwhile. Jobs for other artifacts do not matter.
+  const running = $derived(app.artifactBusy);
   const moment = $derived(app.filmMoment);
   const selectedLabel = $derived(
     app.detail?.definition?.nodes?.find((n) => n.id === app.selectedNode)

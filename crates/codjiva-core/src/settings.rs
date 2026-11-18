@@ -181,8 +181,6 @@ pub struct Settings {
     /// `companions::IgnoreList` for the forms.
     pub companion_ignore: Vec<String>,
     pub theme: Theme,
-    /// How many agent jobs may run at once in a workspace.
-    pub parallel_jobs: u32,
     /// The most a single job may spend, in US dollars, for agents that can
     /// enforce a budget.
     pub max_budget_usd: Option<f64>,
@@ -215,7 +213,6 @@ impl Default for Settings {
                 "node_modules/".to_string(),
             ],
             theme: Theme::System,
-            parallel_jobs: 1,
             max_budget_usd: None,
             layout: Layout::default(),
             check_for_updates: true,

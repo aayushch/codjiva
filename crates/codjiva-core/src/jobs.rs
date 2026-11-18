@@ -16,7 +16,9 @@
 //!     new version folder.
 //!   - agent: the agent reads the code and writes sources; its progress is
 //!     streamed.
-//!   - guard: check that nothing outside `.codjiva/` was touched.
+//!   - guard: report the files outside the version folder that changed while
+//!     the agent ran, and fail the job if one of them belongs to a saved
+//!     version.
 //!   - build: join the sources with the runtime into one page.
 //!   - validate: run the page's self-test in a real web engine.
 //!   - fix: if a check failed, send the exact report back to the agent and
@@ -25,6 +27,14 @@
 //!
 //! The job reports everything it does as [`JobEvent`]s. It never shows a result
 //! that was not built and checked.
+//!
+//! Any number of jobs may run at the same time, with one exception. Two jobs
+//! never make a version of the same artifact at the same time. The second one
+//! is refused with the error `artifact_busy`. See [`Claim`].
+//!
+//! A source file may change while a job runs, for example because the user
+//! edits it. The job is not failed for that. The version it makes records the
+//! file as it was before the change, so the artifact is shown as stale.
 
 use crate::agents::{AgentEvent, Backend, Turn};
 use crate::artifacts::{
@@ -195,8 +205,10 @@ pub enum JobEvent {
         level: LogLevel,
         text: String,
     },
-    /// The result of the write guard after an agent turn. An empty list is the
-    /// good outcome.
+    /// The result of the write guard after an agent turn: every file outside
+    /// the job's version folder that has changed since the job began. A
+    /// changed file of a saved version fails the job. A changed file of the
+    /// workspace's source code does not, because the user may have edited it.
     Guard {
         violations: Vec<Violation>,
     },
@@ -235,6 +247,43 @@ pub enum JobEvent {
 #[async_trait]
 pub trait Validator: Send + Sync {
     async fn validate(&self, artifact_id: &str, version: u32) -> Result<Value>;
+}
+
+/// The artifacts that a job is making a version of right now, each as the
+/// absolute path of the artifact's folder.
+static IN_WORK: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
+
+/// One entry of [`IN_WORK`]. A job holds it from before it chooses its version
+/// number until it ends. Dropping it removes the entry.
+///
+/// A version's number is one more than the highest version folder that exists.
+/// Two jobs for the same artifact that started together would both get the
+/// same number and write into the same folder, so the second job is refused.
+struct Claim(PathBuf);
+
+impl Claim {
+    /// Adds the artifact's folder to [`IN_WORK`]. Returns `None` when it is
+    /// already there, because another job is making a version of the same
+    /// artifact.
+    fn take(artifact_dir: PathBuf) -> Option<Claim> {
+        let added = IN_WORK
+            .lock()
+            .expect("the lock on the artifacts in work is not poisoned")
+            .insert(artifact_dir.clone());
+        // The `Claim` is built only when the folder was added. Building one
+        // for a folder that another job holds would remove that job's entry
+        // when the value is dropped.
+        added.then(|| Claim(artifact_dir))
+    }
+}
+
+impl Drop for Claim {
+    fn drop(&mut self) {
+        IN_WORK
+            .lock()
+            .expect("the lock on the artifacts in work is not poisoned")
+            .remove(&self.0);
+    }
 }
 
 /// What a job needs besides the request.
@@ -888,6 +937,60 @@ fn source_hashes(
         .collect()
 }
 
+/// The source files that a job's request names, before the agent has named any
+/// more.
+fn named_sources(ws: &Workspace, plan: &Plan) -> Result<Vec<String>> {
+    // A pipeline is made from everything its parts were made from.
+    if !plan.parts.is_empty() {
+        let mut files = Vec::new();
+        for (part, _) in &plan.parts {
+            files.extend(
+                artifacts::read_manifest(ws, &part.artifact, part.version)?
+                    .sources
+                    .into_keys(),
+            );
+        }
+        return Ok(files);
+    }
+    // For a folder, every code file in it is a source, so a change to any of
+    // them makes the visual stale.
+    let subject = if plan.folder_files.is_empty() {
+        &plan.subject
+    } else {
+        &plan.folder_files
+    };
+    Ok(subject.iter().chain(&plan.companions).cloned().collect())
+}
+
+/// The source hashes that a new version records, so that the version is stale
+/// if any of its source files changed while the job ran.
+///
+/// `at_end` holds the hash of every source file when the job finished.
+/// `at_start` holds the hashes taken before the agent ran, of the files the
+/// request named. `changed` holds the files that changed while the job ran.
+///
+///   - A file in `at_start` is recorded with its hash from `at_start`. A file
+///     that was deleted while the job ran is only in `at_start`, and is
+///     recorded too.
+///   - A file that is only in `at_end` is one the agent named. If it is in
+///     `changed`, it is recorded with [`artifacts::CHANGED_DURING_JOB`],
+///     because its content from before the change is not known.
+///   - Every other file is recorded with its hash from `at_end`.
+fn sources_as_read(
+    at_end: BTreeMap<String, String>,
+    at_start: BTreeMap<String, String>,
+    changed: &BTreeMap<String, guard::Change>,
+) -> BTreeMap<String, String> {
+    let mut sources = at_end;
+    for (path, hash) in sources.iter_mut() {
+        if changed.contains_key(path) {
+            *hash = artifacts::CHANGED_DURING_JOB.to_string();
+        }
+    }
+    sources.extend(at_start);
+    sources
+}
+
 /// Runs a job to its end and reports the end as an event: `Result`, `Failed` or
 /// `Cancelled`.
 pub async fn run(ctx: JobContext, request: JobRequest, job_id: String) {
@@ -1370,6 +1473,17 @@ async fn run_inner(
     let ws = &ctx.workspace;
     let plan = plan(ws, request)?;
     let (kind, artifact_id) = (plan.kind, plan.artifact_id.clone());
+    let _claim = Claim::take(artifacts::artifact_dir(ws, &artifact_id)?)
+        .ok_or_else(|| {
+            AppError::new(
+                "artifact_busy",
+                format!(
+                    "A new version of this {} is already being made. Wait for \
+                     that job to finish, or cancel it.",
+                    kind.as_str()
+                ),
+            )
+        })?;
 
     // ---- prepare
     store::ensure(ws)?;
@@ -1558,7 +1672,15 @@ async fn run_inner(
     let mut model_used: Option<String> = None;
     let mut iteration = 0u32;
     let before = guard::snapshot(ws);
-    let store_before = guard::snapshot_store(ws, &paths.version_dir);
+    let store_before = guard::snapshot_store(ws);
+    // A feedback job does not read the code again, so its version keeps the
+    // source hashes of the version it changed. Every other job hashes the
+    // files its request names now, before the agent reads them.
+    let named = match &plan.base {
+        Some(_) => Vec::new(),
+        None => named_sources(ws, &plan)?,
+    };
+    let hashes_at_start = source_hashes(ws, &named, &[], None);
 
     let outcome =
         loop {
@@ -1653,19 +1775,16 @@ async fn run_inner(
             }
 
             // ---- guard
+            let in_saved_versions = guard::store_violations(ws, &store_before);
             let mut touched = guard::violations(ws, &before);
-            touched.extend(guard::store_violations(
-                ws,
-                &store_before,
-                &paths.version_dir,
-            ));
+            touched.extend(in_saved_versions.iter().cloned());
             (ctx.emit)(JobEvent::Guard {
-                violations: touched.clone(),
+                violations: touched,
             });
-            if !touched.is_empty() {
+            if !in_saved_versions.is_empty() {
                 discard();
                 let names: Vec<&str> =
-                    touched.iter().map(|v| v.path.as_str()).collect();
+                    in_saved_versions.iter().map(|v| v.path.as_str()).collect();
                 return Err(AppError::new(
                     "write_guard",
                     format!(
@@ -1760,37 +1879,35 @@ async fn run_inner(
                 })
                 .collect()
         });
-    // A feedback job does not read the code again, so its version keeps the
-    // source hashes of the version it changed. Whether it is stale is still
-    // judged against the code the agent actually read.
+    // Whether a feedback job's version is stale is judged against the code
+    // the agent actually read, which is the code of the version it changed.
     let sources = match &plan.base {
         Some(base) => base.sources.clone(),
-        // For a folder, every code file in it is a source, so a change to any
-        // of them makes the visual stale.
-        None if !plan.folder_files.is_empty() => source_hashes(
-            ws,
-            &plan.folder_files,
-            &plan.companions,
-            outcome.model.as_ref(),
-        ),
-        // A pipeline is made from everything its parts were made from.
-        None if !plan.parts.is_empty() => {
-            let mut files: Vec<String> = Vec::new();
-            for (part, _) in &plan.parts {
-                files.extend(
-                    artifacts::read_manifest(ws, &part.artifact, part.version)?
-                        .sources
-                        .into_keys(),
-                );
+        None => {
+            let sources = sources_as_read(
+                source_hashes(ws, &named, &[], outcome.model.as_ref()),
+                hashes_at_start,
+                &guard::changes(ws, &before),
+            );
+            let stale: Vec<&str> = sources
+                .iter()
+                .filter(|(path, hash)| {
+                    ws.hash_file(path).as_ref() != Some(hash)
+                })
+                .map(|(path, _)| path.as_str())
+                .collect();
+            if !stale.is_empty() {
+                (ctx.emit)(JobEvent::Log {
+                    level: LogLevel::Warn,
+                    text: format!(
+                        "{} changed while this version was being made, so \
+                         the version is shown as stale.",
+                        stale.join(", ")
+                    ),
+                });
             }
-            source_hashes(ws, &files, &[], outcome.model.as_ref())
+            sources
         }
-        None => source_hashes(
-            ws,
-            &plan.subject,
-            &plan.companions,
-            outcome.model.as_ref(),
-        ),
     };
     let totals = *reporter
         .totals
@@ -3473,16 +3590,17 @@ mod tests {
         assert_eq!(artifacts::next_version(&s.ws, &artifact_id).unwrap(), 3);
     }
 
-    /// An agent that produces a valid result but also rewrites one of the
-    /// user's source files.
-    struct MisbehavingBackend;
+    /// An agent that produces a valid result while files of the workspace
+    /// change: the file the job is about, a file that only the agent's analysis
+    /// names, and a new file.
+    struct ChangingBackend;
 
     #[async_trait]
-    impl Backend for MisbehavingBackend {
+    impl Backend for ChangingBackend {
         fn info(&self) -> crate::agents::AgentInfo {
             crate::agents::AgentInfo {
-                id: "bad".into(),
-                name: "Bad Agent".into(),
+                id: "changing".into(),
+                name: "Changing Agent".into(),
                 kind: "replay".into(),
                 path: None,
                 version: None,
@@ -3508,7 +3626,12 @@ mod tests {
             }
             std::fs::write(
                 turn.workspace_root.join("src/handler.go"),
-                "package orders\n// rewritten by the agent\n",
+                "package orders\n\nfunc Submit() {\n\tqueue()\n}\n// new\n",
+            )
+            .unwrap();
+            std::fs::write(
+                turn.workspace_root.join("src/store.go"),
+                "package orders\n// new\n",
             )
             .unwrap();
             std::fs::write(
@@ -3520,33 +3643,27 @@ mod tests {
         }
     }
 
+    fn visualise(subject: &str) -> JobRequest {
+        JobRequest {
+            kind: JobKind::Visualise,
+            subject: vec![subject.into()],
+            ..JobRequest::default()
+        }
+    }
+
     #[tokio::test]
-    async fn a_write_outside_the_dot_folder_fails_the_job_and_discards_the_result(
+    async fn a_source_file_that_changes_while_a_job_runs_makes_the_version_stale(
     ) {
         let s = setup(GOOD, &[]);
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let sink = Arc::clone(&events);
-        let ctx = JobContext {
-            workspace: Arc::clone(&s.ws),
-            backend: Arc::new(MisbehavingBackend),
-            validator: Arc::new(ScriptedValidator {
-                reports: Mutex::new(vec![ok_report()]),
-            }),
-            cancel: CancellationToken::new(),
-            emit: Arc::new(move |e| sink.lock().unwrap().push(e)),
-            model: None,
-            effort: None,
-            max_budget_usd: None,
-            max_fix_iterations: 3,
-        };
-        let request = JobRequest {
-            kind: JobKind::Visualise,
-            subject: vec!["src/handler.go".into()],
-            ..JobRequest::default()
-        };
-        run(ctx, request, new_job_id()).await;
-        let events = events.lock().unwrap().clone();
+        let events = run_with(
+            &s.ws,
+            Arc::new(ChangingBackend),
+            vec![ok_report()],
+            visualise("src/handler.go"),
+        )
+        .await;
 
+        // The job reports every file that changed and is not failed for them.
         let touched: Vec<String> = events
             .iter()
             .find_map(|e| {
@@ -3557,21 +3674,132 @@ mod tests {
                 }
             })
             .unwrap();
-        assert_eq!(touched, vec!["notes.txt", "src/handler.go"]);
-        let Some(JobEvent::Failed { code, message }) = events.last() else {
-            panic!("{events:?}")
-        };
-        assert_eq!(code, "write_guard");
-        assert!(
-            message.contains("src/handler.go") && message.contains("notes.txt"),
-            "{message}"
+        assert_eq!(
+            touched,
+            vec!["notes.txt", "src/handler.go", "src/store.go"]
         );
-        // The result is not shown or kept, even though it would have built and
-        // passed.
-        assert!(artifacts::list(&s.ws).is_empty());
-        assert!(!events
-            .iter()
-            .any(|e| matches!(e, JobEvent::Validation { .. })));
+        assert!(
+            matches!(
+                events.last(),
+                Some(JobEvent::Result {
+                    version: 1,
+                    passed: true,
+                    ..
+                })
+            ),
+            "{:?}",
+            events.last()
+        );
+        assert!(events.iter().any(|e| matches!(
+            e,
+            JobEvent::Log { level: LogLevel::Warn, text }
+                if text.contains("src/handler.go, src/store.go changed while")
+        )));
+
+        // The version is stale for the file the request named and for the
+        // file only the agent named. A file the version was not made from
+        // does not count.
+        let listed = artifacts::list(&s.ws);
+        assert!(listed[0].stale);
+        assert_eq!(
+            listed[0].stale_sources,
+            vec!["src/handler.go", "src/store.go"]
+        );
+        // Putting the requested file back as it was makes that file current
+        // again, because its hash from before the change was recorded.
+        std::fs::write(
+            s.ws.root().join("src/handler.go"),
+            "package orders\n\nfunc Submit() {\n\tqueue()\n}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            artifacts::list(&s.ws)[0].stale_sources,
+            vec!["src/store.go"]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_second_job_for_the_same_artifact_is_refused_while_the_first_runs(
+    ) {
+        let s = setup(GOOD, &[]);
+        // A pause between recorded lines keeps the first job running while
+        // the second one is started.
+        let slow = Arc::new(ReplayBackend::new(
+            &s.recording,
+            Duration::from_millis(200),
+        ));
+        let ws = Arc::clone(&s.ws);
+        let first = tokio::spawn(async move {
+            run_with(&ws, slow, vec![ok_report()], visualise("src/handler.go"))
+                .await
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let fast: Arc<dyn Backend> =
+            Arc::new(ReplayBackend::new(&s.recording, Duration::ZERO));
+        let second = run_with(
+            &s.ws,
+            Arc::clone(&fast),
+            vec![ok_report()],
+            visualise("src/handler.go"),
+        )
+        .await;
+        let Some(JobEvent::Failed { code, message }) = second.last() else {
+            panic!("{second:?}")
+        };
+        assert_eq!(code, "artifact_busy");
+        assert!(message.contains("this visual"), "{message}");
+
+        // The first job is not disturbed, and a job that starts after it has
+        // ended makes the next version.
+        assert!(matches!(
+            first.await.unwrap().last(),
+            Some(JobEvent::Result { version: 1, .. })
+        ));
+        let third = run_with(
+            &s.ws,
+            fast,
+            vec![ok_report()],
+            visualise("src/handler.go"),
+        )
+        .await;
+        assert!(matches!(
+            third.last(),
+            Some(JobEvent::Result { version: 2, .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn jobs_for_different_artifacts_run_at_the_same_time() {
+        let s = setup(GOOD, &[]);
+        // A pause between recorded lines makes the two jobs overlap.
+        let job = |subject: &'static str| {
+            run_with(
+                &s.ws,
+                Arc::new(ReplayBackend::new(
+                    &s.recording,
+                    Duration::from_millis(50),
+                )),
+                vec![ok_report()],
+                visualise(subject),
+            )
+        };
+        let (one, two) =
+            tokio::join!(job("src/handler.go"), job("src/store.go"));
+        for events in [one, two] {
+            assert!(
+                matches!(
+                    events.last(),
+                    Some(JobEvent::Result {
+                        version: 1,
+                        passed: true,
+                        ..
+                    })
+                ),
+                "{:?}",
+                events.last()
+            );
+        }
+        assert_eq!(artifacts::list(&s.ws).len(), 2);
     }
 
     #[tokio::test]

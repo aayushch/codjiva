@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { JobEvent } from './ipc';
+import type { ArtifactSummary, JobEvent } from './ipc';
 import {
   estimateNote,
   formatElapsed,
@@ -8,6 +8,8 @@ import {
   reduceJob,
   stepsFor,
   stepStates,
+  targetOf,
+  targetOfArtifact,
   VISUALISE_STEPS,
 } from './jobs';
 
@@ -62,7 +64,7 @@ describe('reduceJob', () => {
     expect(job.log.map((l) => l.text)).toEqual([
       'Read a.go',
       'plant has 6 machines',
-      '0 writes outside .codjiva/',
+      'no file outside the version folder changed',
       'All checks passed.',
     ]);
     expect(job.log[2].level).toBe('guard');
@@ -243,5 +245,52 @@ describe('formatEstimate', () => {
     expect(estimateNote(range(480, 790), 60_000)).toBe('usually 8–13 min');
     expect(estimateNote(range(480, 790), 790_000)).toBe('usually 8–13 min');
     expect(estimateNote(range(480, 790), 791_000)).toBe('longer than usual');
+  });
+});
+
+describe('targetOf', () => {
+  // Only the fields that `targetOf` reads.
+  const artifact = (
+    id: string,
+    kind: ArtifactSummary['kind'],
+    subject: string[],
+  ) => ({ id, kind, subject }) as ArtifactSummary;
+  const visual = artifact('visual-a', 'visual', ['src/a.go']);
+  const film = artifact('film-a', 'film', ['src/a.go']);
+  const other = artifact('visual-b', 'visual', ['src/b.go']);
+  const pipeline = artifact('pipeline-ab', 'pipeline', [
+    'src/a.go',
+    'src/b.go',
+  ]);
+  const all = [visual, film, other, pipeline];
+
+  it('gives a new version, a regeneration and feedback of one artifact the same name', () => {
+    const regenerate = targetOf(
+      { kind: 'visualise', subject: ['src/a.go'] },
+      all,
+    );
+    expect(regenerate).toBe(targetOfArtifact(visual));
+    expect(
+      targetOf({ kind: 'feedback', subject: [], artifactId: 'visual-a' }, all),
+    ).toBe(regenerate);
+  });
+
+  it('tells the visual and the film of one file apart, and the visuals of two files', () => {
+    const names = [
+      targetOf({ kind: 'visualise', subject: ['src/a.go'] }, all),
+      targetOf({ kind: 'animate', subject: ['src/a.go'] }, all),
+      targetOf({ kind: 'visualise', subject: ['src/b.go'] }, all),
+    ];
+    expect(new Set(names).size).toBe(3);
+    expect(names[1]).toBe(targetOfArtifact(film));
+  });
+
+  it('names a pipeline by the files of its parts, in any order', () => {
+    expect(
+      targetOf(
+        { kind: 'compose', subject: [], parts: ['visual-b', 'visual-a'] },
+        all,
+      ),
+    ).toBe(targetOfArtifact(pipeline));
   });
 });

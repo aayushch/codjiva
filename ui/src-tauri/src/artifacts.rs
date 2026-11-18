@@ -96,8 +96,8 @@ pub fn artifact_reveal(
         })
 }
 
-/// Undoes the changes a failed job's agent made outside `.codjiva/`, where git
-/// can restore them.
+/// Restores files that a job reported as changed while it ran to their last
+/// committed content, where git can restore them.
 #[tauri::command]
 pub fn guard_revert(
     violations: Vec<Violation>,

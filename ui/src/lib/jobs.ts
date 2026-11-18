@@ -3,6 +3,7 @@
 // tested without a window.
 
 import type {
+  ArtifactSummary,
   Estimate,
   JobEvent,
   JobRequest,
@@ -14,6 +15,11 @@ import type {
 export type JobStatus = 'running' | 'done' | 'failed' | 'cancelled';
 
 export type JobView = {
+  // A number that no other job of this window has. The window uses it to find
+  // the job again when one of the job's events arrives.
+  key: number;
+  // Names the artifact the job makes a version of. See `targetOf`.
+  target: string;
   request: JobRequest;
   // The file the job is about. A feedback request does not name it, so it is
   // kept here.
@@ -122,12 +128,65 @@ export const JOB_NAMES: Record<JobRequest['kind'], string> = {
 const stepOf = (phase: string): string =>
   phase === 'building' ? 'validating' : phase;
 
+// Names the artifact of the given kind for the given source files. The name
+// is the same whatever order the files are in.
+function targetName(kind: ArtifactSummary['kind'], subject: string[]): string {
+  return kind + ':' + [...subject].sort().join('\n');
+}
+
+// Names the artifact that `artifact` is, in the same form as `targetOf`.
+export function targetOfArtifact(
+  artifact: Pick<ArtifactSummary, 'kind' | 'subject'>,
+): string {
+  return targetName(artifact.kind, artifact.subject);
+}
+
+// Names the artifact that a job with this request makes a version of. Two
+// requests give the same name exactly when they make versions of the same
+// artifact. The window uses this to refuse a second job for an artifact while
+// the first one is running. `artifacts` is the list of the workspace's
+// artifacts.
+//
+// An artifact is identified by its kind and the source files it explains.
+//   - A Visualise request makes the visual of its one file or folder.
+//   - An Animate request makes the film of its one file.
+//   - A Compose request makes the pipeline of the files that its parts
+//     explain.
+//   - A Feedback request makes a version of the artifact it names.
+export function targetOf(
+  request: JobRequest,
+  artifacts: ArtifactSummary[],
+): string {
+  const byId = (id: string | undefined) => artifacts.find((a) => a.id === id);
+  if (request.kind === 'feedback') {
+    const artifact = byId(request.artifactId);
+    return artifact
+      ? targetOfArtifact(artifact)
+      : 'id:' + (request.artifactId ?? '');
+  }
+  if (request.kind === 'compose')
+    return targetName(
+      'pipeline',
+      (request.parts ?? []).map((id) => byId(id)?.subject[0] ?? id),
+    );
+  return targetName(
+    request.kind === 'animate' ? 'film' : 'visual',
+    request.subject,
+  );
+}
+
+// The state of a job that has just been started. `key` and `target` are the
+// fields of the same names in `JobView`.
 export function newJob(
   request: JobRequest,
   now: number,
   subject: string = request.subject[0] ?? '',
+  key = 0,
+  target = '',
 ): JobView {
   return {
+    key,
+    target,
     request,
     subject,
     status: 'running',
@@ -198,8 +257,8 @@ export function reduceJob(job: JobView, event: JobEvent, now: number): JobView {
       log(
         'guard',
         event.violations.length
-          ? `${event.violations.length} file(s) were changed that the agent must not touch`
-          : '0 writes outside .codjiva/',
+          ? `${event.violations.length} file(s) outside the version folder changed while the job ran`
+          : 'no file outside the version folder changed',
       );
       break;
     case 'validation': {

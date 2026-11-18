@@ -49,6 +49,10 @@ pub struct JobState {
     /// Self-tests in progress, by the token sent to the window. The sender
     /// delivers the report back to the waiting job.
     validations: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
+    /// Held by the one job whose self-test the window is running. The window
+    /// runs one self-test at a time, so a job that needs one while several
+    /// jobs run waits here for its turn.
+    validation_turn: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl Default for JobState {
@@ -69,6 +73,7 @@ impl Default for JobState {
             keys,
             running: Mutex::new(HashMap::new()),
             validations: Arc::new(Mutex::new(HashMap::new())),
+            validation_turn: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 }
@@ -395,11 +400,16 @@ struct ValidateRequest {
 struct WindowValidator {
     app: AppHandle,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
+    turn: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[async_trait]
 impl Validator for WindowValidator {
     async fn validate(&self, artifact_id: &str, version: u32) -> Result<Value> {
+        // The time limit below starts only when the window is free to run this
+        // self-test. The time spent waiting for the self-tests of other jobs
+        // does not count against it.
+        let _turn = self.turn.lock().await;
         let token = jobs::new_job_id();
         let (tx, rx) = oneshot::channel();
         self.pending
@@ -556,6 +566,7 @@ pub async fn job_start(
         validator: Arc::new(WindowValidator {
             app: app.clone(),
             pending: Arc::clone(&state.jobs.validations),
+            turn: Arc::clone(&state.jobs.validation_turn),
         }),
         cancel,
         emit: Arc::new(move |event| {
