@@ -239,11 +239,12 @@ pub fn run_capture(command: &mut Command, limit: Duration) -> Option<Vec<u8>> {
     }
 }
 
-#[cfg(test)]
+// The tests are compiled only on Unix. One calls `parse_null_separated`, which
+// exists only on Unix. One sets Unix file permissions. One runs `/bin/sh`.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
     #[test]
     fn parses_env_output_and_skips_shell_functions() {
         let vars = parse_null_separated(b"PATH=/bin:/usr/bin\0EDITOR=vim -f\0BASH_FUNC_x%%=() { :; }\0EMPTY=\0");
@@ -253,7 +254,6 @@ mod tests {
         assert!(!vars.keys().any(|k| k.starts_with("BASH_FUNC")));
     }
 
-    #[cfg(unix)]
     #[test]
     fn finds_an_executable_on_path_and_ignores_plain_files() {
         use std::os::unix::fs::PermissionsExt;
@@ -273,7 +273,6 @@ mod tests {
         assert_eq!(env.find_program(&tool.to_string_lossy()), Some(tool));
     }
 
-    #[cfg(unix)]
     #[test]
     fn run_capture_returns_output_and_gives_up_on_a_slow_command() {
         let out = run_capture(
