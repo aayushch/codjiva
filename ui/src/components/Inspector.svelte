@@ -1,15 +1,30 @@
 <script lang="ts">
-  import { showsFilm } from '$lib/artifacts';
+  import { isStepped, kindWord, showsFilm } from '$lib/artifacts';
   import { formatBytes, formatTime } from '$lib/tree';
   import { app } from '$lib/state/app.svelte';
+  import CodeExcerpt from './CodeExcerpt.svelte';
   import FeedbackBox from './FeedbackBox.svelte';
   import RationaleNote from './RationaleNote.svelte';
 
   // The right-hand panel beside a visual or a film.
   //
-  // For a visual with a part selected, it explains that part and links to its
-  // code. For a film, it lists the chapters, which seek the film when clicked,
-  // and the companion files the film was made from.
+  // For a visual with a part selected, it explains that part: its role, the
+  // lines of its code, what it reads and writes, where the work goes from it
+  // and under which condition, and its edge cases. For a film, it lists the
+  // chapters, which seek the film when clicked, and the companion files the
+  // film was made from.
+  //
+  // For a step-through the part it explains is the one the user clicked. While
+  // they have clicked none, it is the state that the step on screen is in,
+  // so the panel follows the steps. An edge case with an example has a
+  // button that runs the step-through on that example. A lanes view and a
+  // structure view are followed in the same way.
+  //
+  // A part of a view has more to show. A type of a schema view lists its
+  // fields, each with the functions that write it and read it. A node of a
+  // map links to its file or folder, lists the visuals, films and views that
+  // were made of that file or folder, and lists the nodes it uses and the
+  // nodes that use it.
   //
   // It is also where a rationale is read: why the code does what a part or a
   // step describes. A selected part shows its rationale under its role. A film
@@ -21,9 +36,61 @@
   // Toolbar.svelte.
   const detail = $derived(app.detail);
   const artifact = $derived(app.currentArtifact);
-  const node = $derived(
-    detail?.definition?.nodes?.find((n) => n.id === app.selectedNode) ?? null,
+  // True for an artifact that is played one step at a time. The part on
+  // show then follows the steps.
+  const isSteps = $derived(isStepped(artifact?.kind));
+  // True for an artifact that is run on an input the viewer types, so that
+  // an edge case's example can be run on it. A lanes view has scenarios and
+  // no input.
+  const takesInput = $derived(
+    artifact?.kind === 'stepthrough' || artifact?.kind === 'structure',
   );
+  const isMap = $derived(artifact?.kind === 'map');
+  const nodes = $derived(detail?.definition?.nodes ?? []);
+  const node = $derived(
+    nodes.find((n) => n.id === app.selectedNode) ??
+      (isSteps ? nodes.find((n) => n.id === app.stepNode) : null) ??
+      null,
+  );
+  // True when the part on show is the state of the step on screen and not a
+  // part the user clicked.
+  const following = $derived(!!node && node.id !== app.selectedNode);
+  // The label of the node with the given id, or the text itself when it is
+  // not the id of a node. A transition names its target either way.
+  const targetLabel = (to: string) =>
+    nodes.find((n) => n.id === to)?.label ?? to;
+  // In a schema view: the functions that write or read the field `field`
+  // of the type `id`, writers first.
+  const usesOf = (id: string, field: string) =>
+    (detail?.definition?.uses ?? [])
+      .filter((use) => use.node === id && use.field === field)
+      .sort((a, b) => Number(b.how === 'writes') - Number(a.how === 'writes'));
+  // Opens the place a `path:line` text names.
+  function openPlace(place: string) {
+    const cut = place.lastIndexOf(':');
+    const line = parseInt(place.slice(cut + 1), 10);
+    if (cut > 0 && line > 0) app.selectFile(place.slice(0, cut), line);
+  }
+  // On a map: the nodes that the node `id` uses, and the nodes that use it,
+  // each with what the link says.
+  const linked = (id: string, end: 'from' | 'to') =>
+    (detail?.definition?.links ?? [])
+      .filter((link) => link[end] === id)
+      .map((link) => ({
+        other: end === 'from' ? link.to : link.from,
+        label: link.label ?? link.kind,
+      }));
+  // The other artifacts that were made of the file or folder at `path`.
+  const madeOf = (path: string) =>
+    app.artifacts.filter(
+      (one) => one.subject[0] === path && one.id !== artifact?.id,
+    );
+
+  // Selects a node here and in the drawing.
+  function selectNode(id: string) {
+    app.selectedNode = id;
+    app.frameSend?.({ cj: 'select', nodeId: id });
+  }
   const model = $derived(detail?.model ?? null);
   const report = $derived(detail?.validation ?? null);
   const problems = $derived(
@@ -50,7 +117,9 @@
   );
   const isFilm = $derived(showsFilm(artifact));
   const isPipeline = $derived(artifact?.kind === 'pipeline');
-  const word = $derived(isPipeline ? 'pipeline' : isFilm ? 'film' : 'visual');
+  const word = $derived(
+    isPipeline ? 'pipeline' : isFilm ? 'film' : kindWord(artifact),
+  );
   // The artifacts this one could be joined with, from the joins the app can
   // propose.
   const connected = $derived(
@@ -121,7 +190,7 @@
 {#if detail && artifact}
   <aside class="inspector">
     {#if node}
-      <div class="kicker">Selected</div>
+      <div class="kicker">{following ? 'Current state' : 'Selected'}</div>
       <h3>{node.label}</h3>
       <p>{node.role}</p>
       {#if node.rationale}
@@ -130,10 +199,130 @@
       {/if}
       {#if node.refs?.length}
         <div class="kicker">Code</div>
-        {#each node.refs as ref}
+        <!-- The first reference is the code of the part, shown as lines. Any
+             further ones are other places that belong to it, shown as links.
+             -->
+        {#key `${node.id}/${node.refs[0].path}/${node.refs[0].line}`}
+          <CodeExcerpt
+            path={node.refs[0].path}
+            line={node.refs[0].line}
+            end={node.refs[0].end}
+          />
+        {/key}
+        {#each node.refs.slice(1) as ref}
           <button class="ref" onclick={() => openRef(ref.path, ref.line)}
             >{shortPath(ref.path)}:{ref.line}</button
           >
+        {/each}
+      {/if}
+      {#if node.fields?.length}
+        <div class="kicker">Fields</div>
+        {#each node.fields as field}
+          <div class="field-row">
+            <span class="field-name" class:key={field.key}
+              >{field.name}{field.optional ? '?' : ''}</span
+            >
+            <span class="field-type">{field.type ?? ''}</span>
+          </div>
+          {#if field.note}<div class="field-note">{field.note}</div>{/if}
+          {#each usesOf(node.id, field.name) as use}
+            <div class="field-use">
+              {use.how === 'writes' ? 'written by' : 'read by'}
+              <button class="ref inline" onclick={() => openPlace(use.ref)}
+                >{use.by}</button
+              >
+            </div>
+          {/each}
+        {/each}
+      {/if}
+      {#if isMap}
+        {#if node.path}
+          {@const path = node.path}
+          <div class="kicker">In the workspace</div>
+          <button class="ref" onclick={() => app.selectFile(path)}
+            >Open {path}</button
+          >
+          {#each madeOf(path) as made}
+            <button class="ref" onclick={() => app.openArtifact(made)}
+              >Show its {kindWord(made)} · v{made.currentVersion}</button
+            >
+          {/each}
+        {/if}
+        {#each [{ title: 'Uses', end: 'from' as const }, { title: 'Used by', end: 'to' as const }] as side}
+          {@const others = linked(node.id, side.end)}
+          {#if others.length}
+            <div class="kicker">{side.title}</div>
+            {#each others as one}
+              <div class="transition">
+                <button class="ref inline" onclick={() => selectNode(one.other)}
+                  >{targetLabel(one.other)}</button
+                >
+                <span class="muted">{one.label}</span>
+              </div>
+            {/each}
+          {/if}
+        {/each}
+      {/if}
+      {#if node.inputs?.length || node.outputs?.length}
+        <div class="io">
+          {#if node.inputs?.length}
+            <div>
+              <div class="kicker">Reads</div>
+              {#each node.inputs as one}<div class="io-row">{one}</div>{/each}
+            </div>
+          {/if}
+          {#if node.outputs?.length}
+            <div>
+              <div class="kicker">Writes</div>
+              {#each node.outputs as one}<div class="io-row">{one}</div>{/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
+      {#if node.transitions?.length}
+        <div class="kicker">Goes on to</div>
+        {#each node.transitions as one}
+          {@const isNode = nodes.some((n) => n.id === one.to)}
+          <div class="transition">
+            <span class="when">{one.when}</span>
+            {#if isNode}
+              <button class="ref inline" onclick={() => selectNode(one.to)}
+                >→ {targetLabel(one.to)}</button
+              >
+            {:else}
+              <span>→ {one.to}</span>
+            {/if}
+          </div>
+        {/each}
+      {/if}
+      {#if node.edgeCases?.length}
+        <div class="kicker">Edge cases</div>
+        {#each node.edgeCases as one}
+          <div class="edge-case">
+            <div>{one.text}</div>
+            <div class="edge-case-foot">
+              {#if one.example != null}
+                {#if takesInput}
+                  <button
+                    class="chip"
+                    title="Run the step-through on {one.example}"
+                    onclick={() =>
+                      app.frameSend?.({ cj: 'input', value: one.example })}
+                    >Try {one.example}</button
+                  >
+                {:else}
+                  <code>{one.example}</code>
+                {/if}
+              {/if}
+              {#each one.refs as ref}
+                <button
+                  class="ref inline"
+                  onclick={() => openRef(ref.path, ref.line)}
+                  >{shortPath(ref.path)}:{ref.line}</button
+                >
+              {/each}
+            </div>
+          </div>
         {/each}
       {/if}
     {:else}

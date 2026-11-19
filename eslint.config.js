@@ -63,10 +63,13 @@ export default ts.config(
     languageOptions: { parserOptions: { parser: ts.parser } },
   },
   {
-    // SourceView puts the lines of a file on the page as HTML. Each line has
-    // been escaped and coloured by lib/highlight.ts first, so it holds no
-    // markup of the file's own.
-    files: ['ui/src/components/SourceView.svelte'],
+    // SourceView and CodeExcerpt put the lines of a file on the page as
+    // HTML. Each line has been escaped and coloured by lib/highlight.ts
+    // first, so it holds no markup of the file's own.
+    files: [
+      'ui/src/components/SourceView.svelte',
+      'ui/src/components/CodeExcerpt.svelte',
+    ],
     rules: { 'svelte/no-at-html-tags': 'off' },
   },
   {

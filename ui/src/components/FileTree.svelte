@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { app } from '$lib/state/app.svelte';
-  import { ancestorsOf } from '$lib/tree';
+  import { VIEWS } from '$lib/artifacts';
+  import { targetOfArtifact } from '$lib/jobs';
+  import type { ArtifactKind } from '$lib/ipc';
+  import { app, type MenuItem } from '$lib/state/app.svelte';
+  import { ancestorsOf, type TreeRow } from '$lib/tree';
   import Icon from './Icon.svelte';
 
   // Every row is ROW_HEIGHT pixels tall, so the rows in view can be worked out
@@ -66,15 +69,33 @@
     return () => observer.disconnect();
   });
 
-  // Keeps the cursor on the selected file and scrolls its row into view when
-  // the selection changes from outside the tree, for example through
-  // quick-open.
+  // The selected path whose row the effect below has scrolled to. It is a
+  // plain variable and not `$state`, so that writing it does not run the
+  // effect again.
+  let revealed: string | null = null;
+
+  // When the selection changes, this effect moves the cursor to the selected
+  // row and scrolls that row into view. A selection can be made outside the
+  // tree, for example through quick-open or a file tab, and its row may be
+  // scrolled out of view at that moment.
+  //
+  // It does this once for each selection. The effect also runs when `rows`
+  // changes, because the selected row can be added to `rows` after the
+  // selection was made. Once the row of the selected path has been scrolled
+  // to, a change of `rows` does nothing here. So the user can scroll away
+  // from the selected file and open or close other folders, and the tree
+  // stays where they scrolled it.
   $effect(() => {
-    const index = rows.findIndex((r) => r.entry.relPath === selectedPath);
-    if (index >= 0) {
-      cursor = index;
-      reveal(index);
+    if (!viewport || selectedPath === revealed) return;
+    if (selectedPath == null) {
+      revealed = null;
+      return;
     }
+    const index = rows.findIndex((r) => r.entry.relPath === selectedPath);
+    if (index < 0) return;
+    revealed = selectedPath;
+    cursor = index;
+    reveal(index);
   });
 
   function reveal(index: number) {
@@ -91,6 +112,76 @@
     cursor = index;
     if (row.entry.kind === 'dir') app.toggleDir(row.entry.relPath);
     else app.selectFile(row.entry.relPath);
+  }
+
+  // The commands of the context menu of a row.
+  //
+  // A file has Visualise, Animate and Step through. A folder has Visualise
+  // only, because a film and a step-through follow one file. When the file or
+  // folder has an artifact of that kind already, the command says "again"
+  // and its dialog starts from the instructions of that version.
+  //
+  // A command that starts a job is disabled while no agent is available, and
+  // while a job is already making that visual or that film.
+  //
+  // Below those are the views that the runtime draws from data: the schema,
+  // lanes and structure views for a file, and the map for a folder.
+  //
+  // Both kinds of row can copy their path: the full path on this computer,
+  // or the path inside the workspace.
+  function menuFor(row: TreeRow): MenuItem[] {
+    const isDir = row.entry.kind === 'dir';
+    // A folder is selected by its path with a slash at the end.
+    const path = row.entry.relPath + (isDir ? '/' : '');
+    const noAgent = app.agentsLoaded && !app.activeAgent;
+    const has = (kind: ArtifactKind) =>
+      app.artifacts.some((a) => a.kind === kind && a.subject[0] === path);
+    const making = (kind: ArtifactKind) =>
+      app.isBusy(targetOfArtifact({ kind, subject: [path] }));
+    const items: MenuItem[] = [
+      {
+        label: isDir
+          ? has('visual')
+            ? 'Visualise this folder again…'
+            : 'Visualise this folder…'
+          : has('visual')
+            ? 'Visualise again…'
+            : 'Visualise…',
+        disabled: noAgent || making('visual'),
+        action: () => app.visualise(path),
+      },
+    ];
+    if (!isDir)
+      items.push(
+        {
+          label: has('film') ? 'Animate again…' : 'Animate…',
+          disabled: noAgent || making('film'),
+          action: () => app.animate(path),
+        },
+        {
+          label: has('stepthrough') ? 'Step through again…' : 'Step through…',
+          disabled: noAgent || making('stepthrough'),
+          action: () => app.stepThrough(path),
+        },
+      );
+    // The views: a map for a folder, and the other three for a file.
+    items.push('separator');
+    for (const view of VIEWS) {
+      if ((view.name === 'map') !== isDir) continue;
+      const what =
+        view.name === 'map' ? 'Map this folder' : view.label + ' view';
+      items.push({
+        label: what + (has(view.name) ? ' again…' : '…'),
+        disabled: noAgent || making(view.name),
+        action: () => app.makeView(path, view.name),
+      });
+    }
+    items.push(
+      'separator',
+      { label: 'Copy path', action: () => app.copyPath(path, true) },
+      { label: 'Copy relative path', action: () => app.copyPath(path) },
+    );
+    return items;
   }
 
   function onKey(event: KeyboardEvent) {
@@ -155,6 +246,10 @@
             : row.entry.relPath}
           onclick={() => activate(index)}
           onkeydown={() => {}}
+          oncontextmenu={(event) => {
+            cursor = index;
+            app.openMenu(event, menuFor(row));
+          }}
         >
           <span class="chev"
             >{row.entry.kind === 'dir' ? (row.expanded ? '▾' : '▸') : ''}</span

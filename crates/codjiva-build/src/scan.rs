@@ -421,6 +421,35 @@ pub fn scan_js(file: &str, src: &str) -> Vec<Diagnostic> {
 
 /// Finds an inline event handler attribute such as ` onclick=` in lower-cased
 /// markup text. Returns the byte offset of the attribute name.
+/// Checks what only the step function of a step-through, `sim.js`, must not
+/// do: reach the page. The step function restates what the code does with an
+/// input, as plain data, and the runtime draws the result. A step function
+/// that read or changed the page could draw anything, and would give
+/// different steps depending on what is on screen.
+///
+/// Returns one diagnostic for each use of the names `document` and `window`.
+/// A name inside a comment or a string is not a use.
+pub fn scan_sim(file: &str, src: &str) -> Vec<Diagnostic> {
+    tokenize(src)
+        .into_iter()
+        .filter(|token| token.kind == Kind::Ident)
+        .filter(|token| {
+            matches!(&src[token.start..token.end], "document" | "window")
+        })
+        .map(|token| Diagnostic {
+            check: "forbidden-token".into(),
+            severity: Severity::Error,
+            file: file.into(),
+            line: Some(line_of(src, token.start)),
+            message: format!(
+                "`{}` is not allowed in sim.js: the step function works on \
+                 plain data only and never touches the page",
+                &src[token.start..token.end]
+            ),
+        })
+        .collect()
+}
+
 fn find_inline_handler(lower: &str) -> Option<usize> {
     let bytes = lower.as_bytes();
     let mut i = 0;

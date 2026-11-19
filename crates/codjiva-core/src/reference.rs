@@ -64,11 +64,84 @@ pub fn visual_sources() -> Sources {
     }
 }
 
-/// Writes the reference sources into `dir`, as `film/`, `visual/` and
-/// `pipeline/`, for an agent to read as worked examples.
+/// The sources of the four reference views, by the name of the view. A view
+/// is one `view.json`. The structure view also has its step function.
+const VIEW_SOURCES: &[(&str, &[(&str, &str)])] = &[
+    (
+        "schema",
+        &[("view.json", reference_file!("views/schema/view.json"))],
+    ),
+    (
+        "lanes",
+        &[("view.json", reference_file!("views/lanes/view.json"))],
+    ),
+    (
+        "structure",
+        &[
+            ("view.json", reference_file!("views/structure/view.json")),
+            ("sim.js", reference_file!("views/structure/sim.js")),
+        ],
+    ),
+    (
+        "map",
+        &[("view.json", reference_file!("views/map/view.json"))],
+    ),
+];
+
+/// The source files of the reference view with the given name, or `None`
+/// when there is no such view.
+pub fn view_sources(view: &str) -> Option<Sources> {
+    let (_, files) = VIEW_SOURCES.iter().find(|(name, _)| *name == view)?;
+    let text = |wanted: &str| {
+        files
+            .iter()
+            .find(|(name, _)| *name == wanted)
+            .map(|(_, text)| text.to_string())
+    };
+    Some(Sources {
+        view_json: text("view.json"),
+        sim_js: text("sim.js"),
+        ..Sources::default()
+    })
+}
+
+/// The source files of the reference step-through, which runs the rate
+/// limiter of the same program on a sequence of orders.
+pub fn stepthrough_sources() -> Sources {
+    Sources {
+        visual_json: Some(
+            reference_file!("stepthrough/visual.json").to_string(),
+        ),
+        plant_js: Some(reference_file!("stepthrough/plant.js").to_string()),
+        sim_js: Some(reference_file!("stepthrough/sim.js").to_string()),
+        ..Sources::default()
+    }
+}
+
+/// Writes the reference sources into `dir`, as `film/`, `visual/`,
+/// `stepthrough/` and `pipeline/`, for an agent to read as worked examples.
 pub fn write_sources(dir: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir.join("film/scenes"))?;
     std::fs::create_dir_all(dir.join("visual"))?;
+    std::fs::create_dir_all(dir.join("stepthrough"))?;
+    for (view, files) in VIEW_SOURCES {
+        let folder = dir.join("views").join(view);
+        std::fs::create_dir_all(&folder)?;
+        for (name, text) in *files {
+            std::fs::write(folder.join(name), text)?;
+        }
+    }
+    let stepthrough = stepthrough_sources();
+    for (name, text) in [
+        ("visual.json", stepthrough.visual_json),
+        ("plant.js", stepthrough.plant_js),
+        ("sim.js", stepthrough.sim_js),
+    ] {
+        std::fs::write(
+            dir.join("stepthrough").join(name),
+            text.unwrap_or_default(),
+        )?;
+    }
     std::fs::write(dir.join("film/plant.js"), FILM_PLANT)?;
     std::fs::write(dir.join("film/film.json"), FILM_JSON)?;
     for (id, code) in SCENES {
@@ -127,5 +200,31 @@ mod tests {
     fn the_bundled_reference_pages_build() {
         assert!(film_html().contains("CJ.boot({\"film\":"));
         assert!(visual_html().contains("CJ.boot({\"visual\":"));
+    }
+
+    #[test]
+    fn the_four_bundled_reference_views_build_without_a_plant() {
+        for (view, _) in VIEW_SOURCES {
+            let built =
+                build(&view_sources(view).unwrap()).unwrap_or_else(|failure| {
+                    panic!("{view}: {:?}", failure.diagnostics)
+                });
+            assert!(
+                built.html.contains(&format!("\"view\":\"{view}\"")),
+                "{view}"
+            );
+            assert!(built.warnings.is_empty(), "{view}: {:?}", built.warnings);
+            assert!(!built.html.contains("CJ.__file(\"plant.js\""));
+        }
+        assert!(view_sources("graph").is_none());
+    }
+
+    #[test]
+    fn the_bundled_reference_step_through_builds_with_its_step_function() {
+        let built = build(&stepthrough_sources())
+            .unwrap_or_else(|failure| panic!("{:?}", failure.diagnostics));
+        assert!(built.html.contains("\"stepper\":{"));
+        assert!(built.html.contains("CJ.__file(\"sim.js\""));
+        assert!(built.warnings.is_empty(), "{:?}", built.warnings);
     }
 }

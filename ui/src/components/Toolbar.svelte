@@ -1,16 +1,27 @@
 <script lang="ts">
-  import { showsFilm } from '$lib/artifacts';
+  import { isView, showsFilm, VIEWS } from '$lib/artifacts';
   import { targetOfArtifact } from '$lib/jobs';
   import { api } from '$lib/ipc';
-  import { app } from '$lib/state/app.svelte';
+  import { app, type MenuItem } from '$lib/state/app.svelte';
   import Icon from './Icon.svelte';
 
   // The bar above the editor area and the inspector. From left to right it
-  // holds the Back and Forward buttons, the path of what is selected, the
-  // controls of the artifact on screen, and the Visual, Film and Source tabs.
-  // The tabs are last so that they stay at the right end of the bar, in the
-  // same place whether or not the selected file has an artifact to show
-  // controls for.
+  // holds the Back and Forward buttons, the path of what is selected with a
+  // button that copies it, the controls of the artifact on screen, and the
+  // Visual, Film, Step-through and Source tabs. The tabs are last so that
+  // they stay at the
+  // right end of the bar, in the same place whether or not the selected file
+  // has an artifact to show controls for.
+  //
+  // A file has more views than fit in the bar as tabs of their own. Its
+  // schema, lanes and structure views share one tab, labelled "More". A click
+  // on it opens a menu of the three, and choosing one shows that view. While
+  // one of them is showing, the tab has that view's name. A folder has two
+  // tabs of its own, Visual and Map.
+  //
+  // The copy button puts the path inside the workspace on the clipboard, which
+  // is the path the bar shows. A right-click on the path opens a menu that
+  // can also copy the full path on this computer.
 
   // The parts of the selected path. A folder's path ends with a slash, which is
   // shown after its last part.
@@ -18,6 +29,36 @@
     app.selected ? app.selected.replace(/\/$/, '').split('/') : [],
   );
   const artifact = $derived(app.currentArtifact);
+
+  // The views a file can have. A map is made of a folder only.
+  const fileViews = VIEWS.filter((view) => view.name !== 'map');
+  // The view on screen, when the open tab is one of the views of a file.
+  const shownView = $derived(
+    fileViews.find((view) => view.name === app.tab) ?? null,
+  );
+  // True when the selected file has at least one of those views.
+  const hasFileView = $derived(
+    fileViews.some((view) => app.viewArtifact(view.name) != null),
+  );
+  // The menu of the "More" tab: one command per view of a file. A view that
+  // has been made is marked.
+  const viewMenu = (): MenuItem[] =>
+    fileViews.map((view) => ({
+      label: view.label + (app.viewArtifact(view.name) ? '  · made' : ''),
+      action: () => app.setTab(view.name),
+    }));
+
+  // True for a moment after the copy button was pressed. The button shows a
+  // tick meanwhile, in place of its icon.
+  let copied = $state(false);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  async function copyShownPath() {
+    if (!app.selected) return;
+    if (!(await app.copyPath(app.selected, false, false))) return;
+    copied = true;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (copied = false), 1500);
+  }
   // The keys for Back and Forward, as the buttons' labels show them. App.svelte
   // handles the keys.
   const mac = $derived(app.info?.platform === 'macos');
@@ -25,10 +66,14 @@
     artifact?.versions.find((v) => v.version === app.shownVersion) ?? null,
   );
   const isPipeline = $derived(artifact?.kind === 'pipeline');
-  // A visual of a single file can be turned into a film. A folder, a film and a
-  // pipeline cannot.
+  // A visual or a step-through of a single file can be turned into a film. A
+  // folder, a film and a pipeline cannot.
   const canAnimate = $derived(
-    !!artifact && !isPipeline && !showsFilm(artifact) && !app.selectedIsFolder,
+    !!artifact &&
+      !isPipeline &&
+      !showsFilm(artifact) &&
+      !isView(artifact.kind) &&
+      !app.selectedIsFolder,
   );
 
   // True while a job is making the film of the file on screen. The button that
@@ -189,10 +234,25 @@
       'A source file of one of its parts changed after this version was made',
     )}
   {:else if app.selected}
-    <span class="crumb"
+    {@const path = app.selected}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <span
+      class="crumb"
+      oncontextmenu={(event) =>
+        app.openMenu(event, [
+          { label: 'Copy path', action: () => app.copyPath(path, true) },
+          { label: 'Copy relative path', action: () => app.copyPath(path) },
+        ])}
       >{#each parts.slice(0, -1) as part}{part}{' / '}{/each}<b
         >{parts[parts.length - 1]}{app.selectedIsFolder ? '/' : ''}</b
       ></span
+    >
+    <button
+      class="tb-btn copy-path"
+      data-tip={copied ? 'Copied' : 'Copy the path'}
+      aria-label="Copy the path"
+      onclick={copyShownPath}
+      ><Icon name={copied ? 'check' : 'copy'} size={14} /></button
     >
     <span class="spacer"></span>
     {#if artifact && app.tab !== 'source'}
@@ -209,7 +269,17 @@
             title="This has a visual"
           ></span>{/if}</button
       >
-      {#if !app.selectedIsFolder}
+      {#if app.selectedIsFolder}
+        <button
+          class="tab"
+          class:on={app.tab === 'map'}
+          onclick={() => app.setTab('map')}
+          >Map{#if app.viewArtifact('map')}<span
+              class="has"
+              title="This folder has a map"
+            ></span>{/if}</button
+        >
+      {:else}
         <button
           class="tab"
           class:on={app.tab === 'film'}
@@ -217,6 +287,26 @@
           >Film{#if app.filmArtifact}<span
               class="has"
               title="This file has a film"
+            ></span>{/if}</button
+        >
+        <button
+          class="tab"
+          class:on={app.tab === 'steps'}
+          onclick={() => app.setTab('steps')}
+          >Step-through{#if app.stepsArtifact}<span
+              class="has"
+              title="This file has a step-through"
+            ></span>{/if}</button
+        >
+        <button
+          class="tab more-views"
+          class:on={shownView != null}
+          aria-haspopup="menu"
+          title="The other views of this file: schema, lanes and structure"
+          onclick={(event) => app.openMenu(event, viewMenu())}
+          >{shownView ? shownView.label : 'More'} ▾{#if hasFileView}<span
+              class="has"
+              title="This file has one of these views"
             ></span>{/if}</button
         >
         <button

@@ -318,6 +318,71 @@
         ]
       }
     },
+    "things": {
+      "type": "array",
+      "description": "what moves through the plant, and what each of those things is. One entry for each thing that is drawn as a packet or a cursor.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "what": {
+            "type": "string",
+            "description": "the thing in plain words, with its name in the code"
+          },
+          "nature": {
+            "enum": [
+              "message",
+              "record",
+              "value",
+              "reference",
+              "element",
+              "data",
+              "position",
+              "aggregate",
+              "count"
+            ],
+            "description": "what the thing is; it decides the part the thing is drawn with (core guide, section 4)"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "what",
+          "nature",
+          "ref"
+        ]
+      }
+    },
+    "standIns": {
+      "type": "array",
+      "description": "things that no part of the runtime fits, each drawn with the nearest part",
+      "items": {
+        "type": "object",
+        "properties": {
+          "what": {
+            "type": "string",
+            "description": "the thing in plain words"
+          },
+          "drawnAs": {
+            "type": "string",
+            "description": "the part it was drawn with, such as CJ.modeLamps"
+          },
+          "missing": {
+            "type": "string",
+            "description": "one sentence on what a fitting part would have to show"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "what",
+          "drawnAs",
+          "missing"
+        ]
+      }
+    },
     "focusChosen": {
       "type": "array",
       "items": {

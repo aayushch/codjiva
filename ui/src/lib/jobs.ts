@@ -75,6 +75,29 @@ export const ANIMATE_STEPS: Step[] = [
   { phase: 'chapter', label: 'Animating the chapters' },
   { phase: 'validating', label: 'Building and checking' },
 ];
+// A step-through has the steps of a visual and, between drawing and
+// annotating, the writing of the step function.
+export const STEPTHROUGH_STEPS: Step[] = [
+  { phase: 'reading', label: 'Reading the code' },
+  { phase: 'analysing', label: 'Analysing' },
+  { phase: 'drawing', label: 'Drawing the states' },
+  { phase: 'stepping', label: 'Writing the step function' },
+  { phase: 'annotating', label: 'Annotating' },
+  { phase: 'validating', label: 'Running the examples' },
+];
+// A view is drawn by the runtime, so its job has no drawing step. A structure
+// view also has a step function to write.
+export const VIEW_STEPS: Step[] = [
+  { phase: 'reading', label: 'Reading the code' },
+  { phase: 'analysing', label: 'Analysing' },
+  { phase: 'annotating', label: 'Writing the view' },
+  { phase: 'validating', label: 'Laying out and checking' },
+];
+export const STRUCTURE_STEPS: Step[] = [
+  ...VIEW_STEPS.slice(0, 2),
+  { phase: 'stepping', label: 'Writing the step function' },
+  ...VIEW_STEPS.slice(2),
+];
 // A pipeline visual and a pipeline film. Both check the joins in the code
 // before drawing.
 export const COMPOSE_VISUAL_STEPS: Step[] = [
@@ -104,6 +127,9 @@ export function stepsFor(job: JobView): Step[] {
   if (job.request.kind === 'compose' && !job.request.film)
     return COMPOSE_VISUAL_STEPS;
   if (job.request.kind === 'visualise') return VISUALISE_STEPS;
+  if (job.request.kind === 'stepthrough') return STEPTHROUGH_STEPS;
+  if (job.request.kind === 'view')
+    return job.request.view === 'structure' ? STRUCTURE_STEPS : VIEW_STEPS;
   return (
     job.request.kind === 'compose' ? COMPOSE_FILM_STEPS : ANIMATE_STEPS
   ).map((step) =>
@@ -121,6 +147,8 @@ export const JOB_NAMES: Record<JobRequest['kind'], string> = {
   visualise: 'Visualise',
   animate: 'Animate',
   compose: 'Compose',
+  stepthrough: 'Step through',
+  view: 'View',
   feedback: 'Feedback',
 };
 
@@ -150,6 +178,8 @@ export function targetOfArtifact(
 // An artifact is identified by its kind and the source files it explains.
 //   - A Visualise request makes the visual of its one file or folder.
 //   - An Animate request makes the film of its one file.
+//   - A Step through request makes the step-through of its one file.
+//   - A View request makes the view it names of its one file or folder.
 //   - A Compose request makes the pipeline of the files that its parts
 //     explain.
 //   - A Feedback request makes a version of the artifact it names.
@@ -170,7 +200,13 @@ export function targetOf(
       (request.parts ?? []).map((id) => byId(id)?.subject[0] ?? id),
     );
   return targetName(
-    request.kind === 'animate' ? 'film' : 'visual',
+    request.kind === 'animate'
+      ? 'film'
+      : request.kind === 'stepthrough'
+        ? 'stepthrough'
+        : request.kind === 'view'
+          ? (request.view ?? 'schema')
+          : 'visual',
     request.subject,
   );
 }

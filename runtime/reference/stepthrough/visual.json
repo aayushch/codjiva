@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "title": "Limiter.Allow · one customer's orders, one at a time",
+  "camera": {"cx": 960, "cy": 455, "z": 1.25},
+  "layers": {"data": ["first", "allowstay", "soft", "deferstay", "hard", "blockedstay", "xallow", "xdefer", "xblocked"], "control": ["greg"], "labels": [".pl", ".plt"]},
+  "nodes": [
+    {"id": "none", "label": "No window", "role": "The Limiter has no window for this customer. The next order creates one.", "refs": [{"path": "internal/orders/limiter.go", "line": 54, "end": 58}], "select": ["none"], "inputs": ["l.windows[customerID]: the customer's window, if there is one", "now: the time of the order"], "outputs": ["w = &customerWindow{start: now}", "l.windows[customerID] = w"], "transitions": [{"when": "an order arrives", "to": "allow"}], "edgeCases": [{"text": "A window is replaced only when an order arrives. Time passing alone changes nothing here; a window that has ended stays in the map until Forget removes it.", "example": "ooo>", "refs": [{"path": "internal/orders/limiter.go", "line": 55}, {"path": "internal/orders/limiter.go", "line": 76}]}, {"text": "The comparison is >=, so an order that arrives exactly one minute after the window began already gets a new window.", "example": "o>o", "refs": [{"path": "internal/orders/limiter.go", "line": 55}]}]},
+    {"id": "allow", "label": "Allowing", "role": "The customer has made at most 30 orders in this window. Each order is processed now.", "refs": [{"path": "internal/orders/limiter.go", "line": 62, "end": 71}], "select": ["allow"], "inputs": ["w.count: orders of this customer in the window"], "outputs": ["w.count++", "return VerdictAllow"], "transitions": [{"when": "w.count ≤ 30 after counting", "to": "allow"}, {"when": "w.count > softOrdersPerWindow", "to": "defer"}, {"when": "an order 1 minute or more after w.start", "to": "none"}]},
+    {"id": "defer", "label": "Deferring", "role": "The customer is over the soft limit. An order is accepted but waits for the next tick of Handler.flushLoop.", "refs": [{"path": "internal/orders/limiter.go", "line": 67, "end": 68}], "select": ["defer"], "inputs": ["w.count"], "outputs": ["w.count++", "return VerdictDefer"], "transitions": [{"when": "w.count ≤ 60 after counting", "to": "defer"}, {"when": "w.count > hardOrdersPerWindow", "to": "blocked"}, {"when": "an order 1 minute or more after w.start", "to": "none"}], "rationale": {"text": "A deferred order is still accepted. The soft limit only delays the customer, and the hard limit is what drops orders.", "basis": "stated", "refs": [{"path": "internal/orders/limiter.go", "line": 24}]}},
+    {"id": "blocked", "label": "Blocked", "role": "The customer went over the hard limit. Every order is dropped until the window ends.", "refs": [{"path": "internal/orders/limiter.go", "line": 59, "end": 66}], "select": ["blocked"], "inputs": ["w.blocked"], "outputs": ["return VerdictBlocked"], "transitions": [{"when": "any order in the same window", "to": "blocked"}, {"when": "an order 1 minute or more after w.start", "to": "none"}], "edgeCases": [{"text": "The order that takes the count to 61 sets w.blocked and is itself dropped.", "example": "ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo", "refs": [{"path": "internal/orders/limiter.go", "line": 64}, {"path": "internal/orders/limiter.go", "line": 65}]}, {"text": "A blocked order returns before w.count++, so the count stays at 61 however many orders follow.", "example": "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo", "refs": [{"path": "internal/orders/limiter.go", "line": 59}, {"path": "internal/orders/limiter.go", "line": 62}]}]}
+  ],
+  "markers": [
+    {"x": 810, "y": 500, "n": 1, "bubble": {"kicker": "SOFT LIMIT · 30", "html": "From order 31 on, <code>Allow</code> returns <code>VerdictDefer</code>. The order is kept and waits for the next tick.", "tail": "u"}},
+    {"x": 1440, "y": 500, "n": 2, "bubble": {"kicker": "HARD LIMIT · 60", "html": "Order 61 sets <code>w.blocked</code>. That order and every later one in the window return <code>VerdictBlocked</code>.", "tail": "u", "alarm": true}},
+    {"x": 245, "y": 700, "n": 3, "bubble": {"kicker": "NEW WINDOW", "html": "The first order that arrives a minute or more after <code>w.start</code> replaces the window, and the count starts at 1 again.", "tail": "d"}}
+  ],
+  "stepper": {
+    "input": {"label": "Orders", "hint": "Each character is one order of the customer. > means one minute passes.", "maxLength": 200},
+    "presets": [
+      {"label": "Three orders", "input": "ooo", "expect": {"verdict": "VerdictAllow", "allowed": 3}},
+      {"label": "Over the soft limit", "input": "oooooooooooooooooooooooooooooooo", "expect": {"verdict": "VerdictDefer", "allowed": 30, "deferred": 2}},
+      {"label": "Over the hard limit", "input": "ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo", "expect": {"verdict": "VerdictBlocked", "allowed": 30, "deferred": 30, "blocked": 3}},
+      {"label": "A new window", "input": "ooo>oo", "expect": {"verdict": "VerdictAllow", "allowed": 5}},
+      {"label": "Deferred, then a new window", "input": "ooooooooooooooooooooooooooooooo>o", "expect": {"verdict": "VerdictAllow", "allowed": 31, "deferred": 1}},
+      {"label": "Blocked, then a new window", "input": "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo>o", "expect": {"verdict": "VerdictAllow", "allowed": 31, "deferred": 30, "blocked": 2}}
+    ],
+    "edges": [
+      {"id": "first", "from": "none", "to": "allow", "when": "an order arrives", "select": ["first"], "ref": "internal/orders/limiter.go:56"},
+      {"id": "allowstay", "from": "allow", "to": "allow", "when": "w.count ≤ 30", "select": ["allowstay"], "ref": "internal/orders/limiter.go:70"},
+      {"id": "soft", "from": "allow", "to": "defer", "when": "w.count > softOrdersPerWindow", "select": ["soft"], "ref": "internal/orders/limiter.go:67"},
+      {"id": "deferstay", "from": "defer", "to": "defer", "when": "w.count ≤ 60", "select": ["deferstay"], "ref": "internal/orders/limiter.go:67"},
+      {"id": "hard", "from": "defer", "to": "blocked", "when": "w.count > hardOrdersPerWindow", "select": ["hard"], "ref": "internal/orders/limiter.go:64"},
+      {"id": "blockedstay", "from": "blocked", "to": "blocked", "when": "every order", "select": ["blockedstay"], "ref": "internal/orders/limiter.go:59"},
+      {"id": "xallow", "from": "allow", "to": "none", "when": "an order 1 minute or more after w.start", "select": ["xallow"], "ref": "internal/orders/limiter.go:55"},
+      {"id": "xdefer", "from": "defer", "to": "none", "when": "an order 1 minute or more after w.start", "select": ["xdefer"], "ref": "internal/orders/limiter.go:55"},
+      {"id": "xblocked", "from": "blocked", "to": "none", "when": "an order 1 minute or more after w.start", "select": ["xblocked"], "ref": "internal/orders/limiter.go:55"}
+    ],
+    "variables": [
+      {"name": "now", "meaning": "the time of the order, in seconds from the start of the example"},
+      {"name": "w.start", "meaning": "when the customer's window began"},
+      {"name": "w.count", "meaning": "orders counted in the window"},
+      {"name": "w.blocked", "meaning": "true once the count went over the hard limit"}
+    ],
+    "outputs": [
+      {"name": "verdict", "meaning": "what Allow returned for the last order"},
+      {"name": "allowed", "meaning": "orders that got VerdictAllow"},
+      {"name": "deferred", "meaning": "orders that got VerdictDefer"},
+      {"name": "blocked", "meaning": "orders that got VerdictBlocked"}
+    ]
+  }
+}

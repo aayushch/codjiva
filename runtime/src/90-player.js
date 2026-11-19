@@ -49,7 +49,7 @@ const formatTime = (x) => {
   return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 };
 
-CJ.version = '1.2.0';
+CJ.version = '1.4.0';
 
 CJ.boot = async (data) => {
   const params = new URLSearchParams(window.location.search);
@@ -59,8 +59,11 @@ CJ.boot = async (data) => {
   // through CJ.bay.
   registry.pipeline = data.pipeline || null;
 
+  // The page: the stage in its frame, and the control bar below it. A
+  // step-through also fills `stepbar`, above the frame, and `steppanel`, to
+  // its right. Both take no room in any other artifact.
   document.body.innerHTML =
-    '<div id="app"><div id="frame"><div id="stage"></div><div id="loading">Loading…</div></div><div id="controls"></div></div>';
+    '<div id="app"><div id="stepbar"></div><div id="row"><div id="frame"><div id="stage"></div><div id="loading">Loading…</div></div><div id="steppanel"></div></div><div id="controls"></div></div>';
   const $ = (id) => document.getElementById(id);
   const stage = $('stage');
   const frame = $('frame');
@@ -124,6 +127,13 @@ CJ.boot = async (data) => {
   let film = null;
   let visual = null;
   try {
+    // A view has no plant and no visual.json of its own. Both are made from
+    // its data here, and the page then goes on as it does for a visual.
+    if (data.view) {
+      const compiled = compileView(data.view);
+      registry.plant = compiled.plant;
+      data.visual = compiled.visual;
+    }
     if (isFilm) film = buildFilm(data.film, stage, reportError);
     else visual = buildVisual(data.visual, stage, post);
   } catch (e) {
@@ -315,6 +325,12 @@ CJ.boot = async (data) => {
       else if (msg.cj === 'fit') visual.fit();
       else if (msg.cj === 'zoom') visual.zoomBy(msg.factor || 1);
       else if (msg.cj === 'select') visual.select(msg.nodeId || null, true);
+      else if (msg.cj === 'step' && visual.stepper)
+        visual.stepper.go(msg.index);
+      else if (msg.cj === 'input' && visual.stepper)
+        visual.stepper.setInput(msg.value == null ? '' : msg.value);
+      else if (msg.cj === 'page' && visual.pages)
+        visual.pages.open(msg.id == null ? '' : msg.id);
       else if (msg.cj === 'pick') setPicking(msg.on !== false);
       else if (msg.cj === 'selftest')
         Promise.resolve(runSelfTest(msg.opts)).then((report) =>
@@ -331,9 +347,18 @@ CJ.boot = async (data) => {
         nodes: (data.visual.nodes || []).map((n) => n.id),
         legend: visual.hasLegend,
         rationale: visual.hasRationale,
+        stepper: !!visual.stepper,
+        view: data.view ? data.view.view : null,
         runtime: CJ.version,
         theme: theme(),
       });
+    // A step-through adds its controls around the stage, which leaves the
+    // stage less room, so the stage is fitted again afterwards.
+    if (data.visual.stepper)
+      visual.stepper = buildStepper(data.visual, visual, post, fit);
+    // A map adds the bar that shows which level is on screen.
+    if (data.visual.map)
+      visual.pages = buildMapNav(data.visual, visual, post, fit);
     fit();
     window.__cj = { kind: 'visual', visual, selfTest: runSelfTest, registry };
     document.body.classList.add('ready');

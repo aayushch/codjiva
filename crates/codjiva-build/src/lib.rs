@@ -124,6 +124,12 @@ pub struct Sources {
     /// `(scene id, source)` for every file in `scenes/`.
     pub scenes: Vec<(String, String)>,
     pub extra_css: Option<String>,
+    /// For a view: the data the runtime draws it from. A view has no plant
+    /// and no drawing code.
+    pub view_json: Option<String>,
+    /// For a step-through and for a structure view: the step function, which
+    /// restates what the code does with an input. Absent for anything else.
+    pub sim_js: Option<String>,
     /// For a pipeline: which artifacts it joins and where each sits. Absent for
     /// anything else.
     pub pipeline_json: Option<String>,
@@ -149,6 +155,8 @@ impl Sources {
         sources.visual_json = read("visual.json")?;
         sources.plant_js = read("plant.js")?;
         sources.extra_css = read("extra.css")?;
+        sources.sim_js = read("sim.js")?;
+        sources.view_json = read("view.json")?;
         sources.pipeline_json = read("pipeline.json")?;
         let parts_dir = dir.join("parts");
         if parts_dir.is_dir() {
@@ -174,6 +182,8 @@ impl Sources {
                     | "visual.json"
                     | "plant.js"
                     | "extra.css"
+                    | "sim.js"
+                    | "view.json"
                     | "scenes"
                     | "pipeline.json"
                     | "parts"
@@ -221,8 +231,14 @@ pub fn build_dir(dir: &Path) -> Result<Built, BuildFailure> {
 /// `index.html`.
 ///
 /// A folder with `film.json` is built as a film. A folder without it but with
-/// `visual.json` is built as a still visual.
+/// `visual.json` is built as a still visual. A folder with neither but with
+/// `view.json` is built as a view.
 pub fn build(sources: &Sources) -> Result<Built, BuildFailure> {
+    if let (None, None, Some(text)) =
+        (&sources.film_json, &sources.visual_json, &sources.view_json)
+    {
+        return build_view(sources, text);
+    }
     let mut found: Vec<Diagnostic> = Vec::new();
 
     let (kind, json_name, json_text, schema) =
@@ -266,6 +282,9 @@ pub fn build(sources: &Sources) -> Result<Built, BuildFailure> {
     }
 
     let data = validate_json(json_name, json_text, schema, &mut found);
+    if let Some(data) = &data {
+        lint_legend(data, json_name, &mut found);
+    }
 
     let plant = sources.plant_js.as_deref();
     match plant {
@@ -348,6 +367,41 @@ pub fn build(sources: &Sources) -> Result<Built, BuildFailure> {
         }
     }
 
+    // A visual with a `stepper` is a step-through, and needs its step
+    // function. A step function without a `stepper` has nothing to drive.
+    let stepper = kind == ArtifactKind::Visual
+        && data.as_ref().is_some_and(|d| d["stepper"].is_object());
+    match (&sources.sim_js, stepper) {
+        (Some(code), true) => {
+            found.extend(scan::scan_js("sim.js", code));
+            found.extend(scan::scan_sim("sim.js", code));
+            if !code.contains("CJ.defineSim(") {
+                found.push(Diagnostic::error(
+                    "sim",
+                    "sim.js",
+                    "sim.js must call CJ.defineSim({ init, step, vars, \
+                     outputs })",
+                ));
+            }
+            if let Some(visual) = &data {
+                lint_stepper(visual, &mut found);
+            }
+        }
+        (None, true) => found.push(Diagnostic::error(
+            "missing-file",
+            "sim.js",
+            "visual.json has a \"stepper\", so sim.js is needed; it must \
+             call CJ.defineSim({ init, step, vars, outputs })",
+        )),
+        (Some(_), false) => found.push(Diagnostic::warning(
+            "unexpected-file",
+            "sim.js",
+            "visual.json has no \"stepper\", so this step function is \
+             ignored",
+        )),
+        (None, false) => {}
+    }
+
     if let Some(css) = &sources.extra_css {
         found.extend(scan::scan_css("extra.css", css));
     }
@@ -374,6 +428,9 @@ pub fn build(sources: &Sources) -> Result<Built, BuildFailure> {
         }
     }
     agent_js.push_str(&wrap_agent_file("plant.js", plant));
+    if let (Some(code), true) = (&sources.sim_js, stepper) {
+        agent_js.push_str(&wrap_agent_file("sim.js", code));
+    }
     for (id, code) in scene_order {
         agent_js.push_str(&wrap_agent_file(&format!("scenes/{id}.js"), code));
     }
@@ -578,6 +635,60 @@ fn validate_json(
     Some(value)
 }
 
+/// The most different packet forms the legend of one film or visual may list.
+/// A viewer learns the legend from a card that is on screen for a few seconds,
+/// and cannot keep more shapes than this apart.
+pub const MAX_LEGEND_FORMS: usize = 3;
+
+/// Checks the rules of a legend that the JSON Schema cannot express. `file` is
+/// `film.json` or `visual.json`, whichever holds the legend.
+///
+/// A row is `{ "kind", "form", "html" }`. A row without `form` is a crate.
+///   - A row of the kind `batch` or `tally` must not name a form, because
+///     those two kinds have a shape of their own.
+///   - The rows of the other kinds may name at most [`MAX_LEGEND_FORMS`]
+///     different forms between them.
+fn lint_legend(data: &Value, file: &str, found: &mut Vec<Diagnostic>) {
+    let mut forms: Vec<&str> = Vec::new();
+    for (i, row) in data["legend"].as_array().into_iter().flatten().enumerate()
+    {
+        let kind = row["kind"].as_str().unwrap_or("");
+        let form = row["form"].as_str();
+        if kind == "batch" || kind == "tally" {
+            if form.is_some_and(|form| form != "crate") {
+                found.push(Diagnostic::error(
+                    "legend",
+                    file,
+                    format!(
+                        "legend row {i}: the kind \"{kind}\" has its own \
+                         shape and takes no form. Remove \"form\" from this \
+                         row"
+                    ),
+                ));
+            }
+            continue;
+        }
+        let form = form.unwrap_or("crate");
+        if !forms.contains(&form) {
+            forms.push(form);
+        }
+    }
+    if forms.len() > MAX_LEGEND_FORMS {
+        found.push(Diagnostic::error(
+            "legend",
+            file,
+            format!(
+                "the legend lists {} different packet forms ({}); a viewer \
+                 cannot keep more than {MAX_LEGEND_FORMS} apart. Draw only \
+                 the things the story follows as packets of their own form, \
+                 and show the others with labels or bubbles",
+                forms.len(),
+                forms.join(", ")
+            ),
+        ));
+    }
+}
+
 /// Checks the rules of a film that the JSON Schema cannot express.
 fn lint_film(film: &Value, found: &mut Vec<Diagnostic>) {
     let file = "film.json";
@@ -706,6 +817,369 @@ fn lint_visual(visual: &Value, found: &mut Vec<Diagnostic>) {
                 format!(
                     "node \"{id}\" has an empty \"select\"; list the name of \
                      the element that highlights when it is hovered"
+                ),
+            ));
+        }
+    }
+}
+
+/// Builds a view: an artifact that the runtime draws from the data in
+/// `view.json`, without a plant. `text` is the content of that file.
+///
+/// The value of `"view"` in the file names the view, and the file is checked
+/// against that view's schema. A structure view is stepped through, so it
+/// also needs the step function in `sim.js`. No other view has one.
+fn build_view(sources: &Sources, text: &str) -> Result<Built, BuildFailure> {
+    let file = "view.json";
+    let mut found: Vec<Diagnostic> = Vec::new();
+    for name in &sources.unexpected {
+        found.push(if name == "index.html" {
+            Diagnostic::error(
+                "unexpected-file",
+                name,
+                "do not write index.html; the app builds it from your \
+                 sources. Delete this file",
+            )
+        } else {
+            Diagnostic::warning(
+                "unexpected-file",
+                name,
+                "this file is not part of an artifact and is ignored",
+            )
+        });
+    }
+    if sources.plant_js.is_some() {
+        found.push(Diagnostic::warning(
+            "unexpected-file",
+            "plant.js",
+            "a view is drawn by the runtime from view.json, so this plant \
+             is ignored",
+        ));
+    }
+    let Ok(data) = serde_json::from_str::<Value>(text) else {
+        // The text is not JSON. Checking it against any schema reports
+        // where.
+        validate_json(file, text, runtime::VIEW_SCHEMAS[0].1, &mut found);
+        return Err(BuildFailure { diagnostics: found });
+    };
+    let name = data["view"].as_str().unwrap_or("");
+    let Some((_, schema)) =
+        runtime::VIEW_SCHEMAS.iter().find(|(view, _)| *view == name)
+    else {
+        let known: Vec<&str> = runtime::VIEW_SCHEMAS
+            .iter()
+            .map(|(view, _)| *view)
+            .collect();
+        found.push(Diagnostic::error(
+            "view",
+            file,
+            format!(
+                "\"view\" is \"{name}\", which is not a view. Set it to \
+                 one of: {}",
+                known.join(", ")
+            ),
+        ));
+        return Err(BuildFailure { diagnostics: found });
+    };
+    validate_json(file, text, schema, &mut found);
+    lint_view(&data, name, &mut found);
+
+    let stepped = name == "structure";
+    match (&sources.sim_js, stepped) {
+        (Some(code), true) => {
+            found.extend(scan::scan_js("sim.js", code));
+            found.extend(scan::scan_sim("sim.js", code));
+            for needed in ["CJ.defineSim(", "structure("] {
+                if !code.contains(needed) {
+                    found.push(Diagnostic::error(
+                        "sim",
+                        "sim.js",
+                        "the sim.js of a structure view must call \
+                         CJ.defineSim({ init, step, vars, outputs, structure \
+                         }), where structure(m) returns what is in memory",
+                    ));
+                    break;
+                }
+            }
+        }
+        (None, true) => found.push(Diagnostic::error(
+            "missing-file",
+            "sim.js",
+            "a structure view is stepped through, so sim.js is needed; it \
+             must call CJ.defineSim({ init, step, vars, outputs, structure })",
+        )),
+        (Some(_), false) => found.push(Diagnostic::warning(
+            "unexpected-file",
+            "sim.js",
+            "only a structure view has a step function, so this one is \
+             ignored",
+        )),
+        (None, false) => {}
+    }
+    if let Some(css) = &sources.extra_css {
+        found.extend(scan::scan_css("extra.css", css));
+    }
+    if found.iter().any(|d| d.severity == Severity::Error) {
+        return Err(BuildFailure { diagnostics: found });
+    }
+
+    let title = data["title"].as_str().unwrap_or("Codjiva").to_string();
+    let agent_js = match (&sources.sim_js, stepped) {
+        (Some(code), true) => wrap_agent_file("sim.js", code),
+        _ => String::new(),
+    };
+    let boot = format!("CJ.boot({{\"view\":{}}});", json_for_script(&data));
+    let html = page(
+        &title,
+        ArtifactKind::Visual,
+        sources.extra_css.as_deref().unwrap_or(""),
+        &agent_js,
+        &boot,
+    );
+    Ok(Built {
+        kind: ArtifactKind::Visual,
+        title,
+        html,
+        warnings: found,
+    })
+}
+
+/// The most nodes a map may have inside one parent. A level with more boxes
+/// than this cannot be read at a glance, so the agent is asked to group them.
+pub const MAX_MAP_CHILDREN: usize = 12;
+
+/// Checks the rules of a view that the JSON Schema cannot express. `name` is
+/// the view: `schema`, `lanes`, `structure` or `map`.
+///
+/// For every view, each node has its own id. Beyond that:
+///   - schema: a relation joins two nodes, and the field it names is a field
+///     of its `from` node. A use names a field of a node.
+///   - lanes: every message goes from a node to a node, and each scenario
+///     has its own id.
+///   - map: a `parent` is the id of another node, no node is inside itself,
+///     a link joins two nodes, and no parent holds more than
+///     [`MAX_MAP_CHILDREN`] nodes.
+fn lint_view(data: &Value, name: &str, found: &mut Vec<Diagnostic>) {
+    let file = "view.json";
+    let list = |key: &str| data[key].as_array().into_iter().flatten();
+    let mut ids = HashSet::new();
+    for node in list("nodes") {
+        let id = node["id"].as_str().unwrap_or("?");
+        if !ids.insert(id) {
+            found.push(Diagnostic::error(
+                "view",
+                file,
+                format!(
+                    "node id \"{id}\" is used twice; every node needs its \
+                     own id"
+                ),
+            ));
+        }
+    }
+    let mut unknown = |what: String, id: &str| {
+        if !ids.contains(id) {
+            found.push(Diagnostic::error(
+                "view",
+                file,
+                format!("{what} names \"{id}\", which is not the id of a node"),
+            ));
+        }
+    };
+    let fields_of = |id: &str| -> Vec<&str> {
+        list("nodes")
+            .find(|node| node["id"].as_str() == Some(id))
+            .and_then(|node| node["fields"].as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|field| field["name"].as_str())
+            .collect()
+    };
+    match name {
+        "schema" => {
+            let mut missing: Vec<String> = Vec::new();
+            for (i, relation) in list("relations").enumerate() {
+                for end in ["from", "to"] {
+                    unknown(
+                        format!("relation {i}: \"{end}\""),
+                        relation[end].as_str().unwrap_or(""),
+                    );
+                }
+                let from = relation["from"].as_str().unwrap_or("");
+                if let Some(field) = relation["field"].as_str() {
+                    if !fields_of(from).contains(&field) {
+                        missing.push(format!(
+                            "relation {i} goes through the field \
+                             \"{field}\", which \"{from}\" does not have"
+                        ));
+                    }
+                }
+            }
+            for (i, used) in list("uses").enumerate() {
+                let node = used["node"].as_str().unwrap_or("");
+                unknown(format!("use {i}: \"node\""), node);
+                let field = used["field"].as_str().unwrap_or("");
+                if ids.contains(node) && !fields_of(node).contains(&field) {
+                    missing.push(format!(
+                        "use {i} names the field \"{field}\", which \
+                         \"{node}\" does not have"
+                    ));
+                }
+            }
+            for message in missing {
+                found.push(Diagnostic::error("view", file, message));
+            }
+        }
+        "lanes" => {
+            let mut scenarios = HashSet::new();
+            let mut twice: Vec<String> = Vec::new();
+            for scenario in list("scenarios") {
+                let id = scenario["id"].as_str().unwrap_or("?");
+                if !scenarios.insert(id) {
+                    twice.push(id.to_string());
+                }
+                for (i, step) in scenario["steps"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                {
+                    for end in ["from", "to"] {
+                        unknown(
+                            format!("scenario \"{id}\", step {i}: \"{end}\""),
+                            step[end].as_str().unwrap_or(""),
+                        );
+                    }
+                }
+            }
+            for id in twice {
+                found.push(Diagnostic::error(
+                    "view",
+                    file,
+                    format!(
+                        "scenario id \"{id}\" is used twice; every scenario \
+                         needs its own id"
+                    ),
+                ));
+            }
+        }
+        "map" => {
+            let parent_of = |id: &str| -> Option<&str> {
+                list("nodes")
+                    .find(|node| node["id"].as_str() == Some(id))
+                    .and_then(|node| node["parent"].as_str())
+            };
+            let mut problems: Vec<String> = Vec::new();
+            let mut inside: std::collections::BTreeMap<&str, usize> =
+                std::collections::BTreeMap::new();
+            for node in list("nodes") {
+                let id = node["id"].as_str().unwrap_or("?");
+                let Some(parent) = node["parent"].as_str() else {
+                    *inside.entry("").or_default() += 1;
+                    continue;
+                };
+                unknown(format!("node \"{id}\": \"parent\""), parent);
+                *inside.entry(parent).or_default() += 1;
+                // Walks up from the node. A walk that comes back to the node
+                // means the node is inside itself.
+                let mut at = Some(parent);
+                for _ in 0..32 {
+                    match at {
+                        Some(up) if up == id => {
+                            problems.push(format!(
+                                "node \"{id}\" is inside itself; follow \
+                                 \"parent\" upwards and remove the loop"
+                            ));
+                            break;
+                        }
+                        Some(up) => at = parent_of(up),
+                        None => break,
+                    }
+                }
+            }
+            for (i, link) in list("links").enumerate() {
+                for end in ["from", "to"] {
+                    unknown(
+                        format!("link {i}: \"{end}\""),
+                        link[end].as_str().unwrap_or(""),
+                    );
+                }
+            }
+            for (parent, count) in inside {
+                if count > MAX_MAP_CHILDREN {
+                    let place = if parent.is_empty() {
+                        "the top level".to_string()
+                    } else {
+                        format!("\"{parent}\"")
+                    };
+                    problems.push(format!(
+                        "{place} holds {count} nodes; a level is readable \
+                         with at most {MAX_MAP_CHILDREN}. Group related \
+                         nodes under a node of their own"
+                    ));
+                }
+            }
+            for message in problems {
+                found.push(Diagnostic::error("view", file, message));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Checks the rules of a step-through's `stepper` that the JSON Schema cannot
+/// express.
+///   - Every transition has its own id.
+///   - The `from` and the `to` of a transition are ids of nodes.
+///   - An example's input is not longer than the input may be.
+fn lint_stepper(visual: &Value, found: &mut Vec<Diagnostic>) {
+    let file = "visual.json";
+    let stepper = &visual["stepper"];
+    let nodes: HashSet<&str> = visual["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|node| node["id"].as_str())
+        .collect();
+    let mut ids = HashSet::new();
+    for edge in stepper["edges"].as_array().into_iter().flatten() {
+        let id = edge["id"].as_str().unwrap_or("?");
+        if !ids.insert(id) {
+            found.push(Diagnostic::error(
+                "stepper",
+                file,
+                format!(
+                    "the transition id \"{id}\" is used twice; every \
+                     transition needs its own id"
+                ),
+            ));
+        }
+        for end in ["from", "to"] {
+            let node = edge[end].as_str().unwrap_or("");
+            if !nodes.contains(node) {
+                found.push(Diagnostic::error(
+                    "stepper",
+                    file,
+                    format!(
+                        "transition \"{id}\": \"{end}\" names \"{node}\", \
+                         which is not the id of a node"
+                    ),
+                ));
+            }
+        }
+    }
+    let longest = stepper["input"]["maxLength"].as_u64().unwrap_or(200);
+    for preset in stepper["presets"].as_array().into_iter().flatten() {
+        let length =
+            preset["input"].as_str().unwrap_or("").chars().count() as u64;
+        if length > longest {
+            found.push(Diagnostic::error(
+                "stepper",
+                file,
+                format!(
+                    "the example \"{}\" is {length} characters long, but \
+                     the input may be at most {longest}. Raise \
+                     input.maxLength (at most 500) or shorten the example",
+                    preset["label"].as_str().unwrap_or("?")
                 ),
             ));
         }
@@ -989,6 +1463,94 @@ mod tests {
             Some("CJ.definePlant({ note: 'a </SCRIPT> b <!-- c' });".into());
         let built = build(&sources).expect("builds");
         assert!(built.html.contains("a <\\/SCRIPT> b <\\!-- c"));
+    }
+
+    /// A visual whose legend holds the given rows.
+    fn visual_with_legend(rows: &str) -> Sources {
+        let mut sources = visual_sources();
+        sources.visual_json = Some(format!(
+            r#"{{"schemaVersion":1,"title":"T","camera":{{"cx":960,"cy":560,"z":1}},"nodes":[],"legend":[{rows}]}}"#
+        ));
+        sources
+    }
+
+    #[test]
+    fn a_legend_row_may_name_the_form_of_its_packet() {
+        let built = build(&visual_with_legend(
+            r#"{"kind":"primary","form":"element","html":"a button"},
+               {"kind":"secondary","form":"value","html":"a number"},
+               {"kind":"transient","html":"a probe"},
+               {"kind":"batch","html":"a batch"}"#,
+        ))
+        .unwrap_or_else(|failure| panic!("{:?}", failure.diagnostics));
+        assert!(built.html.contains(r#""form":"element""#));
+
+        let unknown = build(&visual_with_legend(
+            r#"{"kind":"primary","form":"pill","html":"a button"}"#,
+        ))
+        .unwrap_err();
+        assert!(
+            unknown
+                .diagnostics
+                .iter()
+                .any(|d| d.check == "schema" && d.message.contains("/legend/0")),
+            "{:?}",
+            unknown.diagnostics
+        );
+    }
+
+    #[test]
+    fn a_legend_is_limited_in_rows_and_in_forms() {
+        let row = |form: &str| {
+            format!(r#"{{"kind":"primary","form":"{form}","html":"x"}}"#)
+        };
+        // Four forms: one more than a legend may list. Rows of the kinds batch
+        // and tally are not counted, because they name no form.
+        let four = ["crate", "record", "value", "key"].map(row).join(",");
+        let failure = build(&visual_with_legend(&format!(
+            r#"{four},{{"kind":"batch","html":"x"}}"#
+        )))
+        .unwrap_err();
+        assert!(
+            failure.diagnostics.iter().any(|d| d.check == "legend"
+                && d.message.contains("4 different packet forms")
+                && d.message.contains("crate, record, value, key")),
+            "{:?}",
+            failure.diagnostics
+        );
+
+        let three = ["crate", "record", "value"].map(row).join(",");
+        build(&visual_with_legend(&format!(
+            r#"{three},{{"kind":"batch","html":"x"}},{{"kind":"tally","html":"x"}}"#
+        )))
+        .unwrap_or_else(|failure| panic!("{:?}", failure.diagnostics));
+
+        // Seven rows: one more than the schema allows.
+        let seven = vec![row("record"); 7].join(",");
+        let failure = build(&visual_with_legend(&seven)).unwrap_err();
+        assert!(
+            failure
+                .diagnostics
+                .iter()
+                .any(|d| d.check == "schema" && d.message.contains("/legend")),
+            "{:?}",
+            failure.diagnostics
+        );
+    }
+
+    #[test]
+    fn a_legend_row_of_the_kind_batch_or_tally_takes_no_form() {
+        let failure = build(&visual_with_legend(
+            r#"{"kind":"batch","form":"record","html":"x"}"#,
+        ))
+        .unwrap_err();
+        assert!(
+            failure.diagnostics.iter().any(|d| d.check == "legend"
+                && d.message.contains("legend row 0")
+                && d.message.contains("\"batch\" has its own shape")),
+            "{:?}",
+            failure.diagnostics
+        );
     }
 
     #[test]

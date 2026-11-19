@@ -2,6 +2,11 @@
 // desktop app. `npm run dev` opened in a browser uses it, and so do the
 // end-to-end tests. It holds one small made-up workspace.
 
+import stepthroughVisual from '../../../../runtime/reference/stepthrough/visual.json';
+import lanesView from '../../../../runtime/reference/views/lanes/view.json';
+import mapView from '../../../../runtime/reference/views/map/view.json';
+import schemaView from '../../../../runtime/reference/views/schema/view.json';
+import structureView from '../../../../runtime/reference/views/structure/view.json';
 import type {
   AgentInfo,
   Api,
@@ -286,6 +291,20 @@ const pendingValidations = new Map<
 >();
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
+// The visual.json of the reference step-through, which every mock
+// step-through shows.
+const STEPTHROUGH_DEFINITION =
+  stepthroughVisual as unknown as ArtifactDetail['definition'];
+
+// The view.json of each reference view, which a mock view of that name
+// shows.
+const VIEW_DEFINITIONS: Record<string, ArtifactDetail['definition']> = {
+  schema: schemaView as unknown as ArtifactDetail['definition'],
+  lanes: lanesView as unknown as ArtifactDetail['definition'],
+  structure: structureView as unknown as ArtifactDetail['definition'],
+  map: mapView as unknown as ArtifactDetail['definition'],
+};
+
 const mockDetail = (
   summary: ArtifactSummary,
   version: number,
@@ -322,70 +341,13 @@ const mockDetail = (
       ),
     ),
   },
-  definition: {
-    title: summary.title,
-    layers: { data: [], control: [], errors: [], labels: [] },
-    nodes: [
-      {
-        id: 'submit',
-        label: 'Submit()',
-        role: 'Entry point. Refuses, de-duplicates and asks the limiter about each order',
-        refs: [{ path: 'internal/orders/handler.go', line: 20 }],
-        select: ['submit'],
-      },
-      {
-        id: 'flush',
-        label: 'flushLocked()',
-        role: 'Writes the batch to the Store, and keeps it in memory if the write fails',
-        refs: [
-          { path: 'internal/orders/handler.go', line: 34 },
-          { path: 'internal/orders/store.go', line: 5 },
-        ],
-        rationale: {
-          text: 'After a failed write the batch stays in memory, so the next flush writes it again and no order is lost. See `flushLocked`.',
-          basis: 'stated',
-          refs: [{ path: 'internal/orders/handler.go', line: 33 }],
-        },
-        select: ['flush'],
-      },
-    ],
-    // The chapters of the reference film, which the mock shows for every
-    // film, with the two rationales the inspector lists for it.
-    scenes: [
-      { id: 'overview', title: 'How an order moves', bubbles: [] },
-      {
-        id: 'routing',
-        title: '2 · Routing',
-        bubbles: [
-          {
-            kicker: 'ROUTING · PRIORITY',
-            html: 'A priority order is written at once.',
-            rationale: {
-              text: 'A priority order whose write fails is taken out of `seen` again, so the client may submit the same order once more.',
-              basis: 'inferred',
-              refs: [{ path: 'internal/orders/handler.go', line: 20 }],
-            },
-          },
-        ],
-      },
-      { id: 'budget', title: '3 · The budget', bubbles: [] },
-      {
-        id: 'flush',
-        title: '4 · The flush',
-        bubbles: [
-          {
-            kicker: 'FLUSH · flushLocked()',
-            html: 'The tick writes the whole batch.',
-            rationale: {
-              text: 'After a failed write the batch stays in memory, so the next flush writes it again and no order is lost.',
-              basis: 'stated',
-              refs: [{ path: 'internal/orders/handler.go', line: 33 }],
-            },
-          },
-        ],
-      },
-    ],
-  },
+  // A mock step-through shows the reference step-through, so its definition
+  // is that step-through's visual.json, with the detail of every state. A
+  // mock view has the view.json of the reference view of its name.
+  definition:
+    summary.kind === 'stepthrough'
+      ? STEPTHROUGH_DEFINITION
+      : (VIEW_DEFINITIONS[summary.kind] ?? mockDefinition(summary)),
   model: {
     unit: { primary: 'order' },
     modes: [
@@ -416,6 +378,88 @@ const mockDetail = (
     ],
   },
   bytes: 212_000,
+});
+
+// The definition of every mock artifact that is not a step-through: two nodes
+// of the reference visual, and the chapters of the reference film.
+const mockDefinition = (
+  summary: ArtifactSummary,
+): ArtifactDetail['definition'] => ({
+  title: summary.title,
+  layers: { data: [], control: [], errors: [], labels: [] },
+  nodes: [
+    {
+      id: 'submit',
+      label: 'Submit()',
+      role: 'Entry point. Refuses, de-duplicates and asks the limiter about each order',
+      refs: [{ path: 'internal/orders/handler.go', line: 20, end: 26 }],
+      select: ['submit'],
+      inputs: ['o: the order', 'h.mode: the load mode'],
+      outputs: ['Outcome: what was done with the order'],
+      transitions: [
+        { when: 'the order is valid', to: 'flush' },
+        { when: 'h.mode is ModeStopped', to: 'the caller, with ErrOverloaded' },
+      ],
+      edgeCases: [
+        {
+          text: "An order with a repeated ID is counted as a duplicate before the limiter is asked, so it does not use up the customer's rate.",
+          example: 'two orders with the ID 7',
+          refs: [{ path: 'internal/orders/handler.go', line: 22 }],
+        },
+      ],
+    },
+    {
+      id: 'flush',
+      label: 'flushLocked()',
+      role: 'Writes the batch to the Store, and keeps it in memory if the write fails',
+      refs: [
+        { path: 'internal/orders/handler.go', line: 34 },
+        { path: 'internal/orders/store.go', line: 5 },
+      ],
+      rationale: {
+        text: 'After a failed write the batch stays in memory, so the next flush writes it again and no order is lost. See `flushLocked`.',
+        basis: 'stated',
+        refs: [{ path: 'internal/orders/handler.go', line: 33 }],
+      },
+      select: ['flush'],
+    },
+  ],
+  // The chapters of the reference film, which the mock shows for every
+  // film, with the two rationales the inspector lists for it.
+  scenes: [
+    { id: 'overview', title: 'How an order moves', bubbles: [] },
+    {
+      id: 'routing',
+      title: '2 · Routing',
+      bubbles: [
+        {
+          kicker: 'ROUTING · PRIORITY',
+          html: 'A priority order is written at once.',
+          rationale: {
+            text: 'A priority order whose write fails is taken out of `seen` again, so the client may submit the same order once more.',
+            basis: 'inferred',
+            refs: [{ path: 'internal/orders/handler.go', line: 20 }],
+          },
+        },
+      ],
+    },
+    { id: 'budget', title: '3 · The budget', bubbles: [] },
+    {
+      id: 'flush',
+      title: '4 · The flush',
+      bubbles: [
+        {
+          kicker: 'FLUSH · flushLocked()',
+          html: 'The tick writes the whole batch.',
+          rationale: {
+            text: 'After a failed write the batch stays in memory, so the next flush writes it again and no order is lost.',
+            basis: 'stated',
+            refs: [{ path: 'internal/orders/handler.go', line: 33 }],
+          },
+        },
+      ],
+    },
+  ],
 });
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -738,11 +782,15 @@ export const mockApi: Api = {
         ? 60
         : request.kind === 'visualise'
           ? 200
-          : (request.kind === 'compose' ? 60 : 240) +
-            (request.kind === 'compose' && !request.film
-              ? 0
-              : 2 * (request.lengthSeconds ?? 180)) +
-            30 * (request.companions?.length ?? 0);
+          : request.kind === 'stepthrough'
+            ? 320
+            : request.kind === 'view'
+              ? 160
+              : (request.kind === 'compose' ? 60 : 240) +
+                (request.kind === 'compose' && !request.film
+                  ? 0
+                  : 2 * (request.lengthSeconds ?? 180)) +
+                30 * (request.companions?.length ?? 0);
     return {
       lowSeconds: Math.round(typical * 0.6),
       highSeconds: Math.round(typical * 1.5),
@@ -777,7 +825,11 @@ export const mockApi: Api = {
         ? 'pipeline'
         : request.kind === 'animate'
           ? 'film'
-          : 'visual');
+          : request.kind === 'stepthrough'
+            ? 'stepthrough'
+            : request.kind === 'view'
+              ? (request.view ?? 'schema')
+              : 'visual');
     const form =
       request.kind === 'compose'
         ? request.film
@@ -878,17 +930,39 @@ export const mockApi: Api = {
                   [300, phase('chapter', { chapter: 3, of: 3 })],
                   [200, tool(`Write ${dir}/src/film.json`)],
                 ]
-              : [
-                  [80, phase('reading')],
-                  [150, tool(`Read ${subject}`)],
-                  [150, tool('Read internal/orders/store.go')],
-                  [150, phase('analysing')],
-                  [200, tool(`Write ${dir}/model.json`)],
-                  [150, phase('drawing')],
-                  [250, tool(`Write ${dir}/src/plant.js`)],
-                  [150, phase('annotating')],
-                  [200, tool(`Write ${dir}/src/visual.json`)],
-                ];
+              : request.kind === 'view'
+                ? [
+                    [80, phase('reading')],
+                    [150, tool(`Read ${subject}`)],
+                    [150, phase('analysing')],
+                    [200, tool(`Write ${dir}/model.json`)],
+                    [150, phase('annotating')],
+                    [250, tool(`Write ${dir}/src/view.json`)],
+                  ]
+                : request.kind === 'stepthrough'
+                  ? [
+                      [80, phase('reading')],
+                      [150, tool(`Read ${subject}`)],
+                      [150, phase('analysing')],
+                      [200, tool(`Write ${dir}/model.json`)],
+                      [150, phase('drawing')],
+                      [250, tool(`Write ${dir}/src/plant.js`)],
+                      [150, phase('stepping')],
+                      [250, tool(`Write ${dir}/src/sim.js`)],
+                      [150, phase('annotating')],
+                      [200, tool(`Write ${dir}/src/visual.json`)],
+                    ]
+                  : [
+                      [80, phase('reading')],
+                      [150, tool(`Read ${subject}`)],
+                      [150, tool('Read internal/orders/store.go')],
+                      [150, phase('analysing')],
+                      [200, tool(`Write ${dir}/model.json`)],
+                      [150, phase('drawing')],
+                      [250, tool(`Write ${dir}/src/plant.js`)],
+                      [150, phase('annotating')],
+                      [200, tool(`Write ${dir}/src/visual.json`)],
+                    ];
       const tail: [number, JobEvent][] = [
         [
           100,
@@ -989,7 +1063,11 @@ export const mockApi: Api = {
               ? 'Orders: from the handler to the store'
               : kind === 'film'
                 ? 'How an order moves through the orders Handler'
-                : `Handler.Submit · ${subject.split('/').pop()}`,
+                : kind in VIEW_DEFINITIONS
+                  ? (VIEW_DEFINITIONS[kind]?.title ?? kind)
+                  : kind === 'stepthrough'
+                    ? `Limiter.Allow · ${subject.split('/').pop()}`
+                    : `Handler.Submit · ${subject.split('/').pop()}`,
           subject:
             kind === 'pipeline'
               ? partArtifacts.map((part) => part.subject[0])
@@ -1063,11 +1141,19 @@ export const mockApi: Api = {
     return () => fsListeners.delete(handler);
   },
   // The end-to-end test server serves the built reference pages under this
-  // path. A mock film shows the reference film, and every other mock artifact
-  // shows the reference visual.
+  // path. A mock film shows the reference film, a mock step-through the
+  // reference step-through, a mock pipeline the reference pipeline, and
+  // every other mock artifact the reference visual.
   artifactUrl(path) {
     if (path.startsWith('artifact/film-'))
       return '/__artifact/reference/film.html';
+    if (path.startsWith('artifact/stepthrough-'))
+      return '/__artifact/reference/stepthrough.html';
+    // A mock view shows the reference view of the same name.
+    const view = Object.keys(VIEW_DEFINITIONS).find((name) =>
+      path.startsWith(`artifact/${name}-`),
+    );
+    if (view) return `/__artifact/reference/view-${view}.html`;
     if (path.startsWith('artifact/pipeline-'))
       return '/__artifact/reference/pipeline.html';
     return path.startsWith('artifact/')

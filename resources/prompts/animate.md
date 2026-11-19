@@ -66,6 +66,8 @@ Report progress in `{{artifactDir}}/progress.json` with these phases, in order: 
 - A press strikes down fast and rises slowly. The mark appears inside the packet at the strike.
 - Merges: packets slide into the slots of a crate, then the crate closes and moves on as one batch packet.
 - Gauges and tanks fill smoothly. Lamps fade over 0.2 to 0.4 seconds.
+- A value that changes stays one packet: keep the packet where it is and change its tag with `CJ.packet.tag` at
+  the moment the code assigns the new value.
 - Errors: a warning token pops up, the packet drops into the drop bin, the line pauses.
 - Nothing teleports. Nothing changes size to get attention. A moving packet keeps its size.
 - `render(t, ctx)` must be pure: compute every position and state from `t`. The user scrubs backwards and

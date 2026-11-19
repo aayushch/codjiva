@@ -53,8 +53,23 @@ code {
 }
 
 /* ---------- layout ---------- */
+/* The rows of the window, top to bottom: the title bar, the row of file tabs,
+   the toolbar, the editor area and the job panel. A row whose variable is 0
+   is not shown. Full screen hides the title bar, the file tabs and the job
+   panel. */
+.app {
+  grid-template-rows:
+    36px var(--tabs-h, 0px) var(--bar-h, 0px) minmax(0, 1fr)
+    var(--dock-h, 0px);
+  grid-template-areas:
+    'title title title'
+    'side tabs tabs'
+    'side bar bar'
+    'side main insp'
+    'side dock dock';
+}
 .app.theater {
-  grid-template-rows: 0 var(--bar-h, 0px) minmax(0, 1fr) 0;
+  grid-template-rows: 0 0 var(--bar-h, 0px) minmax(0, 1fr) 0;
 }
 /* A handle is 6px wide and lies over the line between two panels. Its parent is
    a box of no width on that line. */
@@ -99,7 +114,7 @@ html.dragging-handle iframe {
 }
 .insp-edge {
   position: absolute;
-  top: calc(36px + var(--bar-h, 0px));
+  top: calc(36px + var(--tabs-h, 0px) + var(--bar-h, 0px));
   bottom: var(--dock-h, 0px);
   right: var(--inspector-w, 0px);
   width: 0;
@@ -660,8 +675,57 @@ html.dragging-handle iframe {
 }
 
 /* ---------- job dock ---------- */
+/* The column of steps. Its upper part holds the job's title, the tags and the
+   steps, and scrolls when the panel is too low for them. Its lower part holds
+   the buttons and is always in view. */
+.dock {
+  grid-template-columns: 320px 1fr;
+}
 .dock .steps {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.steps-list {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+  padding: 12px 16px 8px;
+}
+/* The tags under the job's title stay on one line. The tag with the agent's
+   name is the only one that may be cut short. */
+.dock-meta {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+.dock-meta .pill {
+  flex: none;
+  white-space: nowrap;
+}
+.dock-meta .pill.agent {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A step is as tall as its text. A label that is too long for one line wraps,
+   and the mark stays level with the first line. */
+.dock .step {
+  height: auto;
+  min-height: 24px;
+  align-items: flex-start;
+  padding: 4px 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+.dock .step .s {
+  flex: none;
+  margin-top: 3px;
 }
 .dock {
   overflow: hidden;
@@ -710,11 +774,12 @@ html.dragging-handle iframe {
   opacity: 0.7;
 }
 .dock-foot {
-  margin-top: 10px;
+  flex: none;
   display: flex;
   gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
+  padding: 8px 16px;
+  border-top: 1px solid var(--shell-border-soft);
 }
 .log div {
   min-height: 1.45em;
@@ -955,16 +1020,16 @@ html.dragging-handle iframe {
   vertical-align: middle;
 }
 .dock.with-outline {
-  grid-template-columns: 300px 1fr minmax(280px, 34%);
+  grid-template-columns: 320px 1fr minmax(280px, 34%);
 }
 /* The list of jobs, at the left edge of the dock while there is more than one
    job. Each row has a button that shows the job and, once the job has ended, a
    button that removes it from the list. */
 .dock.with-jobs {
-  grid-template-columns: 200px 300px 1fr;
+  grid-template-columns: 200px 320px 1fr;
 }
 .dock.with-jobs.with-outline {
-  grid-template-columns: 200px 300px 1fr minmax(280px, 34%);
+  grid-template-columns: 200px 320px 1fr minmax(280px, 34%);
 }
 .job-list {
   padding: 8px 6px;
@@ -1391,4 +1456,273 @@ iframe {
 [data-tip].tip-start::after {
   left: 0;
   transform: none;
+}
+
+/* ---- the row of file tabs, above the toolbar */
+/* The line along the bottom of the row is an inset shadow, not a border, so
+   that the tab on screen can cover it and join the toolbar below. */
+.file-tabs {
+  grid-area: tabs;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  background: var(--shell-window);
+  box-shadow: inset 0 -1px 0 var(--shell-border-soft);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.file-tabs::-webkit-scrollbar {
+  display: none;
+}
+.file-tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 0 6px 0 12px;
+  border-top: 2px solid transparent;
+  border-right: 1px solid var(--shell-border-soft);
+  color: var(--shell-text-2);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.file-tab:hover {
+  color: var(--ink);
+}
+.file-tab.on {
+  background: var(--shell-bar);
+  border-top-color: var(--main);
+  color: var(--second);
+}
+.file-tab:focus-visible {
+  outline: 2px solid var(--main);
+  outline-offset: -2px;
+}
+.file-tab .ico {
+  flex: none;
+}
+.file-tab .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The folder of a file, shown when two tabs have the same name. */
+.file-tab .where {
+  flex: none;
+  font-size: 11px;
+  color: var(--shell-tick);
+}
+/* The mark of a tab whose file has a job running. */
+.file-tab .busy {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--main);
+}
+/* The close button shows on the tab on screen, on the tab under the pointer
+   and while the button itself has keyboard focus. */
+.file-tab-close {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--shell-text-2);
+  opacity: 0;
+}
+.file-tab.on .file-tab-close,
+.file-tab:hover .file-tab-close,
+.file-tab-close:focus-visible {
+  opacity: 1;
+}
+.file-tab-close:hover {
+  background: var(--shell-hover);
+  color: var(--second);
+}
+
+/* ---- the button that copies the path, after the path in the toolbar */
+.toolbar .copy-path {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin-left: -2px;
+}
+
+/* ---- the context menu */
+/* It lies above the dialogs and below the toasts. */
+.menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 200px;
+  padding: 4px;
+  background: var(--shell-bar);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 12px 30px var(--drop);
+  font-size: 12px;
+  outline: none;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--second);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+}
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible {
+  background: var(--shell-button);
+  outline: none;
+}
+.menu-item:disabled {
+  color: var(--shell-text-2);
+}
+.menu-line {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--shell-border-soft);
+}
+
+/* ---- the detail of a selected part, in the inspector */
+/* The lines of code behind the part. The box scrolls sideways for a long
+   line and downwards when the part has many lines. */
+.excerpt {
+  margin-bottom: 6px;
+}
+.excerpt-code {
+  max-height: 300px;
+  margin-top: 4px;
+  padding: 6px 0;
+  overflow: auto;
+  border: 1px solid var(--shell-border-soft);
+  border-radius: var(--radius-s);
+  background: var(--ground);
+  font-size: 11.5px;
+  line-height: 17px;
+  font-variant-ligatures: none;
+}
+.excerpt-line {
+  display: flex;
+  min-width: max-content;
+  white-space: pre;
+}
+.excerpt-num {
+  flex: none;
+  width: 4ch;
+  padding-right: 1.5ch;
+  text-align: right;
+  color: var(--shell-tick);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.excerpt-text {
+  padding-right: 12px;
+  color: var(--ink);
+}
+.excerpt-note {
+  font-size: 12px;
+  color: var(--main);
+}
+/* What the part reads and what it writes, side by side. */
+.inspector .io {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 14px;
+}
+.inspector .io .kicker {
+  margin-top: 16px;
+}
+.io-row {
+  margin-bottom: 2px;
+  font-size: 12px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+/* One way the work goes on: the condition, then the part it leads to. */
+.transition {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+.transition .when {
+  flex: 0 0 46%;
+  color: var(--main);
+  overflow-wrap: anywhere;
+}
+.edge-case {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--main) 35%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--main) 7%, transparent);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--second);
+}
+.edge-case-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+/* The button of an edge case that runs its example. A long example is cut
+   short with an ellipsis, and the button's tooltip has all of it. */
+.edge-case-foot .chip,
+.edge-case-foot code {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The zoom controls of a step-through. The strip of step panels along the
+   bottom of its frame is 190 px tall, and the controls sit just above it. */
+.zoomctl.above-strip {
+  bottom: 202px;
+}
+
+/* ---- the fields of a type of a schema view, in the inspector */
+/* One row per field: its name on the left and its type on the right. Under
+   it come the functions that write and read the field. */
+.field-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.field-name {
+  color: var(--second);
+}
+.field-name.key {
+  color: var(--main);
+}
+.field-type {
+  color: var(--accent);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.field-note,
+.field-use {
+  padding-left: 12px;
+  font-size: 11px;
+  color: var(--shell-text-2);
 }

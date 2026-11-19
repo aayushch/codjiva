@@ -7,7 +7,7 @@ use crate::scan;
 /// The version of the runtime API. It is written into every artifact and every
 /// manifest, so an artifact can be rebuilt later with a newer runtime that
 /// still understands its sources.
-pub const RUNTIME_VERSION: &str = "1.2.0";
+pub const RUNTIME_VERSION: &str = "1.4.0";
 
 macro_rules! runtime_file {
     ($name:literal) => {
@@ -33,6 +33,9 @@ const RUNTIME_PARTS: &[(&str, &str)] = &[
     runtime_file!("50-audio.js"),
     runtime_file!("60-film.js"),
     runtime_file!("70-visual.js"),
+    runtime_file!("71-layout.js"),
+    runtime_file!("72-views.js"),
+    runtime_file!("75-stepper.js"),
     runtime_file!("80-selftest.js"),
     runtime_file!("90-player.js"),
 ];
@@ -75,6 +78,27 @@ pub const OUTLINE_SCHEMA: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../resources/schemas/outline.schema.json"
 ));
+
+macro_rules! view_schema {
+    ($name:literal) => {
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../resources/schemas/view-",
+            $name,
+            ".schema.json"
+        ))
+    };
+}
+
+/// The views, each with the schema its `view.json` must match. A view is
+/// drawn by the runtime from data, and the value of `"view"` in the file
+/// says which one it is.
+pub const VIEW_SCHEMAS: &[(&str, &str)] = &[
+    ("schema", view_schema!("schema")),
+    ("lanes", view_schema!("lanes")),
+    ("structure", view_schema!("structure")),
+    ("map", view_schema!("map")),
+];
 
 /// The runtime as one script, ready to inline. All files are joined inside one
 /// function so their shared constants stay private, and comments are removed to

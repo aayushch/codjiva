@@ -11,7 +11,18 @@ silent. [The project's web page](https://aayushch.github.io/codjiva/#demo) plays
 - **Visualise** makes a still, interactive blueprint of one file or one folder. You can pan and zoom, click a
   part to see what it does and where it is in the code, and switch layers on and off.
 - **Animate** makes a short narrated film that follows one piece of work through a file and the files around it.
+- **Step through** makes a drawing of a file's states that you can run: type an input or pick an example, and
+  step forwards and backwards through what the code does with it, with every variable and output in view.
 - **Compose** joins the artifacts of several files into one pipeline, where their code meets.
+- **Four views that Codjiva lays out from data**, for code that is not a flow of work:
+  - **Schema** shows the data shapes of a file: every type with its fields, how the types refer to each other,
+    and which code reads and writes each field.
+  - **Lanes** shows who talks to whom in time order, one message at a time, with a scenario for each way the
+    exchange can go.
+  - **Structure** shows a data structure in memory: type a sequence of operations and step through what each
+    one does to it.
+  - **Map** shows a folder level by level, down to single functions, and links each file to everything that
+    was made of it.
 
 Everything Codjiva makes is plain HTML, saved in a `.codjiva/` folder inside your project. An exported artifact
 is one file that opens in any browser, offline.
@@ -36,16 +47,24 @@ Open **Settings** (the sliders icon in the title bar, or Cmd/Ctrl+,) to see whic
 1. **Open a folder.** The explorer on the left lists it. Folders named in `.gitignore` are left out.
 2. **Select a file** and click **Visualise**. You can say what the picture should show, or leave that empty.
    The job panel at the bottom shows what the agent is doing. A visual takes about three minutes.
-3. **Explore the visual.** Click a part to see its role and a link to the line of code. The **Source** tab shows
-   the file itself, read-only.
+3. **Explore the visual.** Click a part to see its role, the lines of its code, what it reads and writes, where
+   the work goes from it, and the edge cases the agent found in it. The **Source** tab shows the file itself,
+   read-only.
 4. **Animate** asks which companion files the agent should read, what the film should show, and how long it
    should be. Codjiva suggests companions from the file's imports, its tests and the files that use it. Use
    **Ignore always…** next to a suggestion to keep that file, or a whole folder it is in, out of the suggestions
    for good. The story outline appears while the film is being made, and you can change it. The film
    opens on the **Film** tab as soon as it is finished, and plays at 0.75×, 1×, 1.25×, 2× or 4×.
-5. **Feedback.** Under the inspector, write what should change. Codjiva attaches the moment of the film you are
+5. **Step through.** On the **Step-through** tab, click **Step through…**. It suits a parser, a state machine,
+   a validator or any other code whose behaviour depends on its input. The agent draws the states and writes
+   a step function that restates the code. You then run it on the examples it chose or on your own input,
+   one step at a time. The same command is in the menu that a right-click on a file opens.
+6. **The other views of a file** are behind the **More** tab: Schema, Lanes and Structure. Choose one and
+   click the button that makes it. A folder has a **Map** tab. The same commands are in the menu that a
+   right-click in the explorer opens. On a map, click a box twice to see what is inside it.
+7. **Feedback.** Under the inspector, write what should change. Codjiva attaches the moment of the film you are
    at and, with **Point at…**, the element you mean. A new version is made with only that change.
-6. **Compose.** Tick two or more artifacts in the library and click **Compose**. Codjiva proposes joins between
+8. **Compose.** Tick two or more artifacts in the library and click **Compose**. Codjiva proposes joins between
    their ports, and you confirm them.
 
 **Rationale.** A visual or a film says what the code does. Where the code also shows why it is built that

@@ -9,6 +9,14 @@ export const root = path.join(here, '..', '..');
 export const out = path.join(here, 'out');
 export const referenceFilm = path.join(root, 'runtime/reference/film');
 export const referenceVisual = path.join(root, 'runtime/reference/visual');
+// The folder of the reference view with the given name: schema, lanes,
+// structure or map.
+export const referenceView = (name) =>
+  path.join(root, 'runtime/reference/views', name);
+export const referenceStepthrough = path.join(
+  root,
+  'runtime/reference/stepthrough',
+);
 
 // Builds an artifact source folder into out/<name>.html and returns that path.
 // Throws with the builder's diagnostics when the build fails.

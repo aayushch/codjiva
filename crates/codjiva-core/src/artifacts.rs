@@ -31,6 +31,18 @@ pub enum ArtifactKind {
     Visual,
     Film,
     Pipeline,
+    /// A visual that the viewer can run on an input, one step at a time. Its
+    /// sources are those of a visual, with a `stepper` in `visual.json` and a
+    /// step function in `sim.js`.
+    Stepthrough,
+    /// The four views. A view is drawn by the runtime from the data in
+    /// `view.json`, without a plant. `Schema` shows the data shapes of the
+    /// code, `Lanes` who talks to whom in time order, `Structure` a data
+    /// structure in memory step by step, and `Map` a folder level by level.
+    Schema,
+    Lanes,
+    Structure,
+    Map,
 }
 
 impl ArtifactKind {
@@ -39,6 +51,47 @@ impl ArtifactKind {
             ArtifactKind::Visual => "visual",
             ArtifactKind::Film => "film",
             ArtifactKind::Pipeline => "pipeline",
+            ArtifactKind::Stepthrough => "stepthrough",
+            ArtifactKind::Schema => "schema",
+            ArtifactKind::Lanes => "lanes",
+            ArtifactKind::Structure => "structure",
+            ArtifactKind::Map => "map",
+        }
+    }
+
+    /// For a view, the name its `view.json` carries in `"view"`, which is
+    /// also the kind's own name. `None` for every other kind.
+    pub fn view_name(self) -> Option<&'static str> {
+        match self {
+            ArtifactKind::Schema
+            | ArtifactKind::Lanes
+            | ArtifactKind::Structure
+            | ArtifactKind::Map => Some(self.as_str()),
+            _ => None,
+        }
+    }
+
+    /// The view with the given name, or `None` when there is no such view.
+    pub fn view_named(name: &str) -> Option<ArtifactKind> {
+        [
+            ArtifactKind::Schema,
+            ArtifactKind::Lanes,
+            ArtifactKind::Structure,
+            ArtifactKind::Map,
+        ]
+        .into_iter()
+        .find(|kind| kind.as_str() == name)
+    }
+
+    /// The file in a version's `src` folder that declares the artifact:
+    /// `film.json` for a film, `view.json` for a view and `visual.json` for
+    /// a visual and a step-through. A pipeline has a `visual.json` or a
+    /// `film.json`, depending on its form, so this is not asked of one.
+    pub fn definition_file(self) -> &'static str {
+        match self {
+            ArtifactKind::Film => "film.json",
+            kind if kind.view_name().is_some() => "view.json",
+            _ => "visual.json",
         }
     }
 }
@@ -469,8 +522,12 @@ pub fn detail(
     let read = |name: &str| -> Option<Value> {
         util::read_json(&dir.join(name)).ok().flatten()
     };
+    // A pipeline in film form has a film.json too, which is tried first for
+    // every kind that is not a view.
     let definition = if manifest.kind == ArtifactKind::Film {
         read("src/film.json")
+    } else if manifest.kind.view_name().is_some() {
+        read("src/view.json")
     } else {
         read("src/visual.json")
     };

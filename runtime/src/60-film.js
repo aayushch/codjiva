@@ -5,12 +5,14 @@
 // What the agent's files registered while the page loaded. `parts` holds the
 // plants of the artifacts a pipeline is composed of, by the key the pipeline
 // gives each one. `pipeline` is the content of a pipeline's pipeline.json,
-// which says where each part sits.
+// which says where each part sits. `sim` is the step function of a
+// step-through, which its sim.js registers with CJ.defineSim.
 const registry = {
   plant: null,
   parts: {},
   pipeline: null,
   scenes: {},
+  sim: null,
   loadErrors: [],
 };
 // The key of the pipeline part whose file is being loaded, or null while any
@@ -242,7 +244,7 @@ normally, and 0.1 while a bubble is up. So a scene's real length is about `animL
 | Field | Meaning |
 |-------|---------|
 | `title` | The film's title. |
-| `legend` | One row `{ kind, html }` per packet kind the film uses. The legend card covers a dimmed plant at the start of the first scene, then lifts away. Keep a row to about 60 characters. A longer row wraps onto a second line. Start the first scene's own motion after animation second 4. |
+| `legend` | One row `{ kind, form, html }` for each combination of packet kind and form the film draws. Leave `form` out for a crate. A row names one thing. At most 6 rows, and at most 3 different forms. The legend card covers a dimmed plant at the start of the first scene, then lifts away. Keep a row to about 60 characters. A longer row wraps onto a second line. Start the first scene's own motion after animation second 4. |
 | `scenes` | The chapters, in order. 4 to 8. |
 | `thumbT` | The real time, in seconds, of the frame to use as the thumbnail. |
 
@@ -502,7 +504,7 @@ const legendMarkup = (film) => {
     .map(
       (row, i) =>
         '<div class="cj-legend-row"><svg width="72" height="52" viewBox="-36 -26 72 52">' +
-        CJ.packet(row.kind, 'cj-legend-icon' + i) +
+        CJ.packet(row.kind, 'cj-legend-icon' + i, { form: row.form }) +
         '</svg>' +
         '<p class="sub">' +
         cleanInline(row.html) +

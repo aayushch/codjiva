@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 /// Raised whenever a change to the prompt files could change what agents
 /// produce. It is recorded in every manifest.
-pub const PROMPT_VERSION: &str = "1.5.0";
+pub const PROMPT_VERSION: &str = "1.8.0";
 
 macro_rules! prompt_file {
     ($name:literal) => {
@@ -30,10 +30,18 @@ const CORE: &str = prompt_file!("core.md");
 const VISUALISE: &str = prompt_file!("visualise.md");
 const ANIMATE: &str = prompt_file!("animate.md");
 const COMPOSE: &str = prompt_file!("compose.md");
+const STEPTHROUGH: &str = prompt_file!("stepthrough.md");
+const VIEW: &str = prompt_file!("view.md");
+const VIEW_SCHEMA: &str = prompt_file!("view-schema.md");
+const VIEW_LANES: &str = prompt_file!("view-lanes.md");
+const VIEW_STRUCTURE: &str = prompt_file!("view-structure.md");
+const VIEW_MAP: &str = prompt_file!("view-map.md");
+const USER_VIEW: &str = prompt_file!("user-view.md");
 const FIX: &str = prompt_file!("fix.md");
 const USER_VISUALISE: &str = prompt_file!("user-visualise.md");
 const USER_ANIMATE: &str = prompt_file!("user-animate.md");
 const USER_COMPOSE: &str = prompt_file!("user-compose.md");
+const USER_STEPTHROUGH: &str = prompt_file!("user-stepthrough.md");
 const USER_FIX_REPORT: &str = prompt_file!("user-fix-report.md");
 const USER_FIX_FEEDBACK: &str = prompt_file!("user-fix-feedback.md");
 
@@ -83,16 +91,33 @@ pub enum Guide {
     Visualise,
     Animate,
     Compose,
+    Stepthrough,
+    /// A view. The text is the view's name: `schema`, `lanes`, `structure`
+    /// or `map`.
+    View(&'static str),
     Fix,
 }
 
 /// The system prompt for a job: the core guide, then the job's guide, then the
 /// runtime API.
 pub fn system_prompt(guide: Guide, values: &Values) -> String {
+    // A view's guide is the part all views share, then the view's own.
+    let view;
     let job = match guide {
         Guide::Visualise => VISUALISE,
         Guide::Animate => ANIMATE,
         Guide::Compose => COMPOSE,
+        Guide::Stepthrough => STEPTHROUGH,
+        Guide::View(name) => {
+            let own = match name {
+                "lanes" => VIEW_LANES,
+                "structure" => VIEW_STRUCTURE,
+                "map" => VIEW_MAP,
+                _ => VIEW_SCHEMA,
+            };
+            view = format!("{VIEW}\n\n{own}");
+            view.as_str()
+        }
         Guide::Fix => FIX,
     };
     let api = codjiva_build::runtime::runtime_api_doc();
@@ -110,6 +135,14 @@ pub fn user_visualise(values: &Values) -> String {
 
 pub fn user_animate(values: &Values) -> String {
     render(USER_ANIMATE, values)
+}
+
+pub fn user_stepthrough(values: &Values) -> String {
+    render(USER_STEPTHROUGH, values)
+}
+
+pub fn user_view(values: &Values) -> String {
+    render(USER_VIEW, values)
 }
 
 pub fn user_compose(values: &Values) -> String {

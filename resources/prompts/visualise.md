@@ -22,9 +22,12 @@ is no timeline and nothing moves.
   `draw()`, each wrapped in `<g transform="translate(x y)">` at a point on its pipe's centre line or in a bin
   slot.
 - **Nodes** for every part that stands for something in the code: each machine, press, bin, queue, tank, gauge
-  and tally board. A node has an `id`, a short `label` (the real name), a one-sentence `role`, `refs` (`path` and
-  `line`), and `select` (the unprefixed name of the part's element). A visual of one file usually has 6 to 12
-  nodes. A part without a node is a dead spot when the user clicks it.
+  and tally board. A node has an `id`, a short `label` (the real name), a one-sentence `role`, `refs` (`path`,
+  `line` and `end`), and `select` (the unprefixed name of the part's element). A visual of one file usually has
+  6 to 12 nodes. A part without a node is a dead spot when the user clicks it.
+- **The detail of every node** (runtime API, "Node detail"): its `inputs` and `outputs`, its `transitions`
+  with the condition for each, and its `edgeCases`. The app shows them, with the node's code, when the user
+  selects the node. This is where the visual gets its depth, so leave none of them out where they apply.
 - **Detail inside a machine is clickable too.** When you draw what happens inside a machine, such as the cases
   of a `switch`, the steps of a loop or the checks of a validator, draw each of them as a `CJ.plate` with its
   own class name and give each plate its own node. The node's `label` is the real name of that case or step,
@@ -38,7 +41,7 @@ is no timeline and nothing moves.
 - **3 to 8 markers**, numbered in reading order along the flow. Each opens one bubble (§6 of the core guide).
   Put a marker on the edge or corner of the part it is about, clear of every plate and label.
 - **Ports** at the sheet edges for anything that crosses a boundary, with a plate naming the symbol.
-- A **legend** row for each packet kind you drew.
+- A **legend** row for each form and kind of packet you drew (core guide §4).
 
 ## Rules specific to visuals
 

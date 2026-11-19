@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { showsFilm } from '$lib/artifacts';
+  import { isStepped, showsFilm } from '$lib/artifacts';
   import { api, inDesktopApp } from '$lib/ipc';
   import { applyTheme, onSystemThemeChange } from '$lib/theme';
   import { updater } from '$lib/state/updater.svelte';
@@ -16,7 +16,9 @@
   } from '$lib/state/app.svelte';
   import AnimateDialog from './components/AnimateDialog.svelte';
   import ComposeDialog from './components/ComposeDialog.svelte';
+  import ContextMenu from './components/ContextMenu.svelte';
   import EditorEmpty from './components/EditorEmpty.svelte';
+  import FileTabs from './components/FileTabs.svelte';
   import FileTree from './components/FileTree.svelte';
   import FilmPlayer from './components/FilmPlayer.svelte';
   import GitignorePrompt from './components/GitignorePrompt.svelte';
@@ -66,9 +68,10 @@
       });
   });
 
-  // The heights of the title bar and the toolbar, which the grid in
-  // app-shell.css also uses.
+  // The heights of the title bar, the row of file tabs and the toolbar, which
+  // the grid in app-shell.css also uses.
   const TITLE_HEIGHT = 36;
+  const FILE_TABS_HEIGHT = 34;
   const TOOLBAR_HEIGHT = 44;
 
   // The three panels around the editor area: the sidebar on the left, the
@@ -147,27 +150,38 @@
   // so that it keeps its width when the inspector appears or goes away. An
   // example hides it in full screen, and the welcome screen has none.
   const showToolbar = $derived(app.example ? !app.theater : !!app.workspace);
+  // The row of file tabs is above the toolbar while a workspace is open and
+  // at least one file, folder or pipeline has a tab. An example and full
+  // screen hide it.
+  const showFileTabs = $derived(
+    !!app.workspace && !app.example && !app.theater && app.openFiles.length > 0,
+  );
 
   // The job panel at the bottom of the window belongs to an open workspace.
   const hasDock = $derived(!!app.workspace && !app.theater);
   const showDock = $derived(hasDock && app.dockOpen);
   let windowHeight = $state(window.innerHeight);
-  // The tallest the panel can be: the window without the title bar, the toolbar
-  // and the height that is kept for the editor area.
+  // The tallest the panel can be: the window without the title bar, the row of
+  // file tabs, the toolbar and the height that is kept for the editor area.
   const dockMax = $derived(
     Math.max(
       DOCK_MIN,
-      windowHeight - TITLE_HEIGHT - TOOLBAR_HEIGHT - EDITOR_MIN,
+      windowHeight -
+        TITLE_HEIGHT -
+        (showFileTabs ? FILE_TABS_HEIGHT : 0) -
+        TOOLBAR_HEIGHT -
+        EDITOR_MIN,
     ),
   );
   // The panel's height: the one the user dragged it to or, until they drag it,
-  // the height that suits the kind of job. A film job lists more steps, so its
-  // panel is taller.
+  // the height that suits the kind of job. A film job and a step-through job
+  // list more steps, so their panel is taller.
   const dockHeight = $derived(
     Math.min(
       dockMax,
       app.dockHeight ??
         (app.job?.request.kind === 'animate' ||
+        app.job?.request.kind === 'stepthrough' ||
         (app.job?.request.kind === 'compose' && app.job.request.film)
           ? DOCK_HEIGHT_FILM
           : DOCK_HEIGHT),
@@ -279,6 +293,7 @@
   class="app"
   class:theater={app.theater}
   style:--sidebar-w="{showSidebar ? app.sidebarWidth : 0}px"
+  style:--tabs-h="{showFileTabs ? FILE_TABS_HEIGHT : 0}px"
   style:--bar-h="{showToolbar ? TOOLBAR_HEIGHT : 0}px"
   style:--inspector-w="{showInspector ? app.inspectorWidth : 0}px"
   style:--dock-h="{showDock ? dockHeight : 0}px"
@@ -321,6 +336,7 @@
     </div>
   {/if}
 
+  {#if showFileTabs}<FileTabs />{/if}
   {#if showToolbar}<Toolbar />{/if}
 
   <main class="main">
@@ -368,6 +384,7 @@
                 `artifact/${app.currentArtifact.id}/${app.shownVersion}`,
               ) + '?embed=1'}
               title={app.currentArtifact.title}
+              steps={isStepped(app.currentArtifact.kind)}
               onselect={(nodeId) => (app.selectedNode = nodeId)}
             />
           {/if}
@@ -418,5 +435,6 @@
 {#if app.dialog === 'animate'}<AnimateDialog />{/if}
 {#if app.dialog === 'outline'}<OutlineDialog />{/if}
 {#if app.dialog === 'compose'}<ComposeDialog />{/if}
+<ContextMenu />
 <Validator />
 <Toasts />

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "view": "structure",
+  "title": "Handler · what is in memory as orders arrive",
+  "stepper": {"input": {"label": "Events", "hint": "o: an order. d: an order the limiter defers. p: a priority order. t: the 2 second tick.", "maxLength": 120}, "presets": [{"label": "Three orders and a tick", "input": "ooot", "expect": {"written": 3, "h.batch": 0}}, {"label": "A deferred order", "input": "odot", "expect": {"written": 3}}, {"label": "A priority order", "input": "opo", "expect": {"written": 1, "h.batch": 2}}, {"label": "A full batch", "input": "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo", "expect": {"written": 64, "h.batch": 0}}], "variables": [{"name": "len(h.batch)", "meaning": "orders waiting for a flush"}, {"name": "len(h.deferred)", "meaning": "orders held back by the soft rate limit"}, {"name": "h.nextSequence", "meaning": "the sequence number of the last order that was stamped"}], "outputs": [{"name": "written", "meaning": "orders the Store has received"}, {"name": "h.batch", "meaning": "orders still in memory at the end"}]},
+  "nodes": [
+    {"id": "submit", "label": "Submit", "role": "Remembers the order's ID, stamps the order and routes it.", "refs": [{"path": "internal/orders/handler.go", "line": 119, "end": 159}]},
+    {"id": "enqueue", "label": "enqueue", "role": "Appends the order to h.batch and flushes when the batch holds maxBatch orders.", "refs": [{"path": "internal/orders/handler.go", "line": 201, "end": 210}], "edgeCases": [{"text": "The flush runs when the batch reaches 64, so the order that fills the batch is written by the same call that queued it.", "example": "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo", "refs": [{"path": "internal/orders/handler.go", "line": 206}]}]},
+    {"id": "release", "label": "releaseDeferred", "role": "Moves every deferred order to the end of the batch.", "refs": [{"path": "internal/orders/handler.go", "line": 251, "end": 254}], "edgeCases": [{"text": "Deferred orders are appended after the orders that were queued later, so the Store does not receive orders in the order they were submitted.", "example": "odot", "refs": [{"path": "internal/orders/handler.go", "line": 252}]}]},
+    {"id": "flush", "label": "flushLocked", "role": "Writes the whole batch to the Store and empties it.", "refs": [{"path": "internal/orders/handler.go", "line": 259, "end": 271}]}
+  ]
+}

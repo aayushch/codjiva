@@ -1,6 +1,6 @@
 // Small questions about artifacts that several components ask.
 
-import type { ArtifactSummary, Manifest } from './ipc';
+import type { ArtifactSummary, Manifest, ViewName } from './ipc';
 
 // The prefix of the selection's path when a pipeline is selected in place of a
 // file. A pipeline explains several files, so it has no file of its own to
@@ -23,11 +23,57 @@ export function showsFilm(
   );
 }
 
-// What an artifact is called in a sentence: "visual", "film" or "pipeline".
+// The four views, in the order the interface lists them, each with the name
+// it is shown under and one sentence on what it is for. A map is made of a
+// folder, and the other three of a file.
+export const VIEWS: { name: ViewName; label: string; about: string }[] = [
+  {
+    name: 'schema',
+    label: 'Schema',
+    about:
+      'The data shapes of this code: every type with its fields, how the types refer to each other, and which code reads and writes each field.',
+  },
+  {
+    name: 'lanes',
+    label: 'Lanes',
+    about:
+      'Who talks to whom, in time order: the parties of an exchange as lanes, played one message at a time, with a scenario for each way it can go.',
+  },
+  {
+    name: 'structure',
+    label: 'Structure',
+    about:
+      'A data structure as it is in memory: type a sequence of operations and step through what each one does to it.',
+  },
+  {
+    name: 'map',
+    label: 'Map',
+    about:
+      'How the code of this folder is organised and how its parts use each other, level by level, down to single functions.',
+  },
+];
+
+// True for a kind of artifact that is one of the four views.
+export function isView(kind: string | null | undefined): kind is ViewName {
+  return VIEWS.some((view) => view.name === kind);
+}
+
+// True for a kind of artifact that is played one step at a time and so has
+// the strip of step panels along the bottom of its frame: a step-through, a
+// lanes view and a structure view.
+export function isStepped(kind: string | null | undefined): boolean {
+  return kind === 'stepthrough' || kind === 'lanes' || kind === 'structure';
+}
+
+// What an artifact is called in a sentence: "visual", "film", "pipeline",
+// "step-through", "map", or "schema view" for a view.
 export function kindWord(
   artifact: Pick<ArtifactSummary, 'kind'> | null | undefined,
 ): string {
-  return artifact?.kind ?? 'visual';
+  const kind = artifact?.kind ?? 'visual';
+  if (kind === 'stepthrough') return 'step-through';
+  if (kind === 'map') return 'map';
+  return isView(kind) ? kind + ' view' : kind;
 }
 
 // A short count of an artifact's ports, such as "1 in · 2 out", or an empty

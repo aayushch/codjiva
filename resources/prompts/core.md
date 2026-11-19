@@ -73,7 +73,9 @@ Colours are CSS variables from the theme. Never write another colour.
 | In the code | Draw as |
 |-------------|---------|
 | a code unit doing work: module, class, function, service, actor | `CJ.machine` with a `CJ.plate` carrying its real name |
-| the unit of work: request, event, message, row, job, token, chunk | `CJ.packet` (`primary`; `secondary` for other kinds; `transient` for ones never stored) |
+| a region of the screen: a rendered component, a container element, a window | `CJ.frame` with a `CJ.plate` carrying its real name |
+| a thing that moves through the code | `CJ.packet`, in the form its nature gives (see "Packets" below) |
+| a position that moves: an iterator, an index, a read position | `CJ.cursor` |
 | an entry point: handler, public method, exported function, consumer | a pipe entering from the left, with a `CJ.port` at its start |
 | a decision: switch, match, type test, filter, early return | a machine with a `CJ.gear` in it, and one pipe per exit |
 | a processing step that adds or changes something on the unit | `CJ.press`, with `CJ.markedPacket` gaining one mark per step |
@@ -82,6 +84,9 @@ Colours are CSS variables from the theme. Never write another colour.
 | a per-unit counter against thresholds: per request, per stream, per connection | `CJ.gaugeBar` with a tick per threshold |
 | a global resource with limits: bytes, memory, quota, rate | `CJ.tank` with a mark and lamp per limit |
 | a mode or state: enum state, flag, strategy | `CJ.modeLamps` |
+| code that is a state machine: named states, and a rule for moving from one to the next | `CJ.state` for each state and `CJ.edge` for each transition, with its trigger as the label |
+| the input such code reads piece by piece | `CJ.tape`, with its read head on the current piece |
+| the variables such code keeps between pieces | `CJ.registers` |
 | a flag or limit in one part changing another part's behaviour | `CJ.wire` from cause to effect |
 | an aggregate assembled from sections or fields | `CJ.packer` rows and a `batch` packet |
 | persistent storage: file, database, log | `CJ.drum` |
@@ -96,8 +101,59 @@ Colours are CSS variables from the theme. Never write another colour.
 | a retry or loop | a return pipe back to an earlier machine |
 | a boundary: a call into other code, the network, a database, a file | `CJ.port` at the sheet edge, with a plate naming the symbol |
 
-Name machines with the **real names** from the code. Keep plates short (at most about 26 characters); the full
-symbol can go in a bubble.
+Name machines and frames with the **real names** from the code. Keep plates short (at most about 26
+characters); the full symbol can go in a bubble.
+
+### Packets: the shape says what the thing is, the colour says its role
+
+Before you draw a thing as a packet, write it into `model.json → things` with its **nature** and a `path:line`.
+The nature decides the form. Never choose a form because it looks good.
+
+| Nature | The thing is | Draw it as |
+|--------|--------------|------------|
+| `message` | work passed between units: a request, an event, a message, a job, a call with its arguments | `CJ.packet(kind, cls)`, the crate |
+| `record` | a struct, row or object that is stored or returned | `CJ.packet(kind, cls, { form: 'record' })` |
+| `value` | one number, flag, enum value or result | form `'value'` |
+| `reference` | a name for something else: an id, a key, a pointer, a handle | form `'key'` |
+| `element` | something the user sees on the screen: a button, a menu item, a list row, a DOM node | form `'element'` |
+| `data` | raw data: bytes, a slice of a buffer, a chunk of text | form `'chunk'` |
+| `aggregate` | several things written or handed on as one: a batch | kind `'batch'` |
+| `count` | something that is counted and not kept | kind `'tally'` |
+| `position` | where something is in a sequence: an iterator, an index, a read position | `CJ.cursor`, which is not a packet |
+
+The **kind** is the role the thing plays in this story. It sets the colour:
+
+- `primary` (amber) is the thing the story follows.
+- `secondary` (cyan) is another thing that takes part.
+- `transient` (dashed and hollow) is a thing that exists only for a moment and is never stored or shown: a
+  temporary copy, a notification.
+
+Rules for packets:
+
+- **One look, one thing.** Two different things never have the same form and the same kind, unless a tag tells
+  them apart. If they would, give one of them another kind, or do not draw the less important one as a packet.
+- **At most 3 forms and 6 legend rows** in one visual or film. Draw as packets only the things the story
+  follows. Show everything else with a label, a gauge or a sentence in a bubble.
+- **The legend** has one row for each form and kind you drew: `{ "kind", "form", "html" }`. Leave `form` out
+  for a crate. A row names one thing. Never join two things with "or" in one row.
+- **A tag** (`opts.tag`, at most 3 characters) shows a value the story is about, such as the `3` of
+  `count = 3`, or tells packets of one look apart, such as `A` and `B`. Most packets have no tag.
+- **Never draw a moving thing by hand.** A thing that moves is a `CJ.packet`, a `CJ.cursor`, a `CJ.warning` or
+  the dot of a `CJ.signal`.
+
+### State machines are drawn as states, not as a line of machines
+
+Some code is not a flow of work through stations. It is in one of a few states, reads its input one piece at
+a time, and each piece moves it to another state. Draw such code with `CJ.state` and `CJ.edge`: one state per
+condition the code can be in, one transition per way to get from one to another, each labelled with what
+triggers it. Use `CJ.machine` only for the code around the state machine, such as the function that starts it
+and the function that uses its result.
+
+### When no part fits
+
+Use the nearest part, and record it in `model.json → standIns`: the thing, the part you drew it with, and one
+sentence on what a fitting part would have to show. Never invent a shape of your own. This list is how the
+parts of the runtime are extended.
 
 ## 5. What matters
 
@@ -111,6 +167,13 @@ Answer these in `model.json` before drawing:
 6. What **limits** exist (per item, per stream, global), and what exactly happens when each is hit?
 7. What **errors** can happen, who catches them, what cleanup still runs, and how does the work end?
 8. What **crosses a boundary** (ports)?
+9. What **things move** through the code, and what is each of them: a message, a record, a value, a reference,
+   an element on the screen, raw data (`things`, §4)?
+
+**Detail belongs to the parts, not to the drawing.** In a visual and a step-through, every node carries what
+the viewer sees when they select it: the lines of its code, what it reads and writes, where the work goes
+next and under which condition, and the edge cases (runtime API, "Node detail"). Fill these in for every node.
+They add nothing to the drawing, so the drawing stays calm while the detail is complete.
 
 **Show** the main path, every mode switch, every limit and its effect, every flush trigger, and the error exits.
 **Mention** in a bubble what matters but needs no drawing (a config key, a default). **Leave out** logging,
@@ -168,7 +231,9 @@ You place everything by coordinates, so use these numbers.
   crosses a machine's edge is an error. Labels never overlap each other.
 - **Pipes** are 44 px wide. Route them in the gaps between machines, with only horizontal and vertical segments.
   A pipe ends at the edge of the machine or bin it feeds; it never runs across one.
-- **Packets** are 60 × 44 and always the same size. A route follows a pipe's centre line.
+- **Packets** are 60 × 44 and always the same size, whatever their form. A route follows a pipe's centre line.
+- **Frames** follow the rules of machines: the plate sits 42 px above the frame, and a label is fully inside
+  the frame or fully outside it. The top 22 px of a frame is its title strip. Keep it clear.
 - **Presses** are 100 px apart. **Bin slots** are 64 × 46 apart.
 - Do not fill space for its own sake. Empty grid paper is fine.
 
@@ -176,6 +241,10 @@ You place everything by coordinates, so use these numbers.
 
 - [ ] Every claim has a `ref` in `model.json`, and every `ref` points at a real line.
 - [ ] Every `rationale` names the line that shows its reason, and none is a guess.
+- [ ] Every node has its detail: `refs` with `line` and `end`, and the `inputs`, `outputs`, `transitions` and
+      `edgeCases` that apply. Every edge case names the line that causes it.
+- [ ] Every thing drawn as a packet is in `model.json → things`, and its form is the one its nature gives.
+- [ ] Every form and kind of packet you drew has its own legend row, and no row names two things.
 - [ ] No forbidden construct; no `index.html`; nothing written outside `{{artifactDir}}`.
 - [ ] Every class and id is built with `c()`, and every name is used once.
 - [ ] You recomputed the box of every plate and label and none overlaps another or crosses a machine edge.

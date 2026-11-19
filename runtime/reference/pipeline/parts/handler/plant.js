@@ -44,7 +44,7 @@ CJ.definePlant({
     const tank = CJ.tank(c('tank'), 1706, 230, 50, 520,
       [{ at: SOFT_AT, label: 'soft 4MiB' }, { at: HARD_AT, label: 'hard 8MiB' }], { lampX: 1874 });
 
-    const pk = (kind, name, p) => '<g transform="translate(' + p[0] + ' ' + p[1] + ')">' + CJ.packet(kind, c(name)) + '</g>';
+    const pk = (kind, name, p, opts) => '<g transform="translate(' + p[0] + ' ' + p[1] + ')">' + CJ.packet(kind, c(name), opts) + '</g>';
     const inBin = (b, kind, name, i) => pk(kind, name + i, b.slot(i));
     const packets =
       pk('primary', 'pk0', [1215, 560]) +
@@ -52,14 +52,18 @@ CJ.definePlant({
       [0, 1].map((i) => inBin(DEFER_BIN, 'primary', 'pkd', i)).join('') +
       pk('secondary', 'pk1', [1060, 780]) +
       pk('transient', 'pk2', [930, 750]) +
-      pk('batch', 'pk3', [1555, 735]);
+      pk('batch', 'pk3', [1555, 735]) +
+      // Two things that are not orders. The verdict is one value that Limiter.Allow returns. The order ID
+      // that Submit remembers in h.seen is a name for an order, not the order itself.
+      pk('secondary', 'pkv', [395, 352], { form: 'value' }) +
+      pk('secondary', 'pkk', [250, 480], { form: 'key', tag: 'ID' });
 
     const svg = '<svg class="art" viewBox="0 0 1920 1080">' + CJ.grid(c('grid')) + CJ.border() +
       CJ.wire(c('wsoft'), 'M1690 ' + tankY(SOFT_AT) + ' H1670 V300 H1640') +
       CJ.wire(c('whard'), 'M1690 ' + tankY(HARD_AT) + ' H1682 V156 H470 V470 H420') +
       CJ.wire(c('wflush'), 'M1440 748 H1500 V640') +
       CJ.pipe(c('pipe1'), 'M100 560 H200') + CJ.arrow(c('arr1'), 186, 560, 'r') +
-      CJ.pipe(c('pipe2'), 'M395 440 V300', 'cool') + CJ.arrow(c('arr2'), 395, 370, 'u') +
+      CJ.pipe(c('pipe2'), 'M395 440 V300', 'cool') + CJ.arrow(c('arr2'), 395, 415, 'u') +
       CJ.pipe(c('pipe3'), 'M310 680 V800') + CJ.arrow(c('arr3'), 310, 720, 'd') +
       CJ.pipe(c('pipe4'), 'M420 560 H500') + CJ.arrow(c('arr4'), 460, 560, 'r') +
       CJ.pipe(c('belt'), 'M500 560 H900', 'hot') + CJ.arrow(c('arr5'), 524, 560, 'r') +
@@ -98,6 +102,7 @@ CJ.definePlant({
       presses.map((p) => p.html).join('') +
       mode.html + tank.html + gauge.html +
       CJ.label('ErrOverloaded', 62, 476, { size: 14, color: 'var(--main)' }) +
+      CJ.label('h.seen', 290, 472, { size: 14 }) +
       CJ.label('rejected · duplicate · blocked', 148, 900) +
       CJ.label('shed (counted)', 855, 900) +
       CJ.label('len(batch)', 1200, 764) +

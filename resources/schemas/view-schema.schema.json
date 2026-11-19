@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codjiva/view-schema.schema.json",
+  "title": "Schema view (view.json): the data shapes of the code",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "view": {
+      "const": "schema"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "refs": {
+            "type": "array",
+            "description": "where the part is in the code. The first entry is the code the app shows for the part: `line` is its first line and `end` its last.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "the last line of the part; the app shows at most 24 lines"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "line"
+              ]
+            }
+          },
+          "rationale": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 280
+              },
+              "basis": {
+                "enum": [
+                  "stated",
+                  "inferred"
+                ]
+              },
+              "refs": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "path",
+                    "line"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "text",
+              "basis",
+              "refs"
+            ]
+          },
+          "inputs": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "description": "what the part reads, each as a name from the code and what it is"
+          },
+          "outputs": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "description": "what the part writes or returns, in the same form"
+          },
+          "transitions": {
+            "type": "array",
+            "maxItems": 12,
+            "description": "where the work goes from this part",
+            "items": {
+              "type": "object",
+              "properties": {
+                "when": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "description": "the condition, in a few words"
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "description": "the id of another node, or a few words when the target is not drawn"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "when",
+                "to"
+              ]
+            }
+          },
+          "edgeCases": {
+            "type": "array",
+            "maxItems": 12,
+            "description": "what the code does that a reader would not expect, each with the line that makes it so",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 280
+                },
+                "example": {
+                  "type": "string",
+                  "maxLength": 120,
+                  "description": "an input that shows the case"
+                },
+                "refs": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "path",
+                      "line"
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "text",
+                "refs"
+              ]
+            }
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+            "description": "starts with a letter; letters, digits, - and _ only"
+          },
+          "kind": {
+            "enum": [
+              "struct",
+              "class",
+              "interface",
+              "enum",
+              "table",
+              "message",
+              "type"
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "type": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "note": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "key": {
+                  "type": "boolean",
+                  "description": "true for a field that identifies the record"
+                },
+                "optional": {
+                  "type": "boolean"
+                },
+                "ref": {
+                  "type": "string",
+                  "pattern": "^[^:]+:\\d+(-\\d+)?$",
+                  "description": "path:line or path:start-end, relative to the workspace"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "role",
+          "kind",
+          "fields"
+        ]
+      }
+    },
+    "relations": {
+      "type": "array",
+      "maxItems": 80,
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "kind": {
+            "enum": [
+              "has",
+              "refers",
+              "extends",
+              "implements"
+            ]
+          },
+          "field": {
+            "type": "string",
+            "description": "the field of `from` that holds or refers to `to`"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to",
+          "kind"
+        ]
+      }
+    },
+    "uses": {
+      "type": "array",
+      "maxItems": 200,
+      "description": "which code reads and writes each field",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "field": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "by": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "the function that reads or writes the field"
+          },
+          "how": {
+            "enum": [
+              "reads",
+              "writes"
+            ]
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\d+(-\\d+)?$",
+            "description": "path:line or path:start-end, relative to the workspace"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "node",
+          "field",
+          "by",
+          "how",
+          "ref"
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "view",
+    "title",
+    "nodes",
+    "relations"
+  ]
+}

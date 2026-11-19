@@ -8,7 +8,7 @@
     type JobView,
   } from '$lib/jobs';
   import { app } from '$lib/state/app.svelte';
-  import { PIPELINE_PREFIX } from '$lib/artifacts';
+  import { PIPELINE_PREFIX, VIEWS } from '$lib/artifacts';
   import { nameOf } from '$lib/tree';
 
   // The bottom dock: what one job is doing, step by step, with the agent's
@@ -19,6 +19,14 @@
   // have selected another file by then, the dock has a button that opens the
   // result. Before the first job of a workspace, the dock says that nothing
   // has run yet.
+  //
+  // The column of steps has three parts, top to bottom. First the job's
+  // title with a row of tags under it: the agent, the time the job has run,
+  // how long such a job usually takes, and what it cost. The tags stay on one
+  // line. If they are wider than the column, the agent's name is cut short
+  // and the other tags keep their full text. Then the steps. Last, below a
+  // dividing line, the buttons: Cancel while the job runs, and Close once it
+  // has ended.
   //
   // Several jobs can run at the same time. When `app.jobs` holds more than one
   // job, the dock has a list of them at its left edge. Clicking a job in the
@@ -32,7 +40,14 @@
       ? 'pipeline'
       : job?.request.kind === 'animate' || job?.artifactId?.startsWith('film-')
         ? 'film'
-        : 'visual',
+        : job?.request.kind === 'stepthrough' ||
+            job?.artifactId?.startsWith('stepthrough-')
+          ? 'step-through'
+          : job?.request.kind === 'view'
+            ? job.request.view === 'map'
+              ? 'map'
+              : 'view'
+            : 'visual',
   );
 
   // The time on the clock, refreshed every second while the job runs. Next to
@@ -64,7 +79,13 @@
         : one.subject.startsWith(PIPELINE_PREFIX)
           ? 'pipeline'
           : nameOf(one.subject);
-    return `${JOB_NAMES[one.request.kind]} · ${about}`;
+    // A view job is called by the view it makes: "Schema · handler.go".
+    const what =
+      one.request.kind === 'view'
+        ? (VIEWS.find((view) => view.name === one.request.view)?.label ??
+          JOB_NAMES.view)
+        : JOB_NAMES[one.request.kind];
+    return `${what} · ${about}`;
   }
   // How a job's status is said in the list of jobs.
   const STATUS_WORDS: Record<JobView['status'], string> = {
@@ -131,25 +152,44 @@
       </div>
     {/if}
     <div class="steps">
-      <div class="kicker">{titleOf(job)}</div>
-      {#each steps as step}
-        <div
-          class="step"
-          class:done={step.state === 'done'}
-          class:now={step.state === 'now'}
-        >
-          <span class="s"></span>{step.label}
+      <div class="steps-list">
+        <div class="kicker">{titleOf(job)}</div>
+        <div class="dock-meta">
+          {#if job.agent}<span class="pill agent" title={job.agent}
+              >{job.agent}</span
+            >{/if}
+          <span class="pill"
+            >{formatElapsed((job.endedAt ?? now) - job.startedAt)}</span
+          >
+          {#if job.status === 'running' && job.estimate}<span
+              class="pill estimate"
+              >{estimateNote(job.estimate, now - job.startedAt)}</span
+            >{/if}
+          {#if job.usage?.costUsd != null}<span class="pill"
+              >${job.usage.costUsd.toFixed(2)}</span
+            >{/if}
         </div>
-      {/each}
-      {#if job.fixRound > 0}
-        <div
-          class="step"
-          class:now={job.phase === 'fixing' && job.status === 'running'}
-          class:done={job.phase !== 'fixing' || job.status !== 'running'}
-        >
-          <span class="s"></span>Fixing what the checks found (round {job.fixRound})
-        </div>
-      {/if}
+        {#each steps as step}
+          <div
+            class="step"
+            class:done={step.state === 'done'}
+            class:now={step.state === 'now'}
+          >
+            <span class="s"></span><span class="label">{step.label}</span>
+          </div>
+        {/each}
+        {#if job.fixRound > 0}
+          <div
+            class="step"
+            class:now={job.phase === 'fixing' && job.status === 'running'}
+            class:done={job.phase !== 'fixing' || job.status !== 'running'}
+          >
+            <span class="s"></span><span class="label"
+              >Fixing what the checks found (round {job.fixRound})</span
+            >
+          </div>
+        {/if}
+      </div>
       <div class="dock-foot">
         {#if job.status === 'running'}
           <button class="btn small" onclick={() => app.cancelJob()}
@@ -164,17 +204,6 @@
               onclick={() => app.openJobResult()}>Show the {made}</button
             >{/if}
         {/if}
-        {#if job.agent}<span class="pill">{job.agent}</span>{/if}
-        <span class="pill"
-          >{formatElapsed((job.endedAt ?? now) - job.startedAt)}</span
-        >
-        {#if job.status === 'running' && job.estimate}<span
-            class="pill estimate"
-            >{estimateNote(job.estimate, now - job.startedAt)}</span
-          >{/if}
-        {#if job.usage?.costUsd != null}<span class="pill"
-            >${job.usage.costUsd.toFixed(2)}</span
-          >{/if}
       </div>
     </div>
     <div class="log" bind:this={logEl}>

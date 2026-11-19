@@ -74,6 +74,10 @@ pub enum JobKind {
     Visualise,
     Animate,
     Compose,
+    /// Makes a step-through of one file.
+    Stepthrough,
+    /// Makes one of the four views. `JobRequest::view` names it.
+    View,
     Feedback,
 }
 
@@ -81,13 +85,19 @@ pub enum JobKind {
 /// says. `None` means nothing is asked for and the agent uses its own default.
 pub fn effort_for(setting: EffortSetting, kind: JobKind) -> Option<Effort> {
     match setting {
-        EffortSetting::Auto => {
-            Some(if matches!(kind, JobKind::Animate | JobKind::Compose) {
+        EffortSetting::Auto => Some(
+            if matches!(
+                kind,
+                JobKind::Animate
+                    | JobKind::Compose
+                    | JobKind::Stepthrough
+                    | JobKind::View
+            ) {
                 Effort::Medium
             } else {
                 Effort::Low
-            })
-        }
+            },
+        ),
         EffortSetting::Agent => None,
         EffortSetting::Low => Some(Effort::Low),
         EffortSetting::Medium => Some(Effort::Medium),
@@ -159,6 +169,10 @@ pub struct JobRequest {
     pub joins: Vec<Join>,
     #[serde(default)]
     pub film: bool,
+    /// For a view job: the name of the view to make: `schema`, `lanes`,
+    /// `structure` or `map`.
+    #[serde(default)]
+    pub view: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -465,6 +479,17 @@ fn check_rationales(
     film: bool,
 ) -> Vec<Diagnostic> {
     let file = if film { "film.json" } else { "visual.json" };
+    check_rationales_in(ws, version_dir, file)
+}
+
+/// The check of [`check_rationales`], for the definition file with the given
+/// name in the version's `src` folder. A view keeps its definition in
+/// `view.json`.
+fn check_rationales_in(
+    ws: &Workspace,
+    version_dir: &Path,
+    file: &str,
+) -> Vec<Diagnostic> {
     let Some(definition) =
         std::fs::read_to_string(version_dir.join("src").join(file))
             .ok()
@@ -498,6 +523,209 @@ fn check_rationales(
                 message: format!(
                     "{message}. Point the rationale at the line that gives                      the reason, or remove the rationale."
                 ),
+            });
+        }
+    }
+    found
+}
+
+/// The nature a thing must have for it to be drawn as a packet of the given
+/// form. `None` for the crate, which is the default form and needs no entry
+/// in the analysis, and for a name that is not a form.
+///
+/// This is the table of the core guide, section 4, read from form to nature.
+fn nature_for_form(form: &str) -> Option<&'static str> {
+    match form {
+        "record" => Some("record"),
+        "value" => Some("value"),
+        "key" => Some("reference"),
+        "element" => Some("element"),
+        "chunk" => Some("data"),
+        _ => None,
+    }
+}
+
+/// Checks that the legend of a visual or a film agrees with the analysis.
+///
+/// A legend row may name the form its packets are drawn in. The form is not a
+/// matter of taste: it follows from what the thing is, which the agent
+/// records with a line reference in `model.json`, in the list `things`. So a
+/// row that names a form other than the crate is an error unless `things`
+/// holds a thing of the nature that the form stands for.
+///
+/// The file that is read is `src/film.json` for a film and `src/visual.json`
+/// otherwise. A file that is missing or is not JSON is reported by the build
+/// and gives no problems here.
+fn check_legend_forms(
+    model: Option<&Value>,
+    version_dir: &Path,
+    film: bool,
+) -> Vec<Diagnostic> {
+    let file = if film { "film.json" } else { "visual.json" };
+    let Some(definition) =
+        std::fs::read_to_string(version_dir.join("src").join(file))
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+    else {
+        return Vec::new();
+    };
+    let natures: Vec<&str> = model
+        .and_then(|model| model["things"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|thing| thing["nature"].as_str())
+        .collect();
+    let mut found = Vec::new();
+    for (i, row) in definition["legend"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let Some(form) = row["form"].as_str() else {
+            continue;
+        };
+        let Some(nature) = nature_for_form(form) else {
+            continue;
+        };
+        if natures.contains(&nature) {
+            continue;
+        }
+        found.push(Diagnostic {
+            check: "legend-forms".into(),
+            severity: Severity::Error,
+            file: file.into(),
+            line: None,
+            message: format!(
+                "legend row {i} draws packets in the form \"{form}\", which \
+                 is for a thing of the nature \"{nature}\", but model.json \
+                 lists no such thing under \"things\". Add the thing there \
+                 with its nature and a line reference, or draw it in the form \
+                 that its nature gives (core guide, section 4)."
+            ),
+        });
+    }
+    found
+}
+
+/// Says what is wrong with a reference to `line` of the workspace file
+/// `path`, or `None` when that line exists. `line_counts` keeps the number of
+/// lines of every file that was looked at, so that a file is read once.
+fn bad_line(
+    ws: &Workspace,
+    line_counts: &mut BTreeMap<String, Option<u64>>,
+    path: &str,
+    line: u64,
+) -> Option<String> {
+    let lines = *line_counts
+        .entry(path.to_string())
+        .or_insert_with(|| ws.file_info(path).ok().and_then(|info| info.lines));
+    match lines {
+        None => Some(format!("{path}, which is not a file of the workspace")),
+        Some(count) if line == 0 || line > count => {
+            Some(format!("{path}:{line}, but the file has {count} lines"))
+        }
+        Some(_) => None,
+    }
+}
+
+/// Checks the edge cases of the nodes of a visual or a step-through.
+///
+/// An edge case says that the code does something a reader would not expect.
+/// That is a strong claim, and it is only worth showing if the reader can go
+/// to the line that makes it so. So a reference of an edge case that names a
+/// file or a line that does not exist is an error, which is sent back to the
+/// agent to correct.
+///
+/// Edge cases are held by nodes as
+/// `"edgeCases": [{ "text": ..., "refs": [{ "path": ..., "line": ... }] }]`.
+/// A film has no nodes, so nothing is checked for one. A `visual.json` that
+/// is missing or is not JSON is reported by the build and gives no problems
+/// here.
+fn check_edge_cases(
+    ws: &Workspace,
+    version_dir: &Path,
+    film: bool,
+) -> Vec<Diagnostic> {
+    if film {
+        return Vec::new();
+    }
+    check_edge_cases_in(ws, version_dir, "visual.json")
+}
+
+/// The check of [`check_edge_cases`], for the definition file with the given
+/// name in the version's `src` folder. A view keeps its nodes in `view.json`.
+fn check_edge_cases_in(
+    ws: &Workspace,
+    version_dir: &Path,
+    file: &str,
+) -> Vec<Diagnostic> {
+    let Some(visual) =
+        std::fs::read_to_string(version_dir.join("src").join(file))
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+    else {
+        return Vec::new();
+    };
+    let mut line_counts = BTreeMap::new();
+    let mut found = Vec::new();
+    for node in visual["nodes"].as_array().into_iter().flatten() {
+        let id = node["id"].as_str().unwrap_or("?");
+        for case in node["edgeCases"].as_array().into_iter().flatten() {
+            for reference in case["refs"].as_array().into_iter().flatten() {
+                let (Some(path), Some(line)) =
+                    (reference["path"].as_str(), reference["line"].as_u64())
+                else {
+                    continue;
+                };
+                if let Some(problem) =
+                    bad_line(ws, &mut line_counts, path, line)
+                {
+                    found.push(Diagnostic {
+                        check: "edge-case-refs".into(),
+                        severity: Severity::Error,
+                        file: file.into(),
+                        line: None,
+                        message: format!(
+                            "an edge case of the node \"{id}\" refers to \
+                             {problem}. Point it at the line that makes the \
+                             code behave this way, or remove the edge case."
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    found
+}
+
+/// Checks the code references that the steps of a step-through gave.
+///
+/// The self-test of a step-through runs every example and lists the
+/// references of the steps under `stats.simRefs`, each as `path:line`. A
+/// reference that names a file or a line that does not exist is a warning:
+/// the step still shows what the code does, but the viewer cannot follow it
+/// to the code.
+fn check_sim_refs(ws: &Workspace, selftest: &Value) -> Vec<Diagnostic> {
+    let mut line_counts = BTreeMap::new();
+    let mut found = Vec::new();
+    for reference in selftest["stats"]["simRefs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        let problem = match parse_ref(reference) {
+            Some((path, line)) => bad_line(ws, &mut line_counts, path, line),
+            None => Some(format!("\"{reference}\", which is not a path:line")),
+        };
+        if let Some(problem) = problem {
+            found.push(Diagnostic {
+                check: "refs".into(),
+                severity: Severity::Warning,
+                file: "sim.js".into(),
+                line: None,
+                message: format!("a step refers to {problem}"),
             });
         }
     }
@@ -594,9 +822,70 @@ async fn build_and_check(
         Sources::read_dir(&version_dir.join("src")).unwrap_or_default();
     let (model, mut problems) = check_model(&ctx.workspace, version_dir);
     problems.extend(check_rationales(&ctx.workspace, version_dir, plan.film));
+    problems.extend(check_legend_forms(model.as_ref(), version_dir, plan.film));
+    problems.extend(check_edge_cases(&ctx.workspace, version_dir, plan.film));
+    // A step-through is a visual with a `stepper`. Without one the page would
+    // be built as a plain visual, which is not what the job was asked for.
+    if plan.kind == ArtifactKind::Stepthrough
+        && sources.visual_json.as_deref().is_some_and(|text| {
+            serde_json::from_str::<Value>(text)
+                .is_ok_and(|visual| !visual["stepper"].is_object())
+        })
+    {
+        problems.push(Diagnostic {
+            check: "stepper".into(),
+            severity: Severity::Error,
+            file: "visual.json".into(),
+            line: None,
+            message: "visual.json has no \"stepper\". A step-through needs \
+                      it: the input, the examples, the transitions, the \
+                      variables and the outputs"
+                .into(),
+        });
+    }
+    // A view is declared by its view.json, which must be of the view the job
+    // was asked for. Its nodes carry rationales and edge cases like those of
+    // a visual, so their references are checked in the same way.
+    let view = plan.kind.view_name();
+    if let Some(name) = view {
+        problems.extend(check_rationales_in(
+            &ctx.workspace,
+            version_dir,
+            "view.json",
+        ));
+        problems.extend(check_edge_cases_in(
+            &ctx.workspace,
+            version_dir,
+            "view.json",
+        ));
+        let written = sources
+            .view_json
+            .as_deref()
+            .and_then(|text| serde_json::from_str::<Value>(text).ok())
+            .and_then(|data| data["view"].as_str().map(str::to_string));
+        if let Some(written) = written.filter(|written| written != name) {
+            problems.push(Diagnostic {
+                check: "view".into(),
+                severity: Severity::Error,
+                file: "view.json".into(),
+                line: None,
+                message: format!(
+                    "view.json has \"view\": \"{written}\", but this job \
+                     makes the \"{name}\" view. Write the {name} view"
+                ),
+            });
+        }
+    } else {
+        sources.view_json = None;
+    }
     // The job decides what is built. A film job that produced only a still
     // visual has not produced its film, and the other way round.
-    let declared = if plan.film {
+    let declared = if view.is_some() {
+        sources.film_json = None;
+        sources.visual_json = None;
+        sources.scenes.clear();
+        sources.view_json.is_some()
+    } else if plan.film {
         problems.extend(check_outline(version_dir));
         sources.visual_json = None;
         sources.film_json.is_some()
@@ -628,7 +917,9 @@ async fn build_and_check(
             .iter()
             .any(|p| p.check == "missing-file" && p.file == "pipeline.json")
     {
-        let file = if plan.film {
+        let file = if view.is_some() {
+            "view.json"
+        } else if plan.film {
             "film.json"
         } else {
             "visual.json"
@@ -656,6 +947,7 @@ async fn build_and_check(
             of: None,
         });
         selftest = ctx.validator.validate(artifact_id, version).await?;
+        problems.extend(check_sim_refs(&ctx.workspace, &selftest));
     }
     let issues = selftest
         .get("issues")
@@ -897,6 +1189,15 @@ fn write_job_support(job_dir: &Path) -> Result<()> {
         std::fs::write(job_dir.join("schemas").join(name), schema)
             .map_err(io(doing))?;
     }
+    for (view, schema) in codjiva_build::runtime::VIEW_SCHEMAS {
+        std::fs::write(
+            job_dir
+                .join("schemas")
+                .join(format!("view-{view}.schema.json")),
+            schema,
+        )
+        .map_err(io(doing))?;
+    }
     std::fs::write(
         job_dir.join("runtime-api.md"),
         codjiva_build::runtime::runtime_api_doc(),
@@ -1080,8 +1381,44 @@ fn plan(ws: &Workspace, request: &JobRequest) -> Result<Plan> {
         return plan_pipeline(ws, request);
     }
 
+    // A view job names its view. A map shows a folder, and every other view
+    // one file.
+    let view = if request.kind == JobKind::View {
+        let name = request.view.as_deref().unwrap_or("");
+        let Some(kind) = ArtifactKind::view_named(name) else {
+            return Err(AppError::new(
+                "bad_request",
+                format!("There is no view called \"{name}\"."),
+            ));
+        };
+        Some(kind)
+    } else {
+        None
+    };
+    let folder = request.subject.first().is_some_and(|s| s.ends_with('/'));
+    if view == Some(ArtifactKind::Map) && !folder {
+        return Err(AppError::new(
+            "bad_request",
+            "A map shows a folder. Choose a folder.",
+        ));
+    }
+    if view.is_some_and(|kind| kind != ArtifactKind::Map) && folder {
+        return Err(AppError::new(
+            "bad_request",
+            "This view shows one file. Choose a file.",
+        ));
+    }
     let (kind, guide, verb) = match request.kind {
+        JobKind::View => {
+            let kind = view.expect("a view job has a view");
+            (kind, Guide::View(kind.as_str()), "make a view of")
+        }
         JobKind::Animate => (ArtifactKind::Film, Guide::Animate, "animate"),
+        JobKind::Stepthrough => (
+            ArtifactKind::Stepthrough,
+            Guide::Stepthrough,
+            "step through",
+        ),
         _ => (ArtifactKind::Visual, Guide::Visualise, "visualise"),
     };
     if request.subject.len() != 1 {
@@ -1093,10 +1430,14 @@ fn plan(ws: &Workspace, request: &JobRequest) -> Result<Plan> {
     // A subject that ends with a slash is a folder. Only a still visual can be
     // made of one.
     if let Some(dir) = request.subject[0].strip_suffix('/') {
-        if request.kind != JobKind::Visualise {
+        if request.kind != JobKind::Visualise && request.kind != JobKind::View {
             return Err(AppError::new(
                 "bad_request",
-                "A film follows one file. Choose a file to animate.",
+                if request.kind == JobKind::Stepthrough {
+                    "A step-through runs the code of one file. Choose a file."
+                } else {
+                    "A film follows one file. Choose a file to animate."
+                },
             ));
         }
         if !ws.resolve(dir)?.is_dir() {
@@ -1557,6 +1898,45 @@ async fn run_inner(
                 );
             }
             prompts::user_visualise(&values)
+        }
+        JobKind::Stepthrough => {
+            if let Some(parent) = plan.parent {
+                values.insert(
+                    "previous",
+                    rel(ws, &artifacts::version_dir(ws, &artifact_id, parent)?),
+                );
+            }
+            // A still visual of the same file has the analysis the
+            // step-through can start from.
+            let visual_id =
+                artifacts::artifact_id(ArtifactKind::Visual, &plan.subject);
+            if let Ok(meta) = artifacts::read_meta(ws, &visual_id) {
+                values.insert(
+                    "visual",
+                    rel(
+                        ws,
+                        &artifacts::version_dir(
+                            ws,
+                            &visual_id,
+                            meta.current_version,
+                        )?,
+                    ),
+                );
+            }
+            prompts::user_stepthrough(&values)
+        }
+        JobKind::View => {
+            if let Some(parent) = plan.parent {
+                values.insert(
+                    "previous",
+                    rel(ws, &artifacts::version_dir(ws, &artifact_id, parent)?),
+                );
+            }
+            values.insert(
+                "view",
+                plan.kind.view_name().unwrap_or_default().to_string(),
+            );
+            prompts::user_view(&values)
         }
         JobKind::Animate => {
             values.insert(
@@ -2058,6 +2438,54 @@ mod tests {
         // A version without the file has nothing to check.
         let empty = dir.path().join("empty");
         assert!(check_rationales(&ws, &empty, true).is_empty());
+    }
+
+    #[test]
+    fn a_legend_form_needs_a_thing_of_its_nature_in_the_analysis() {
+        let dir = tempfile::tempdir().unwrap();
+        let version = dir.path().join("version");
+        std::fs::create_dir_all(version.join("src")).unwrap();
+        let legend = json!({ "legend": [
+            { "kind": "primary", "html": "a request" },
+            { "kind": "primary", "form": "crate", "html": "a job" },
+            { "kind": "primary", "form": "element", "html": "a button" },
+            { "kind": "secondary", "form": "key", "html": "an id" },
+            { "kind": "secondary", "form": "value", "html": "a count" },
+            { "kind": "batch", "html": "a batch" },
+        ]});
+        std::fs::write(version.join("src/visual.json"), legend.to_string())
+            .unwrap();
+
+        // The analysis lists a button and an id. The form "key" stands for the
+        // nature "reference". Nothing in the analysis is a value, so only the
+        // row of the form "value" is an error. Rows without a form, and rows
+        // of the form "crate", need no entry.
+        let model = json!({ "things": [
+            { "what": "a button", "nature": "element", "ref": "a.ts:1" },
+            { "what": "an id", "nature": "reference", "ref": "a.ts:2" },
+        ]});
+        let found = check_legend_forms(Some(&model), &version, false);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].check, "legend-forms");
+        assert_eq!(found[0].severity, Severity::Error);
+        assert_eq!(found[0].file, "visual.json");
+        assert!(found[0].message.contains("legend row 4"));
+        assert!(found[0].message.contains("nature \"value\""));
+
+        // An analysis without the list, or no analysis at all, has no thing
+        // of any nature, so every row that names such a form is an error.
+        let found = check_legend_forms(Some(&json!({})), &version, false);
+        assert_eq!(found.len(), 3, "{found:?}");
+        assert_eq!(check_legend_forms(None, &version, false).len(), 3);
+
+        // A film keeps its legend in film.json. A version without the file
+        // has nothing to check.
+        assert!(check_legend_forms(Some(&model), &version, true).is_empty());
+        std::fs::write(version.join("src/film.json"), legend.to_string())
+            .unwrap();
+        let found = check_legend_forms(Some(&model), &version, true);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].file, "film.json");
     }
 
     const PLANT: &str = "CJ.definePlant({ draw({ c, extraSvg, extraHtml }) { \
@@ -2687,6 +3115,409 @@ mod tests {
         run(ctx, request, new_job_id()).await;
         let out = events.lock().unwrap().clone();
         out
+    }
+
+    /// The sources of a small step-through of `src/handler.go`: one state,
+    /// one transition from that state to itself, and a step function that
+    /// takes it once for every character of the input.
+    const STEP_PLANT: &str = "CJ.definePlant({ draw({ c, extraSvg, \
+                              extraHtml }) { const s = CJ.state(c('h'), 300, \
+                              400, 220, 70, 'Queueing'); const e = \
+                              CJ.edge(c('again'), 'M350 400 V360 H470 V400', \
+                              { label: 'an order' }); return '<svg \
+                              class=\"art\" viewBox=\"0 0 1920 1080\">' + \
+                              CJ.grid(c('grid')) + e.svg + s.svg + extraSvg \
+                              + '</svg>' + e.html + s.html + extraHtml; }, \
+                              nodes: [], ports: [] });";
+    const STEP_SIM: &str = "CJ.defineSim({ init() { return { p: 0 }; }, \
+                            step(m, input) { if (m.p >= input.length) return \
+                            null; m.p++; return { state: 'h', edge: 'again', \
+                            at: m.p - 1, does: ['queue()'], note: 'One order \
+                            is queued.', ref: 'src/handler.go:4' }; }, \
+                            vars(m) { return { p: m.p }; }, outputs(m) { \
+                            return { queued: m.p }; } });";
+    const STEP_VISUAL: &str = r#"{"schemaVersion":1,"title":"Submit · one order at a time","camera":{"cx":960,"cy":560,"z":1},
+        "nodes":[{"id":"h","label":"Queueing","role":"Queues every order","refs":[{"path":"src/handler.go","line":3,"end":5}],"select":["h"],
+          "inputs":["o: the order"],"outputs":["queue()"],"transitions":[{"when":"an order","to":"h"}],
+          "edgeCases":[{"text":"An order is queued without being checked.","example":"oo","refs":[{"path":"src/handler.go","line":4}]}]}],
+        "stepper":{"input":{"label":"Orders"},"presets":[{"label":"Two orders","input":"oo","expect":{"queued":2}}],
+          "edges":[{"id":"again","from":"h","to":"h","when":"an order","select":["again"],"ref":"src/handler.go:4"}],
+          "variables":[{"name":"p"}],"outputs":[{"name":"queued"}]}}"#;
+
+    fn stepthrough(subject: &str) -> JobRequest {
+        JobRequest {
+            kind: JobKind::Stepthrough,
+            subject: vec![subject.into()],
+            ..JobRequest::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_step_through_job_builds_a_visual_that_carries_its_step_function()
+    {
+        let s = setup(GOOD, &[]);
+        let dir = s._dir.path();
+        let recorded = recording(
+            dir,
+            "steps",
+            &[
+                ("src/plant.js", STEP_PLANT),
+                ("src/visual.json", STEP_VISUAL),
+                ("src/sim.js", STEP_SIM),
+                ("model.json", MODEL),
+            ],
+        );
+        // The self-test of a step-through lists the code references of its
+        // steps. One of these names a line the file does not have.
+        let report = json!({
+            "ok": true,
+            "issues": [],
+            "stats": { "simRefs": ["src/handler.go:4", "src/handler.go:40"] }
+        });
+        let events = run_with(
+            &s.ws,
+            Arc::new(ReplayBackend::new(&recorded, Duration::ZERO)),
+            vec![report],
+            stepthrough("src/handler.go"),
+        )
+        .await;
+        let Some(JobEvent::Result {
+            artifact_id,
+            passed,
+            errors,
+            ..
+        }) = events.last().cloned()
+        else {
+            panic!("{events:?}")
+        };
+        assert!(passed && errors == 0, "{events:?}");
+        assert!(artifact_id.starts_with("stepthrough-src_handler_go-"));
+
+        let detail = artifacts::detail(&s.ws, &artifact_id, None).unwrap();
+        assert_eq!(detail.manifest.kind, ArtifactKind::Stepthrough);
+        // The definition the interface reads is the visual.json, with the
+        // detail of its node and its stepper.
+        let definition = detail.definition.unwrap();
+        assert_eq!(definition["stepper"]["presets"][0]["input"], "oo");
+        assert_eq!(definition["nodes"][0]["edgeCases"][0]["example"], "oo");
+        let page = artifacts::read_page(&s.ws, &artifact_id, 1).unwrap();
+        assert!(page.contains("CJ.__file(\"sim.js\""));
+        assert!(page.contains("\"stepper\":{"));
+        // The reference to line 40 is a warning on sim.js.
+        let build = detail.validation.unwrap()["build"].clone();
+        assert!(
+            build.as_array().unwrap().iter().any(|p| {
+                p["check"] == "refs"
+                    && p["file"] == "sim.js"
+                    && p["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains("src/handler.go:40")
+            }),
+            "{build}"
+        );
+
+        // The agent was given the guide for a step-through, and the worked
+        // example to read.
+        let job = std::fs::read_dir(s.ws.dot_dir().join("jobs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let system = std::fs::read_to_string(job.join("system.md")).unwrap();
+        assert!(system.contains("# Job: Step through"));
+        assert!(system.contains("CJ.defineSim"));
+        let user = std::fs::read_to_string(job.join("user-1.md")).unwrap();
+        assert!(user.contains("reference/stepthrough/"), "{user}");
+        assert!(job.join("reference/stepthrough/sim.js").exists());
+
+        // The visual and the step-through of one file are two artifacts.
+        assert_ne!(
+            artifact_id,
+            artifacts::artifact_id(
+                ArtifactKind::Visual,
+                &["src/handler.go".into()]
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn a_step_through_without_a_stepper_is_sent_back_to_the_agent() {
+        let s = setup(GOOD, &[]);
+        let dir = s._dir.path();
+        // The first turn writes a plain visual. The second adds the stepper
+        // and the step function.
+        let recorded = recording(dir, "nostepper", GOOD);
+        let second = recorded.join("turn-2");
+        std::fs::create_dir_all(second.join("files/src")).unwrap();
+        std::fs::write(
+            second.join("stdout.jsonl"),
+            r#"{"type":"system","subtype":"init","session_id":"sess-9","model":"test-model"}"#,
+        )
+        .unwrap();
+        for (path, content) in [
+            ("src/plant.js", STEP_PLANT),
+            ("src/visual.json", STEP_VISUAL),
+            ("src/sim.js", STEP_SIM),
+        ] {
+            std::fs::write(second.join("files").join(path), content).unwrap();
+        }
+        let events = run_with(
+            &s.ws,
+            Arc::new(ReplayBackend::new(&recorded, Duration::ZERO)),
+            vec![ok_report()],
+            stepthrough("src/handler.go"),
+        )
+        .await;
+        assert!(
+            matches!(
+                events.last(),
+                Some(JobEvent::Result { passed: true, .. })
+            ),
+            "{events:?}"
+        );
+        let job = std::fs::read_dir(s.ws.dot_dir().join("jobs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let fix = std::fs::read_to_string(job.join("user-2.md")).unwrap();
+        assert!(fix.contains("visual.json has no \"stepper\""), "{fix}");
+
+        // A step-through runs the code of one file, so a folder is refused.
+        let refused = run_with(
+            &s.ws,
+            Arc::new(ReplayBackend::new(&recorded, Duration::ZERO)),
+            vec![ok_report()],
+            stepthrough("src/"),
+        )
+        .await;
+        assert!(
+            matches!(
+                refused.last(),
+                Some(JobEvent::Failed { message, .. })
+                    if message.contains("one file")
+            ),
+            "{refused:?}"
+        );
+    }
+
+    #[test]
+    fn an_edge_case_must_point_at_a_real_line_of_the_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = dir.path().join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("src/handler.go", "package a\nvar x = 1\nvar y = 2\n");
+        let ws = Workspace::open(dir.path()).unwrap();
+        let version = dir.path().join("version");
+        let case = |path: &str, line: u32| {
+            let refs = json!([{ "path": path, "line": line }]);
+            json!({ "text": "x is never reset.", "refs": refs })
+        };
+        let visual = json!({ "nodes": [
+            { "id": "a", "edgeCases": [case("src/handler.go", 2)] },
+            { "id": "b", "edgeCases": [
+                case("src/handler.go", 9),
+                case("src/gone.go", 1),
+            ]},
+            { "id": "c" },
+        ]});
+        write("version/src/visual.json", &visual.to_string());
+        let found = check_edge_cases(&ws, &version, false);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found.iter().all(|d| {
+            d.check == "edge-case-refs"
+                && d.severity == Severity::Error
+                && d.file == "visual.json"
+                && d.message.contains("node \"b\"")
+        }));
+        assert!(found[0].message.contains("src/handler.go:9"));
+        assert!(found[1].message.contains("src/gone.go"));
+        // A film has no nodes, so nothing is checked for one.
+        assert!(check_edge_cases(&ws, &version, true).is_empty());
+
+        // The references of a step-through's steps are warnings.
+        let report = json!({ "stats": { "simRefs": [
+            "src/handler.go:3", "src/handler.go:4", "nonsense",
+        ]}});
+        let found = check_sim_refs(&ws, &report);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found.iter().all(|d| d.check == "refs"
+            && d.severity == Severity::Warning
+            && d.file == "sim.js"));
+        assert!(check_sim_refs(&ws, &json!({})).is_empty());
+    }
+
+    /// A small schema view of `src/handler.go`: one type with one field,
+    /// which a function writes.
+    const SCHEMA_VIEW: &str = r#"{"schemaVersion":1,"view":"schema","title":"Handler · its data",
+        "nodes":[{"id":"Order","label":"Order","kind":"struct","role":"One order","refs":[{"path":"src/handler.go","line":3,"end":5}],
+          "fields":[{"name":"ID","type":"string","key":true}],
+          "edgeCases":[{"text":"The ID is never checked.","refs":[{"path":"src/handler.go","line":4}]}]}],
+        "relations":[],
+        "uses":[{"node":"Order","field":"ID","by":"Submit","how":"writes","ref":"src/handler.go:4"}]}"#;
+    const LANES_VIEW: &str = r#"{"schemaVersion":1,"view":"lanes","title":"Handler · who calls whom",
+        "nodes":[{"id":"a","label":"client","kind":"client","role":"Submits"},{"id":"b","label":"Handler","kind":"service","role":"Queues"}],
+        "scenarios":[{"id":"usual","label":"The usual run","steps":[{"from":"a","to":"b","label":"Submit()","kind":"call"}]}]}"#;
+
+    fn view_request(view: &str, subject: &str) -> JobRequest {
+        JobRequest {
+            kind: JobKind::View,
+            view: Some(view.into()),
+            subject: vec![subject.into()],
+            ..JobRequest::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_view_job_builds_a_page_from_data_without_a_plant() {
+        let s = setup(GOOD, &[]);
+        let recorded = recording(
+            s._dir.path(),
+            "schema",
+            &[("src/view.json", SCHEMA_VIEW), ("model.json", MODEL)],
+        );
+        let events = run_with(
+            &s.ws,
+            Arc::new(ReplayBackend::new(&recorded, Duration::ZERO)),
+            vec![ok_report()],
+            view_request("schema", "src/handler.go"),
+        )
+        .await;
+        let Some(JobEvent::Result {
+            artifact_id,
+            passed: true,
+            ..
+        }) = events.last().cloned()
+        else {
+            panic!("{events:?}")
+        };
+        assert!(
+            artifact_id.starts_with("schema-src_handler_go-"),
+            "{artifact_id}"
+        );
+        let detail = artifacts::detail(&s.ws, &artifact_id, None).unwrap();
+        assert_eq!(detail.manifest.kind, ArtifactKind::Schema);
+        // What the interface reads as the definition is the view.json.
+        let definition = detail.definition.unwrap();
+        assert_eq!(definition["view"], "schema");
+        assert_eq!(definition["nodes"][0]["fields"][0]["name"], "ID");
+        let page = artifacts::read_page(&s.ws, &artifact_id, 1).unwrap();
+        assert!(page.contains("CJ.boot({\"view\":"));
+        assert!(!page.contains("CJ.__file(\"plant.js\""));
+
+        // The agent got the guide all views share, the guide of this view,
+        // its schema and its worked example.
+        let job = std::fs::read_dir(s.ws.dot_dir().join("jobs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let system = std::fs::read_to_string(job.join("system.md")).unwrap();
+        assert!(system.contains("# Job: a view"));
+        assert!(system.contains("## The schema view"));
+        assert!(!system.contains("## The lanes view"));
+        let user = std::fs::read_to_string(job.join("user-1.md")).unwrap();
+        assert!(user.contains("Make the schema view"), "{user}");
+        assert!(user.contains("reference/views/schema/"), "{user}");
+        assert!(job.join("schemas/view-schema.schema.json").exists());
+        assert!(job.join("reference/views/structure/sim.js").exists());
+    }
+
+    #[tokio::test]
+    async fn a_view_of_the_wrong_kind_is_sent_back_and_its_edge_cases_are_checked(
+    ) {
+        let s = setup(GOOD, &[]);
+        // The first turn writes a lanes view where a schema view was asked
+        // for. The second writes the schema view, with an edge case that
+        // names a line the file does not have. The third corrects the line.
+        let recorded = recording(
+            s._dir.path(),
+            "wrong",
+            &[("src/view.json", LANES_VIEW), ("model.json", MODEL)],
+        );
+        let bad_line =
+            SCHEMA_VIEW.replace(r#""line":4}]}]}],"#, r#""line":40}]}]}],"#);
+        assert_ne!(bad_line, SCHEMA_VIEW);
+        for (turn, view) in [(2, bad_line.as_str()), (3, SCHEMA_VIEW)] {
+            let dir = recorded.join(format!("turn-{turn}"));
+            std::fs::create_dir_all(dir.join("files/src")).unwrap();
+            std::fs::write(
+                dir.join("stdout.jsonl"),
+                r#"{"type":"system","subtype":"init","session_id":"sess-9","model":"test-model"}"#,
+            )
+            .unwrap();
+            std::fs::write(dir.join("files/src/view.json"), view).unwrap();
+        }
+        let events = run_with(
+            &s.ws,
+            Arc::new(ReplayBackend::new(&recorded, Duration::ZERO)),
+            vec![ok_report()],
+            view_request("schema", "src/handler.go"),
+        )
+        .await;
+        assert!(
+            matches!(
+                events.last(),
+                Some(JobEvent::Result { passed: true, .. })
+            ),
+            "{events:?}"
+        );
+        let job = std::fs::read_dir(s.ws.dot_dir().join("jobs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let second = std::fs::read_to_string(job.join("user-2.md")).unwrap();
+        assert!(
+            second.contains("this job makes the \"schema\" view"),
+            "{second}"
+        );
+        let third = std::fs::read_to_string(job.join("user-3.md")).unwrap();
+        assert!(third.contains("src/handler.go:40"), "{third}");
+    }
+
+    #[tokio::test]
+    async fn a_map_needs_a_folder_and_the_other_views_a_file() {
+        let s = setup(GOOD, &[]);
+        let recorded = recording(
+            s._dir.path(),
+            "none",
+            &[("src/view.json", SCHEMA_VIEW), ("model.json", MODEL)],
+        );
+        let refusal = |request: JobRequest| {
+            let ws = Arc::clone(&s.ws);
+            let recorded = recorded.clone();
+            async move {
+                let events = run_with(
+                    &ws,
+                    Arc::new(ReplayBackend::new(&recorded, Duration::ZERO)),
+                    vec![ok_report()],
+                    request,
+                )
+                .await;
+                match events.last() {
+                    Some(JobEvent::Failed { message, .. }) => message.clone(),
+                    other => panic!("{other:?}"),
+                }
+            }
+        };
+        assert!(refusal(view_request("map", "src/handler.go"))
+            .await
+            .contains("A map shows a folder"));
+        assert!(refusal(view_request("schema", "src/"))
+            .await
+            .contains("shows one file"));
+        assert!(refusal(view_request("graph", "src/handler.go"))
+            .await
+            .contains("no view called \"graph\""));
     }
 
     const OUTLINE: &str = r#"{"schemaVersion":1,"title":"How an event moves","chapters":[{"id":"overview","title":"The assembly line","summary":"One event runs the main path.","beats":[{"what":"an event enters"}]},{"id":"flush","title":"7 · Flush","summary":"The batch is written.","beats":[{"what":"the crate leaves"}]}]}"#;

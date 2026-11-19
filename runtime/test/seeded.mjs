@@ -186,6 +186,41 @@ const selfTestCases = [
     expect: (issues) =>
       issues.some((i) => i.check === 'legend' && /"batch"/.test(i.message)),
   },
+  {
+    name: 'a packet form missing from the legend is reported as legend, naming the form and the kind',
+    plant: (dir) =>
+      edit(
+        dir,
+        'scenes/routing.js',
+        "CJ.packet('primary', c('ip'))",
+        "CJ.packet('primary', c('ip'), { form: 'record' })",
+      ),
+    expect: (issues) =>
+      issues.some(
+        (i) =>
+          i.check === 'legend' &&
+          i.scene === 'routing' &&
+          /form "record" and kind "primary"/.test(i.message) &&
+          /"form": "record"/.test(i.hint),
+      ),
+  },
+  {
+    name: 'a tag that is too long is reported as exception, with the limit',
+    plant: (dir) =>
+      edit(
+        dir,
+        'scenes/routing.js',
+        "CJ.packet('primary', c('ip'))",
+        "CJ.packet('primary', c('ip'), { tag: 'long' })",
+      ),
+    expect: (issues) =>
+      issues.some(
+        (i) =>
+          i.check === 'exception' &&
+          i.scene === 'routing' &&
+          /at most 3/.test(i.message),
+      ),
+  },
 ];
 
 for (const [index, test] of selfTestCases.entries()) {

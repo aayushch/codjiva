@@ -46,6 +46,7 @@
     },
     "legend": {
       "type": "array",
+      "maxItems": 6,
       "items": {
         "type": "object",
         "properties": {
@@ -57,6 +58,17 @@
               "batch",
               "tally"
             ]
+          },
+          "form": {
+            "enum": [
+              "crate",
+              "record",
+              "value",
+              "key",
+              "element",
+              "chunk"
+            ],
+            "description": "the shape of the packet; a crate when omitted. Not allowed with the kinds batch and tally."
           },
           "html": {
             "type": "string"
@@ -94,6 +106,7 @@
           },
           "refs": {
             "type": "array",
+            "description": "where the part is in the code. The first entry is the code the app shows for the part: `line` is its first line and `end` its last.",
             "items": {
               "type": "object",
               "properties": {
@@ -101,7 +114,13 @@
                   "type": "string"
                 },
                 "line": {
-                  "type": "integer"
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "the last line of the part; the app shows at most 24 lines"
                 }
               },
               "additionalProperties": false,
@@ -158,6 +177,98 @@
               "basis",
               "refs"
             ]
+          },
+          "inputs": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "description": "what the part reads, each as a name from the code and what it is"
+          },
+          "outputs": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "description": "what the part writes or returns, in the same form"
+          },
+          "transitions": {
+            "type": "array",
+            "maxItems": 12,
+            "description": "where the work goes from this part",
+            "items": {
+              "type": "object",
+              "properties": {
+                "when": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "description": "the condition, in a few words"
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "description": "the id of another node, or a few words when the target is not drawn"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "when",
+                "to"
+              ]
+            }
+          },
+          "edgeCases": {
+            "type": "array",
+            "maxItems": 12,
+            "description": "what the code does that a reader would not expect, each with the line that makes it so",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 280
+                },
+                "example": {
+                  "type": "string",
+                  "maxLength": 120,
+                  "description": "an input that shows the case"
+                },
+                "refs": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "path",
+                      "line"
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "text",
+                "refs"
+              ]
+            }
           }
         },
         "additionalProperties": false,
@@ -220,6 +331,159 @@
         ]
       },
       "maxItems": 12
+    },
+    "stepper": {
+      "type": "object",
+      "description": "only in a step-through: what the viewer can run. The step function itself is in sim.js.",
+      "properties": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 24
+            },
+            "hint": {
+              "type": "string",
+              "maxLength": 160
+            },
+            "maxLength": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "label"
+          ]
+        },
+        "presets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 9,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 28
+              },
+              "input": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "expect": {
+                "type": "object",
+                "description": "the final value of some outputs, by output name"
+              },
+              "ref": {
+                "type": "string",
+                "pattern": "^[^:]+:\\d+(-\\d+)?$",
+                "description": "path:line or path:start-end, relative to the workspace"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "input"
+            ]
+          }
+        },
+        "edges": {
+          "type": "array",
+          "maxItems": 60,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "when": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "select": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ref": {
+                "type": "string",
+                "pattern": "^[^:]+:\\d+(-\\d+)?$",
+                "description": "path:line or path:start-end, relative to the workspace"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "from",
+              "to",
+              "when"
+            ]
+          }
+        },
+        "variables": {
+          "type": "array",
+          "maxItems": 24,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "meaning": {
+                "type": "string",
+                "maxLength": 160
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ]
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "maxItems": 24,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "meaning": {
+                "type": "string",
+                "maxLength": 160
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "presets",
+        "edges"
+      ]
     }
   },
   "additionalProperties": false,

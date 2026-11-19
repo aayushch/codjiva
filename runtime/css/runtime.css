@@ -641,3 +641,361 @@ body.picking #frame {
 .cj-bay .grid {
   display: none;
 }
+
+/* ---------- step-throughs ----------
+   A step-through has a bar of controls above the stage and a column of
+   panels to its right. The runtime fills both. In every other artifact they
+   are not shown, and the frame has the whole row. */
+#row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+#frame {
+  min-width: 0;
+}
+#stepbar,
+#steppanel {
+  display: none;
+}
+body.stepper #stepbar,
+body.mapview #stepbar {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--shell-bar);
+  border-bottom: 1px solid var(--shell-border-soft);
+  font-size: 12px;
+  color: var(--shell-text-2);
+}
+body.stepper #steppanel {
+  flex: none;
+  display: block;
+  width: 340px;
+  overflow-y: auto;
+  padding: 0 14px 14px;
+  background: var(--shell-bar);
+  border-left: 1px solid var(--shell-border-soft);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--shell-text-2);
+}
+@media (max-width: 900px) {
+  body.stepper #steppanel {
+    width: 250px;
+  }
+}
+.cj-sb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cj-sb-k {
+  flex: none;
+  min-width: 72px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#cj-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-m);
+  background: var(--shell-window);
+  color: var(--second);
+  font: inherit;
+  font-size: 14px;
+}
+#stepbar button,
+#steppanel button {
+  font: inherit;
+  cursor: pointer;
+}
+#stepbar button {
+  flex: none;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-m);
+  background: var(--shell-button);
+  color: var(--second);
+}
+#stepbar button:hover:not(:disabled) {
+  background: var(--shell-hover);
+}
+#stepbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+#stepbar button.cj-on {
+  border-color: var(--main);
+  color: var(--main);
+}
+#stepbar button:focus-visible,
+#steppanel button:focus-visible,
+#cj-input:focus-visible {
+  outline: 2px solid var(--main);
+  outline-offset: 1px;
+}
+.cj-sb-transport,
+.cj-sb-speeds {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+.cj-sb-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+#stepbar .cj-sb-presets button {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+}
+/* The input, one button per character. The character the step on screen
+   read has an amber outline, and the characters after it are dimmed. */
+.cj-sb-tape {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  padding: 3px 2px;
+  scrollbar-width: thin;
+}
+#stepbar .cj-sb-tape button {
+  width: 24px;
+  min-width: 24px;
+  padding: 0;
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 700;
+}
+#stepbar .cj-sb-tape button.cj-cur {
+  border: 2px solid var(--main);
+  color: var(--main);
+}
+#stepbar .cj-sb-tape button.cj-fut {
+  opacity: 0.45;
+}
+.cj-sb-scrub {
+  flex: none;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+}
+.cj-sb-scrub input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--main);
+}
+#steppanel section {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--shell-border-soft);
+}
+#steppanel h3 {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+#steppanel h3 span {
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: right;
+  color: var(--second);
+}
+#steppanel h4 {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+#steppanel p {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--second);
+}
+#steppanel code {
+  padding: 1px 5px;
+  border-radius: var(--radius-s);
+  background: var(--chip);
+  color: var(--second);
+}
+/* A step that took a fallback or met an edge case, and a step in which the
+   code rejects the input, have their sentence in amber. */
+.cj-tone-warn p,
+.cj-tone-error p,
+.cj-sp-alarm p {
+  color: var(--main);
+}
+.cj-sp-char {
+  margin-bottom: 4px;
+}
+.cj-sp-act {
+  color: var(--accent);
+}
+.cj-sp-act::before {
+  content: '▸ ';
+}
+.cj-sp-ref {
+  margin-top: 4px;
+}
+.cj-sp-tr {
+  display: flex;
+  gap: 8px;
+}
+.cj-sp-tr span:first-child {
+  flex: 0 0 46%;
+  color: var(--main);
+  overflow-wrap: anywhere;
+}
+.cj-sp-tr span:last-child {
+  color: var(--second);
+}
+.cj-sp-case {
+  margin-bottom: 6px;
+  color: var(--second);
+}
+.cj-sp-case button {
+  margin-top: 2px;
+  padding: 0 8px;
+  border: 1px solid var(--shell-border);
+  border-radius: 10px;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+}
+.cj-sp-var {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+}
+.cj-sp-var span:last-child {
+  text-align: right;
+  color: var(--second);
+}
+.cj-sp-var i {
+  display: block;
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+.cj-sp-var i.cj-none {
+  color: var(--shell-text-2);
+}
+/* A variable or an output that the step on screen changed. */
+.cj-sp-var.cj-changed {
+  background: color-mix(in srgb, var(--main) 14%, transparent);
+}
+.cj-sp-var.cj-changed span:last-child {
+  color: var(--main);
+}
+.cj-sp-history button {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--shell-text-2);
+  text-align: left;
+}
+.cj-sp-history button:hover,
+.cj-sp-history button.cj-now {
+  background: var(--shell-button);
+}
+.cj-sp-history button span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cj-sp-history button span:nth-child(1) {
+  flex: 0 0 22px;
+}
+.cj-sp-history button span:nth-child(2) {
+  flex: 0 0 96px;
+  color: var(--second);
+}
+.cj-sp-history button span:nth-child(3) {
+  flex: 1;
+}
+/* On the stage: the state the code is in has an amber glow, and the marker
+   with the character that was just read lies above the drawing. */
+.cj-step-on {
+  filter: drop-shadow(
+    0 0 10px color-mix(in srgb, var(--main) 75%, transparent)
+  );
+}
+.cj-step-layer {
+  pointer-events: none;
+}
+
+/* Inside the Codjiva app the window is shared with the app's own panels, so
+   the step-through's panels do not stand beside the stage. They lie under it
+   as one strip of four columns: the step, the variables, the outputs and the
+   list of steps. The state's own section is left out there, because the
+   app's inspector shows the state with its code. */
+html.embed body.stepper #row {
+  flex-direction: column;
+}
+html.embed body.stepper #frame {
+  min-height: 0;
+}
+html.embed body.stepper #steppanel {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr 1.4fr;
+  gap: 0 18px;
+  width: auto;
+  height: 190px;
+  padding: 0 14px;
+  overflow: hidden;
+  border-left: 0;
+  border-top: 1px solid var(--shell-border-soft);
+}
+html.embed body.stepper #steppanel section {
+  min-height: 0;
+  padding: 10px 0;
+  overflow-y: auto;
+  border-bottom: 0;
+}
+html.embed body.stepper #steppanel .cj-sp-state {
+  display: none;
+}
+
+/* ---------- views ----------
+   The words of one scenario of a lanes view, or of one page of a map, are
+   held in a box of no size at the corner of the sheet, so that they can be
+   shown and hidden together. */
+.cj-group {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+/* A row of buttons that takes the room its neighbours leave. */
+.cj-sb-grow {
+  flex: 1;
+  min-width: 0;
+}
+.cj-map-hint {
+  flex: none;
+  font-size: 11px;
+}

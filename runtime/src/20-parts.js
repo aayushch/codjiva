@@ -47,10 +47,11 @@ to `c()`.
 | Call | Draws | Means |
 |------|-------|-------|
 | `CJ.machine(cls, x, y, w, h, hot)` | A housing with its top-left corner at `x, y`: shell, dashed inner panel, corner bolts, hatching. `hot: true` gives an amber outline. Widths 140 to 640. | A code unit: module, class, function, service. |
+| `CJ.frame(cls, x, y, w, h)` | A window outline with its top-left corner at `x, y`: a thin frame with a 22 px title strip and no bolts. Name it with a plate, as you name a machine. | A region of the screen: a rendered component or a container element. Code that runs is a machine, not a frame. |
 | `CJ.gear(cls, r, teeth, hot)` | A gear centred on (0, 0). Wrap it in `<g transform="translate(x y)">` and turn it by adding `rotate(deg)` to that group. | A dispatcher or router that is busy. |
 | `CJ.pipe(cls, d, kind)` | A pipe along the SVG path `d`. Use only `M`, `H` and `V` segments. `kind` is `'hot'` (amber wall), `'cool'` (cyan wall) or omitted (neutral). Wall 44 px wide. | A data path or call path. |
 | `CJ.arrow(cls, x, y, dir)` | A small chevron centred on `x, y` pointing `'r'`, `'l'`, `'u'` or `'d'`. One per pipe run is enough. | The direction of flow. |
-| `CJ.packet(kind, cls)` | A 60 x 44 packet centred on (0, 0). Position it with `CJ.place`. Kinds: `'primary'` (amber), `'secondary'` (cyan), `'transient'` (dashed, hollow), `'batch'` (banded crate), `'tally'` (tile with tally marks). Never scale packets to different sizes. | One unit of work. |
+| `CJ.packet(kind, cls, opts)` | A 60 x 44 packet centred on (0, 0). Position it with `CJ.place`. `kind` is the packet's role and colour: `'primary'` (amber), `'secondary'` (cyan), `'transient'` (dashed, hollow), `'batch'` (banded crate), `'tally'` (tile with tally marks). `opts.form` is its shape and `opts.tag` a short text on it (see "Packet forms"). Never scale packets to different sizes. | One thing that moves through the plant. |
 | `CJ.wire(cls, d)` | A dashed amber control wire along path `d`. Drive it with `CJ.wire.set(el, level, t)`: `level` 0 is idle, 1 is glowing, and the dashes move with `t`. | A signal from a limit or flag to the part it restricts. |
 | `CJ.drum(cls, cx, y, w, h)` | A storage drum. `cx` is its centre line, `y` its top. | Persistent storage: file, database, log. |
 | `CJ.dropBin(cls, x, y)` | A 110 x 80 open bin. | Discarded or filtered data. |
@@ -58,6 +59,39 @@ to `c()`.
 | `CJ.ring(cls, x, y, r, width = 4)` | A ring that starts invisible. Set its `style.opacity` to pulse it. | "This threshold was just crossed." |
 | `CJ.signal(cls, d)` | A dashed cyan path plus a dot. `CJ.signal.refs(q, name)` gives `{ path, dot }`. Move the dot with `CJ.place` along a route that follows `d`. | A lifecycle event: scope end, callback, cancellation. |
 | `CJ.port(cls, x, y, dir)` | A pipe end fitting at the sheet edge, opening `'l'` or `'r'`. Label it with a plate. | A boundary where work enters or leaves the analysed code. |
+| `CJ.cursor(cls, dir)` | A 22 x 30 pointer with its tip at (0, 0). `dir` is the direction the tip points in: `'d'` (the default), `'u'`, `'l'` or `'r'`. Position it with `CJ.place`, with the tip on the edge of the thing it points at. | A position that moves: an iterator, an index, a read position. |
+
+### Packet forms (what the thing is)
+
+The kind of a packet says which role it plays in the story. The form says what the thing is. Choose the form
+from the nature of the thing in the code, using the table in the core guide. Never choose it by taste.
+
+| `opts.form` | Draws | Use it for |
+|-------------|-------|------------|
+| `'crate'` (the default) | A rounded crate. | Work passed between units: a request, an event, a message, a job. |
+| `'record'` | A card with a tab and field lines. | A struct, row or object that is stored or returned. |
+| `'value'` | A hexagon, like a nut. | One number, flag or result. |
+| `'key'` | A luggage tag with a hole. | A name for something else: an id, a key, a pointer, a handle. |
+| `'element'` | A pill. | Something the user sees on the screen: a button, a menu item, a list row. |
+| `'chunk'` | A square block with a row of holes. | Raw data: bytes, a slice of a buffer, a chunk of text. |
+
+Every form has the same 60 x 44 footprint and can be drawn in the kinds `'primary'`, `'secondary'` and
+`'transient'`. The kinds `'batch'` and `'tally'` have their own shape. They take no form and no tag.
+
+`opts.tag` writes at most 3 characters on the packet, such as `'3'`, `'A'` or `'GET'`. Use a tag only where
+it tells two packets of one form and kind apart, or where it shows a value the film is about. Most packets
+have no tag. `CJ.packet.tag(el, text)` changes the tag of a packet that was drawn with one. To draw a packet
+whose tag is empty at first, pass `tag: ''`.
+
+```js
+const button = CJ.packet('primary', c('button0'), { form: 'element' });
+const count = CJ.packet('secondary', c('count'), { form: 'value', tag: '5' });
+// In set() or render(): the count has gone down by one.
+CJ.packet.tag(q('count'), '4');
+```
+
+A thing that moves is always a packet, a `CJ.cursor`, a `CJ.warning` or the dot of a `CJ.signal`. Never draw
+a moving thing with your own SVG.
 */
 CJ.grid = (cls) =>
   '<defs><pattern id="' +
@@ -134,6 +168,31 @@ CJ.machine = (cls, x, y, w, h, hot) => {
   return s + '</g>';
 };
 
+// The first element inside the group is the frame's outer rectangle, which is
+// what the self-test measures when it checks labels against the frame.
+CJ.frame = (cls, x, y, w, h) =>
+  '<g class="' +
+  cls +
+  '" data-cj="frame" transform="translate(' +
+  x +
+  ' ' +
+  y +
+  ')"><rect width="' +
+  w +
+  '" height="' +
+  h +
+  '" rx="4" style="fill:var(--panel);stroke:var(--ink);stroke-width:2"/>' +
+  '<path d="M0 22H' +
+  w +
+  '" style="stroke:var(--ink);stroke-width:2"/>' +
+  [14, 28, 42]
+    .map(
+      (cx) =>
+        '<circle cx="' + cx + '" cy="11" r="3.5" style="fill:var(--line)"/>',
+    )
+    .join('') +
+  '</g>';
+
 CJ.gear = (cls, r, teeth, hot) => {
   let d = '';
   for (let i = 0; i < teeth; i++) {
@@ -208,9 +267,135 @@ CJ.arrow = (cls, x, y, dir) => {
   );
 };
 
-// Every packet kind shares one 60 x 44 footprint. Kinds differ by colour and
-// marking, never by size.
-CJ.packet = (kind, cls) => {
+// The forms a packet can be drawn in, in the order they are documented. The
+// form is the outline of the packet and says what the thing is.
+const PACKET_FORMS = ['crate', 'record', 'value', 'key', 'element', 'chunk'];
+
+// The most characters the tag of a packet may have. The tag is set in bold
+// 15 px text, in which every character is 9 px wide, so 3 characters take
+// 27 px. That fits inside every form.
+const TAG_MAX = 3;
+
+// The outline of each form: a function that returns one SVG element with the
+// given style. Every outline fills the same box, 60 px wide and 44 px tall,
+// centred on (0, 0).
+const FORM_OUTLINE = {
+  crate: (style) =>
+    '<rect x="-30" y="-22" width="60" height="44" rx="8" style="' +
+    style +
+    '"/>',
+  record: (style) =>
+    '<path d="M-30 -18Q-30 -22 -26 -22H-12L-6 -14H26Q30 -14 30 -10V18' +
+    'Q30 22 26 22H-26Q-30 22 -30 18Z" style="' +
+    style +
+    '"/>',
+  value: (style) =>
+    '<path d="M-30 0L-17 -22H17L30 0L17 22H-17Z" style="' + style + '"/>',
+  key: (style) =>
+    '<path d="M-30 0L-14 -22H26Q30 -22 30 -18V18Q30 22 26 22H-14Z" style="' +
+    style +
+    '"/>',
+  element: (style) =>
+    '<rect x="-30" y="-22" width="60" height="44" rx="22" style="' +
+    style +
+    '"/>',
+  chunk: (style) =>
+    '<rect x="-30" y="-22" width="60" height="44" rx="2" style="' +
+    style +
+    '"/>',
+};
+
+// What is drawn inside the outline of a packet of the given form.
+//
+// `hollow` is true for the kind 'transient', whose outline is not filled.
+// The marks of a hollow packet are drawn in the muted colour. The marks of a
+// filled packet are drawn in the ground colour at reduced opacity.
+//
+// `tagged` is true when the packet carries a tag. A tagged packet leaves out
+// the marks that would lie under the tag.
+//
+// Returns `marks`, the SVG markup, and `tagAt`, the point [x, y] the tag is
+// centred on.
+const packetInside = (form, hollow, tagged) => {
+  const ink = hollow ? 'var(--muted)' : 'var(--ground)';
+  const soft = hollow ? '' : ';opacity:.45';
+  const line = (d, cap) =>
+    '<path d="' +
+    d +
+    '" style="fill:none;stroke:' +
+    ink +
+    ';stroke-width:3;stroke-linecap:' +
+    (cap || 'round') +
+    soft +
+    '"/>';
+  const dot = (cx, r) =>
+    '<circle cx="' + cx + '" r="' + r + '" style="fill:' + ink + soft + '"/>';
+  // A row of five square holes whose top edge is at `y`.
+  const holes = (y) =>
+    [-24, -12, 0, 12, 24]
+      .map(
+        (cx) =>
+          '<rect x="' +
+          (cx - 3) +
+          '" y="' +
+          y +
+          '" width="6" height="6" rx="1" style="fill:' +
+          ink +
+          soft +
+          '"/>',
+      )
+      .join('');
+  if (form === 'record')
+    return {
+      marks:
+        line('M-21 -5H21') +
+        (tagged ? '' : line('M-21 4H21') + line('M-21 13H5')),
+      tagAt: [0, 8],
+    };
+  if (form === 'value')
+    return {
+      marks: tagged
+        ? ''
+        : '<circle r="8" style="fill:none;stroke:' +
+          ink +
+          ';stroke-width:3' +
+          soft +
+          '"/>',
+      tagAt: [0, 0],
+    };
+  if (form === 'key')
+    return {
+      marks: dot(-14, 4.5) + (tagged ? '' : line('M0 -6H19') + line('M0 6H11')),
+      tagAt: [10, 0],
+    };
+  if (form === 'element')
+    return {
+      marks: tagged ? '' : dot(-13, 5) + line('M-2 0H16'),
+      tagAt: [0, 0],
+    };
+  if (form === 'chunk')
+    return {
+      marks: holes(-18) + (tagged ? '' : holes(12)),
+      tagAt: [0, 4],
+    };
+  // A crate. A filled crate has a lid line and its tag sits below the lid. A
+  // hollow crate has no lid and its tag sits in the middle.
+  if (hollow) return { marks: tagged ? '' : dot(0, 6), tagAt: [0, 0] };
+  return {
+    marks:
+      line('M-30 -8H30', 'butt') +
+      (tagged
+        ? ''
+        : '<rect x="-18" y="0" width="20" height="12" rx="2" style="fill:' +
+          ink +
+          ';opacity:.35"/>'),
+    tagAt: [0, 7],
+  };
+};
+
+// A crate without a tag. Its markup has no `data-form` attribute, and a packet
+// without that attribute counts as a crate everywhere in the runtime.
+const plainCrate = (kind, cls) => {
   if (kind === 'batch') {
     return (
       '<g class="' +
@@ -274,6 +459,97 @@ CJ.packet = (kind, cls) => {
     '"/>' +
     '<path d="M-30 -8H30" style="stroke:var(--ground);stroke-width:3;opacity:.45"/><rect x="-18" y="0" width="20" height="12" rx="2" style="fill:var(--ground);opacity:.35"/></g>'
   );
+};
+
+// Stops with a message that says what to change when a tag is too long.
+const checkTag = (tag) => {
+  if (tag.length > TAG_MAX)
+    throw new Error(
+      'The tag "' +
+        tag +
+        '" has ' +
+        tag.length +
+        ' characters. A tag has at most ' +
+        TAG_MAX +
+        '.',
+    );
+};
+
+// Every packet has one 60 x 44 footprint, whatever its kind and form. The
+// first element inside its group is always the outline, which is what the
+// self-test measures.
+CJ.packet = (kind, cls, opts) => {
+  const o = opts || {};
+  const form = o.form == null ? 'crate' : o.form;
+  const tagged = o.tag != null;
+  const tag = tagged ? String(o.tag) : '';
+  if (PACKET_FORMS.indexOf(form) < 0)
+    throw new Error(
+      'There is no packet form called "' +
+        form +
+        '". The forms are: ' +
+        PACKET_FORMS.join(', ') +
+        '.',
+    );
+  checkTag(tag);
+  if (kind === 'batch' || kind === 'tally') {
+    if (form !== 'crate' || tagged)
+      throw new Error(
+        'A packet of kind "' +
+          kind +
+          '" has its own shape. It takes no form and no tag.',
+      );
+    return plainCrate(kind, cls);
+  }
+  if (form === 'crate' && !tagged) return plainCrate(kind, cls);
+
+  const hollow = kind === 'transient';
+  const body = hollow
+    ? 'fill:var(--ground);stroke:var(--muted);stroke-width:3;stroke-dasharray:8 6;stroke-linejoin:round'
+    : 'fill:' + (kind === 'primary' ? 'var(--main)' : 'var(--accent)');
+  const inside = packetInside(form, hollow, tagged);
+  // The tag is SVG text. The stage font is 0.73 of its size tall from the
+  // baseline to the top of a capital letter, so a baseline 5.5 px below
+  // `tagAt` centres 15 px capitals and digits on that point.
+  const text = tagged
+    ? '<text class="cj-tag" x="' +
+      inside.tagAt[0] +
+      '" y="' +
+      (inside.tagAt[1] + 5.5) +
+      '" text-anchor="middle" style="font-size:15px;font-weight:700;fill:' +
+      (hollow ? 'var(--muted)' : 'var(--ground)') +
+      '">' +
+      CJ.esc(tag) +
+      '</text>'
+    : '';
+  return (
+    '<g class="' +
+    cls +
+    '" data-cj="packet" data-kind="' +
+    kind +
+    '" data-form="' +
+    form +
+    '">' +
+    FORM_OUTLINE[form](body) +
+    inside.marks +
+    text +
+    '</g>'
+  );
+};
+
+// Changes the tag of a packet. `el` is the packet's group element. The packet
+// must have been drawn with a tag, because only then does it have the text
+// element and the room for one.
+CJ.packet.tag = (el, text) => {
+  const tag = text == null ? '' : String(text);
+  checkTag(tag);
+  const slot = el.querySelector('.cj-tag');
+  if (!slot)
+    throw new Error(
+      "This packet was drawn without a tag. Pass { tag: '' } to CJ.packet " +
+        'to give it one.',
+    );
+  slot.textContent = tag;
 };
 
 // The packet kinds a legend may list, in the order they are documented.
@@ -410,6 +686,410 @@ CJ.port = (cls, x, y, dir) => {
     s * 18 +
     ' -22V22" style="stroke:var(--main);stroke-width:4;stroke-linecap:round"/></g>'
   );
+};
+
+// The pointer is drawn with its tip at (0, 0), pointing down, and is turned
+// by an inner group. The outer group is left free for CJ.place, which
+// replaces the whole `transform` attribute of the element it moves.
+CJ.cursor = (cls, dir) => {
+  const turn = { d: 0, l: 90, u: 180, r: 270 }[dir] || 0;
+  return (
+    '<g class="' +
+    cls +
+    '" data-cj="cursor"><g transform="rotate(' +
+    turn +
+    ')"><path d="M0 0L-11 -13V-30H11V-13Z" style="fill:var(--ground);stroke:var(--second);stroke-width:3;stroke-linejoin:round"/>' +
+    '<path d="M-5 -21H5" style="stroke:var(--second);stroke-width:3;stroke-linecap:round"/></g></g>'
+  );
+};
+
+/*@api
+### State machines (states, transitions, the input and the variables)
+
+Use these when the code is a state machine, or any loop that reads one input piece
+by piece: the picture is then a set of states with transitions between them, not a line of machines. Each of
+these parts returns an object with `.svg` and `.html`.
+
+`CJ.state(cls, x, y, w, h, label, opts)` draws one state: a box with round corners and its name inside,
+with the top-left corner at `x, y`. Heights 56 to 90, widths 150 to 300. `label` is the state's real name,
+or a few words when the code has no name for it; it must be at most `(w - 32) / 9.6` characters.
+`opts.sub` is an optional second line in smaller text, such as the condition that holds in this state.
+`opts.kind` is `'start'` for the state the machine begins in, which gets a small arrow at its left edge,
+and `'accept'` for a state the machine may end in, which gets a second outline.
+
+- `CJ.state.refs(q, name)` returns the handles.
+- `CJ.state.set(refs, level)` lights the state: `level` 0 is plain, 1 is fully amber. Use it in a film for
+  the state the machine is in.
+
+`CJ.edge(cls, d, opts)` draws one transition: a thin line along the SVG path `d` (only `M`, `H` and `V`
+segments) with an arrow head at its end. Start and end it on the edges of the two states. `opts.label` is
+the trigger, written beside the line, such as `an order`, `count > 30` or `on error`. By default the label sits
+at the middle of the longest segment, above a horizontal one or to the right of a vertical one; `opts.at`
+gives its top-left corner instead. `opts.kind: 'fallback'` draws a dashed amber line, for a transition taken
+on an error or a mismatch. `opts.kind: 'quiet'` draws a dashed grey line, for a transition that only hands
+something back, such as a return. A transition from a state to itself is a loop: `M x1 y V y-36 H x2 V y`.
+
+- `CJ.edge.refs(q, name)` returns the handles.
+- `CJ.edge.set(refs, level)` lights the transition: 0 is plain, 1 is the transition that was just taken.
+
+`CJ.tape(cls, x, y, cells)` draws the input as a row of `cells` boxes, one character each, with a read head
+above the current one. A box is 28 x 40 and boxes are 31 apart, so the row is `cells * 31 - 3` wide; the
+read head needs 22 px of clear space above it.
+
+- `CJ.tape.refs(q, name)` returns the handles.
+- `CJ.tape.set(refs, text, at, roles)` shows `text` with the read head on the character at index `at`.
+  Characters before `at` are drawn as read, and characters after it are dimmed. When the text is longer
+  than the row, the row shows the part around `at`. `roles` is optional: one entry per character,
+  `'primary'` (amber), `'secondary'` (cyan) or `''`, to tint the characters that belong together.
+
+`CJ.registers(cls, x, y, w, names)` draws the variables of the code as a table: one 26 px row per name, with
+the name on the left and its value on the right. Height is `10 + 26 * names.length`. A value must be at
+most `(w / 2 - 18) / 8.4` characters.
+
+- `CJ.registers.refs(q, name)` returns the handles.
+- `CJ.registers.set(refs, values, changed)` writes the values, as an array of texts in the order of the
+  names. `changed` is optional: an array of 0..1, where 1 draws the value in amber because the step that
+  was just taken changed it.
+*/
+
+// The points an SVG path made of M, H and V segments passes through, as
+// [x, y] pairs. Other commands are ignored.
+const pathPoints = (d) => {
+  const points = [];
+  let x = 0;
+  let y = 0;
+  const pattern = /([MHV])\s*(-?[\d.]+)(?:[\s,]+(-?[\d.]+))?/g;
+  for (let m = pattern.exec(d); m; m = pattern.exec(d)) {
+    if (m[1] === 'M') {
+      x = Number(m[2]);
+      y = Number(m[3]);
+    } else if (m[1] === 'H') x = Number(m[2]);
+    else y = Number(m[2]);
+    points.push([x, y]);
+  }
+  return points;
+};
+
+// A state of a state machine. The first element inside the group is the
+// state's outline, which is what the self-test measures when it checks labels
+// against the state.
+CJ.state = (cls, x, y, w, h, label, opts) => {
+  const o = opts || {};
+  let svg =
+    '<g class="' +
+    cls +
+    '" data-cj="state" transform="translate(' +
+    x +
+    ' ' +
+    y +
+    ')"><rect width="' +
+    w +
+    '" height="' +
+    h +
+    '" rx="16" style="fill:var(--panel);stroke:var(--ink);stroke-width:2.5"/>';
+  if (o.kind === 'accept')
+    svg +=
+      '<rect x="5" y="5" width="' +
+      (w - 10) +
+      '" height="' +
+      (h - 10) +
+      '" rx="12" style="fill:none;stroke:var(--ink);stroke-width:1.5"/>';
+  if (o.kind === 'start')
+    svg +=
+      '<path d="M-22 ' +
+      r2(h / 2) +
+      'H-6M-12 ' +
+      r2(h / 2 - 6) +
+      'L-6 ' +
+      r2(h / 2) +
+      'L-12 ' +
+      r2(h / 2 + 6) +
+      '" style="fill:none;stroke:var(--ink);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"/>';
+  svg += '</g>';
+  // The name is 16 px bold text, one line. With a second line the two lines
+  // are centred together.
+  const nameTop = Math.round(y + h / 2 - (o.sub ? 20 : 10));
+  let html =
+    '<div class="pl ' +
+    cls +
+    '-l" style="left:' +
+    x +
+    'px;top:' +
+    nameTop +
+    'px;width:' +
+    w +
+    'px;text-align:center;font-size:16px;font-weight:700;line-height:20px;color:var(--second)">' +
+    CJ.esc(label) +
+    '</div>';
+  if (o.sub)
+    html += CJ.label(o.sub, x, nameTop + 22, {
+      cls: cls + '-s',
+      w,
+      size: 14,
+      lineHeight: 18,
+    });
+  return makePart(svg, html, { x, y, w, h });
+};
+CJ.state.refs = (q, name) => ({ body: q(name), label: q(name + '-l') });
+CJ.state.set = (refs, level) => {
+  const lit = Math.round(100 * Math.min(1, Math.max(0, level || 0)));
+  refs.body.querySelectorAll('rect').forEach((el) => {
+    el.style.stroke =
+      'color-mix(in srgb, var(--main) ' + lit + '%, var(--ink))';
+  });
+  refs.label.style.color =
+    'color-mix(in srgb, var(--main) ' + lit + '%, var(--second))';
+};
+
+// A transition between two states. The line and its arrow head are the two
+// paths of the group, and CJ.edge.set restyles both.
+CJ.edge = (cls, d, opts) => {
+  const o = opts || {};
+  const points = pathPoints(d);
+  const fallback = o.kind === 'fallback';
+  const quiet = o.kind === 'quiet';
+  const stroke = fallback
+    ? 'var(--main)'
+    : quiet
+      ? 'var(--muted)'
+      : 'var(--ink)';
+  let head = '';
+  if (points.length >= 2) {
+    const end = points[points.length - 1];
+    const from = points[points.length - 2];
+    // The head is drawn pointing right and turned to the direction of the
+    // last segment.
+    const turn =
+      end[0] > from[0]
+        ? 0
+        : end[0] < from[0]
+          ? 180
+          : end[1] > from[1]
+            ? 90
+            : 270;
+    head =
+      '<path transform="translate(' +
+      end[0] +
+      ' ' +
+      end[1] +
+      ') rotate(' +
+      turn +
+      ')" d="M-10 -6L0 0L-10 6" style="fill:none;stroke:' +
+      stroke +
+      ';stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"/>';
+  }
+  const svg =
+    '<g class="' +
+    cls +
+    '" data-cj="edge" data-kind="' +
+    (fallback ? 'fallback' : quiet ? 'quiet' : 'go') +
+    '"><path d="' +
+    d +
+    '" style="fill:none;stroke:' +
+    stroke +
+    ';stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round' +
+    (fallback || quiet ? ';stroke-dasharray:7 7' : '') +
+    '"/>' +
+    head +
+    '</g>';
+  let html = '';
+  if (o.label != null && o.label !== '') {
+    const width = CJ.textWidth(o.label, 14);
+    let at = o.at;
+    if (!at) {
+      // The middle of the longest segment.
+      let best = null;
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1];
+        const b = points[i];
+        const length = Math.abs(b[0] - a[0]) + Math.abs(b[1] - a[1]);
+        if (!best || length > best.length) best = { a, b, length };
+      }
+      if (best) {
+        const mx = (best.a[0] + best.b[0]) / 2;
+        const my = (best.a[1] + best.b[1]) / 2;
+        at =
+          best.a[1] === best.b[1]
+            ? [Math.round(mx - width / 2), Math.round(my - 24)]
+            : [Math.round(mx + 10), Math.round(my - 8)];
+      } else at = [0, 0];
+    }
+    html = CJ.label(o.label, at[0], at[1], {
+      cls: cls + '-l',
+      size: 14,
+      color: fallback ? 'var(--main)' : undefined,
+    });
+  }
+  return makePart(svg, html, {});
+};
+CJ.edge.refs = (q, name) => ({ line: q(name), label: q(name + '-l') });
+CJ.edge.set = (refs, level) => {
+  const on = (level || 0) > 0.5;
+  const kind = refs.line.getAttribute('data-kind');
+  const plain = kind === 'quiet' ? 'var(--muted)' : 'var(--ink)';
+  refs.line.querySelectorAll('path').forEach((el) => {
+    el.style.stroke = on || kind === 'fallback' ? 'var(--main)' : plain;
+    el.style.strokeWidth = on ? 4.5 : 2.5;
+  });
+  if (refs.label)
+    refs.label.style.color =
+      on || kind === 'fallback' ? 'var(--main)' : 'var(--muted)';
+};
+
+// The sizes of the tape: one cell, and the distance from one cell to the
+// next.
+const TAPE_CELL_W = 28;
+const TAPE_CELL_H = 40;
+const TAPE_PITCH = 31;
+
+// The input of a state machine as a row of cells. Each cell is a group of a
+// box and one character of SVG text. A character of the stage font at 18 px
+// is 10.8 px wide, so it always fits its 28 px box.
+CJ.tape = (cls, x, y, cells) => {
+  let svg = '<g class="' + cls + '" data-cj="tape" data-cells="' + cells + '">';
+  for (let i = 0; i < cells; i++)
+    svg +=
+      '<g class="' +
+      cls +
+      '-c' +
+      i +
+      '" transform="translate(' +
+      (x + i * TAPE_PITCH) +
+      ' ' +
+      y +
+      ')"><rect width="' +
+      TAPE_CELL_W +
+      '" height="' +
+      TAPE_CELL_H +
+      '" rx="5" style="fill:var(--panel);stroke:var(--line);stroke-width:1.5"/>' +
+      '<text class="cj-tape-ch" x="' +
+      TAPE_CELL_W / 2 +
+      '" y="26.5" text-anchor="middle" style="font-size:18px;font-weight:700;fill:var(--second)"></text></g>';
+  // The read head: a small pointer above the current cell, with its tip on
+  // the top edge of the row. CJ.tape.set moves it.
+  svg +=
+    '<path class="' +
+    cls +
+    '-h" data-x="' +
+    x +
+    '" data-y="' +
+    y +
+    '" d="M0 -4L-8 -16H8Z" style="fill:var(--main)"/></g>';
+  return makePart(svg, '', { cellX: (i) => x + i * TAPE_PITCH });
+};
+CJ.tape.refs = (q, name) => {
+  const row = q(name);
+  const cells = [];
+  for (let i = 0; q(name + '-c' + i); i++) cells.push(q(name + '-c' + i));
+  const head = q(name + '-h');
+  return {
+    row,
+    cells,
+    head,
+    x: Number(head.getAttribute('data-x')),
+    y: Number(head.getAttribute('data-y')),
+  };
+};
+CJ.tape.set = (refs, text, at, roles) => {
+  const all = String(text == null ? '' : text);
+  const n = refs.cells.length;
+  const here = Math.max(0, Math.min(all.length, at == null ? 0 : at));
+  // The first character that is shown. The read head is kept about two
+  // thirds along the row, and the row never shows space past the end of the
+  // text while there is text to show before it.
+  const first = Math.max(
+    0,
+    Math.min(here - Math.floor(n * 0.66), all.length - n),
+  );
+  refs.cells.forEach((cell, i) => {
+    const index = first + i;
+    const ch = index < all.length ? all[index] : '';
+    const box = cell.firstElementChild;
+    const glyph = cell.lastElementChild;
+    // A space would be invisible, so it is shown as a small dot.
+    glyph.textContent = ch === ' ' ? '·' : ch;
+    const role = (roles && roles[index]) || '';
+    box.style.fill =
+      role === 'primary'
+        ? 'var(--amberdim)'
+        : role === 'secondary'
+          ? 'var(--cyandim)'
+          : 'var(--panel)';
+    box.style.stroke = index === here && ch ? 'var(--main)' : 'var(--line)';
+    box.style.strokeWidth = index === here && ch ? 3 : 1.5;
+    cell.style.opacity = !ch ? 0.25 : index > here ? 0.45 : 1;
+  });
+  const slot = Math.max(0, Math.min(n - 1, here - first));
+  refs.head.setAttribute(
+    'transform',
+    'translate(' +
+      (refs.x + slot * TAPE_PITCH + TAPE_CELL_W / 2) +
+      ' ' +
+      refs.y +
+      ')',
+  );
+  refs.head.style.opacity = here < all.length ? 1 : 0;
+};
+
+// The variables of the code as a table of names and values.
+CJ.registers = (cls, x, y, w, names) => {
+  const h = 10 + 26 * names.length;
+  let svg =
+    '<g class="' +
+    cls +
+    '" data-cj="registers"><rect x="' +
+    x +
+    '" y="' +
+    y +
+    '" width="' +
+    w +
+    '" height="' +
+    h +
+    '" rx="6" style="fill:var(--ground);stroke:var(--line);stroke-width:2"/>';
+  let html = '';
+  names.forEach((name, i) => {
+    const top = y + 5 + i * 26;
+    if (i)
+      svg +=
+        '<path d="M' +
+        (x + 8) +
+        ' ' +
+        top +
+        'H' +
+        (x + w - 8) +
+        '" style="stroke:var(--faint);stroke-width:1.5"/>';
+    html +=
+      CJ.label(name, x + 12, top + 4, { cls: cls + '-n' + i, size: 14 }) +
+      '<div class="pl ' +
+      cls +
+      '-v' +
+      i +
+      '" style="left:' +
+      Math.round(x + w / 2) +
+      'px;top:' +
+      (top + 4) +
+      'px;width:' +
+      Math.round(w / 2 - 12) +
+      'px;text-align:right;font-size:14px;color:var(--second)"></div>';
+  });
+  svg += '</g>';
+  return makePart(svg, html, { h });
+};
+CJ.registers.refs = (q, name) => {
+  const values = [];
+  for (let i = 0; q(name + '-v' + i); i++) values.push(q(name + '-v' + i));
+  return { box: q(name), values };
+};
+CJ.registers.set = (refs, values, changed) => {
+  refs.values.forEach((el, i) => {
+    const text = values && values[i] != null ? String(values[i]) : '';
+    el.textContent = text;
+    const lit = Math.round(
+      100 * Math.min(1, Math.max(0, (changed && changed[i]) || 0)),
+    );
+    el.style.color =
+      'color-mix(in srgb, var(--main) ' + lit + '%, var(--second))';
+  });
 };
 
 /*@api

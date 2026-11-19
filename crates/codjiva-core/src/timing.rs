@@ -59,6 +59,13 @@ const SECONDS_ABOVE_LINEAR: f64 = 100.0;
 
 /// A visual takes at least this long, however short the file is.
 const VISUAL_MIN_SECONDS: f64 = 30.0;
+/// How much longer a step-through takes than a first visual of the same code.
+/// It is a guess until enough step-through jobs have been timed: the timings
+/// of finished jobs then correct the estimate, as they do for every kind.
+const STEPTHROUGH_FACTOR: f64 = 1.6;
+/// How long a view takes, as a share of a first visual of the same code. Like
+/// `STEPTHROUGH_FACTOR` it is a guess until view jobs have been timed.
+const VIEW_FACTOR: f64 = 0.8;
 
 /// The share of the time for a visual that the agent needs when it makes a
 /// visual of a file again and starts from the version that exists.
@@ -244,7 +251,10 @@ pub fn shape(
             shape.film = request.film;
             shape.parts = request.parts.len() as u32;
         }
-        JobKind::Visualise | JobKind::Animate => {
+        JobKind::Visualise
+        | JobKind::Animate
+        | JobKind::Stepthrough
+        | JobKind::View => {
             shape.film = request.kind == JobKind::Animate;
             let mut subject = request.subject.clone();
             for path in &request.subject {
@@ -327,6 +337,14 @@ pub fn formula_seconds(shape: &JobShape) -> f64 {
             };
             (weight * share).max(VISUAL_MIN_SECONDS)
         }
+        // A step-through has the drawing of a visual and, on top of it, the
+        // step function and its examples.
+        JobKind::Stepthrough => {
+            (weight * STEPTHROUGH_FACTOR).max(VISUAL_MIN_SECONDS)
+        }
+        // A view needs the reading and the analysis of a visual, and no
+        // drawing, because the runtime draws it.
+        JobKind::View => (weight * VIEW_FACTOR).max(VISUAL_MIN_SECONDS),
         JobKind::Animate => {
             let share = if shape.has_start {
                 FILM_DRAWING_SHARE_WITH_START

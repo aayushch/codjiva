@@ -21,10 +21,11 @@ import {
   type RecentWorkspace,
   type Settings,
   type TreeEntry,
+  type ViewName,
   type ValidateRequest,
   type WorkspaceInfo,
 } from '$lib/ipc';
-import { PIPELINE_PREFIX, showsFilm } from '$lib/artifacts';
+import { isView, PIPELINE_PREFIX, showsFilm } from '$lib/artifacts';
 import {
   newJob,
   reduceJob,
@@ -32,9 +33,17 @@ import {
   targetOfArtifact,
   type JobView,
 } from '$lib/jobs';
+import {
+  absolutePath,
+  withOpened,
+  withoutClosed,
+  type OpenFile,
+} from '$lib/tabs';
 import { ancestorsOf, flattenTree, parentOf } from '$lib/tree';
 
-export type ViewTab = 'visual' | 'film' | 'source';
+// What the editor area can show for a file or a folder: its visual, its
+// film, its step-through, one of the four views, or its source.
+export type ViewTab = 'visual' | 'film' | 'steps' | ViewName | 'source';
 export type Dialog =
   | null
   | 'quickopen'
@@ -46,6 +55,15 @@ export type Dialog =
   | 'compose';
 export type Toast = { id: number; kind: 'info' | 'error'; text: string };
 
+// One line of a context menu: a command with its label, or a dividing line
+// between two groups of commands. A disabled command is shown greyed out and
+// does nothing.
+export type MenuItem =
+  { label: string; action: () => void; disabled?: boolean } | 'separator';
+// The context menu on screen: its commands, and the point of the window, in
+// pixels from the top-left corner, where the user asked for it.
+export type Menu = { x: number; y: number; items: MenuItem[] };
+
 // Limits for the panels the user can resize, in pixels.
 export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 480;
@@ -56,7 +74,7 @@ export const INSPECTOR_MAX = 560;
 // that is always left for the file tree above it.
 export const LIBRARY_MIN = 96;
 export const TREE_MIN = 160;
-export const DOCK_HEIGHT = 220;
+export const DOCK_HEIGHT = 244;
 // A film job lists more steps than the other kinds, so its panel is taller.
 export const DOCK_HEIGHT_FILM = 272;
 // The least height the user can drag the job panel to, and the height that is
@@ -64,10 +82,12 @@ export const DOCK_HEIGHT_FILM = 272;
 export const DOCK_MIN = 120;
 export const EDITOR_MIN = 160;
 
-// What the instructions dialog is asking about: which file, and the text to
-// start from.
+// What the instructions dialog is asking about: which kind of job, which
+// file, and the text to start from.
 export type InstructionsAsk = {
-  kind: 'visualise';
+  kind: 'visualise' | 'stepthrough' | 'view';
+  // For a view job: which view.
+  view?: ViewName;
   subject: string;
   initial: string;
   regenerate: boolean;
@@ -107,6 +127,17 @@ const PLACES_KEPT = 100;
 // The length of a film in real seconds for each choice in Settings.
 export const FILM_SECONDS = { short: 60, standard: 180, deep: 300 } as const;
 
+// The view that shows an artifact of the given kind. A pipeline is shown on
+// the Visual tab.
+const tabOf = (kind: ArtifactSummary['kind'] | undefined): ViewTab =>
+  kind === 'film'
+    ? 'film'
+    : kind === 'stepthrough'
+      ? 'steps'
+      : isView(kind)
+        ? kind
+        : 'visual';
+
 const messageOf = (error: unknown): string => {
   if (error && typeof error === 'object' && 'message' in error)
     return String((error as AppError).message);
@@ -142,6 +173,16 @@ class AppState {
   // The line the source viewer scrolls to and highlights, when a code reference
   // was followed.
   sourceLine = $state<number | null>(null);
+
+  // The file tabs above the toolbar, from left to right. Every file, folder
+  // and pipeline the user selects gets a tab, and keeps it until the user
+  // closes it. The tab of what is on screen is the one whose `path` equals
+  // `selected`.
+  openFiles = $state<OpenFile[]>([]);
+
+  // The context menu on screen, or null. `openMenu` shows one and `closeMenu`
+  // removes it.
+  menu = $state<Menu | null>(null);
 
   // Which of the two bundled examples is showing in place of a file, if any.
   example = $state<null | 'film' | 'visual'>(null);
@@ -185,6 +226,22 @@ class AppState {
         ) ?? null)
       : null,
   );
+  stepsArtifact = $derived(
+    this.selected
+      ? (this.artifacts.find(
+          (a) => a.kind === 'stepthrough' && a.subject[0] === this.selected,
+        ) ?? null)
+      : null,
+  );
+  // The view of the given name that was made of the selected file or folder,
+  // or null.
+  viewArtifact(view: ViewName): ArtifactSummary | null {
+    return (
+      this.artifacts.find(
+        (a) => a.kind === view && a.subject[0] === this.selected,
+      ) ?? null
+    );
+  }
   // The id of the selected pipeline. A pipeline is selected in place of a file,
   // and then `selected` holds its id after a prefix.
   selectedPipelineId = $derived(
@@ -193,13 +250,18 @@ class AppState {
       : null,
   );
   // The artifact on screen: the selected pipeline, or for a file its film on
-  // the Film tab and its visual otherwise.
+  // the Film tab, its step-through on the Step-through tab and its visual
+  // otherwise.
   currentArtifact = $derived(
     this.selectedPipelineId
       ? (this.artifacts.find((a) => a.id === this.selectedPipelineId) ?? null)
       : this.tab === 'film'
         ? this.filmArtifact
-        : this.visualArtifact,
+        : this.tab === 'steps'
+          ? this.stepsArtifact
+          : isView(this.tab)
+            ? this.viewArtifact(this.tab)
+            : this.visualArtifact,
   );
   // The artifacts ticked in the library for a pipeline, in the order they were
   // ticked.
@@ -221,6 +283,9 @@ class AppState {
   detail = $state<ArtifactDetail | null>(null);
   // The node of the visual the user clicked, and which layers are switched on.
   selectedNode = $state<string | null>(null);
+  // For a step-through: the node of the state that the step on screen is in.
+  // The inspector describes it while the user has clicked no node.
+  stepNode = $state<string | null>(null);
   layers = $state<Record<string, boolean>>({});
   legendOn = $state(false);
   // True while the visual on screen shows the "?" markers of the parts that
@@ -272,7 +337,12 @@ class AppState {
   // `placeIndex`.
   places = $state<Place[]>([]);
   placeIndex = $state(-1);
-  canGoBack = $derived(this.placeIndex > 0);
+  // While nothing is selected, because the user closed the last file tab,
+  // Back shows the place at `placeIndex` again. That place is the last one
+  // the user saw.
+  canGoBack = $derived(
+    this.placeIndex > 0 || (!this.selected && this.placeIndex >= 0),
+  );
   canGoForward = $derived(this.placeIndex < this.places.length - 1);
   // The time, in real seconds, the film player seeks to when its film is ready.
   // Back and Forward set it so that a film continues where the user left it.
@@ -355,6 +425,16 @@ class AppState {
       this.composeSelection = this.composeSelection.filter((id) =>
         this.artifacts.some((a) => a.id === id),
       );
+      // The file tab of a pipeline that no longer exists is removed, unless
+      // that pipeline is on screen.
+      this.openFiles = this.openFiles.filter(
+        (file) =>
+          !file.path.startsWith(PIPELINE_PREFIX) ||
+          file.path === this.selected ||
+          this.artifacts.some(
+            (a) => a.id === file.path.slice(PIPELINE_PREFIX.length),
+          ),
+      );
       const withPorts = this.artifacts
         .filter((a) => a.kind !== 'pipeline' && a.ports.length > 0)
         .map((a) => a.id);
@@ -384,14 +464,198 @@ class AppState {
   // the Back and Forward buttons. Every method that selects something or
   // switches the tab goes through here.
   private async move(change: () => Promise<void>) {
-    if (this.moves === 0) this.leavePlace();
+    if (this.moves === 0) {
+      this.leavePlace();
+      this.cameFrom = this.selected;
+    }
     this.moves++;
     try {
       await change();
     } finally {
       this.moves--;
-      if (this.moves === 0) this.recordPlace();
+      if (this.moves === 0) {
+        this.recordPlace();
+        this.noteOpenFile();
+      }
     }
+  }
+
+  // What was selected when the change of place that is under way began. A
+  // new file tab is put directly after the tab of this path.
+  private cameFrom: string | null = null;
+
+  // Brings the file tabs in line with what is on screen. It is called at the
+  // end of every change of place.
+  //   - If the selected file, folder or pipeline has no tab yet, it gets one.
+  //   - If it has a tab, the tab takes over the view that is showing now:
+  //     Visual, Film or Source, and the line of the source view.
+  private noteOpenFile() {
+    if (!this.selected) return;
+    this.openFiles = withOpened(
+      this.openFiles,
+      {
+        path: this.selected,
+        view: this.tab,
+        line: this.tab === 'source' ? this.sourceLine : null,
+      },
+      this.cameFrom,
+    );
+  }
+
+  // Shows what the file tab with the given path stands for, in the view the
+  // tab was last looked at in. Does nothing for a path that has no tab, and
+  // for the tab that is already on screen.
+  async showOpenFile(path: string) {
+    const file = this.openFiles.find((one) => one.path === path);
+    if (!file || path === this.selected) return;
+    await this.move(async () => {
+      if (path.startsWith(PIPELINE_PREFIX))
+        await this.selectPipeline(path.slice(PIPELINE_PREFIX.length));
+      else if (path.endsWith('/')) {
+        await this.selectFolder(path);
+        if (file.view === 'map') await this.setTab('map');
+      } else {
+        await this.selectFile(
+          path,
+          file.view === 'source' && file.line != null ? file.line : undefined,
+        );
+        if (this.tab !== file.view) await this.setTab(file.view);
+      }
+    });
+  }
+
+  // Closes the file tab with the given path.
+  //
+  // Closing a tab that is not on screen only removes it from the row. Closing
+  // the tab that is on screen also shows another one: the tab to its right,
+  // or the tab to its left if it was the last in the row. When it was the
+  // only tab, nothing is selected afterwards.
+  async closeOpenFile(path: string) {
+    const { files, next } = withoutClosed(this.openFiles, path);
+    const wasShown = path === this.selected;
+    this.openFiles = files;
+    if (!wasShown) return;
+    if (next) await this.showOpenFile(next.path);
+    else this.clearSelection();
+  }
+
+  // Closes every file tab except the one with the given path, and shows that
+  // one.
+  async closeOtherFiles(path: string) {
+    const kept = this.openFiles.filter((file) => file.path === path);
+    if (!kept.length) return;
+    await this.showOpenFile(path);
+    this.openFiles = this.openFiles.filter((file) => file.path === path);
+  }
+
+  // Leaves nothing selected, so that the editor area shows its hint to select
+  // a file.
+  private clearSelection() {
+    this.leavePlace();
+    this.selected = null;
+    this.fileInfo = null;
+    this.folderInfo = null;
+    this.detail = null;
+    this.pickedVersion = null;
+    this.sourceLine = null;
+    this.clearFeedbackContext();
+  }
+
+  // Shows a context menu with the given commands at the point of the window
+  // where `event` happened, in place of the menu the webview would show.
+  openMenu(event: MouseEvent, items: MenuItem[]) {
+    event.preventDefault();
+    this.menu = { x: event.clientX, y: event.clientY, items };
+  }
+
+  closeMenu() {
+    this.menu = null;
+  }
+
+  // Puts the path of a file or folder of the workspace on the clipboard.
+  // `relPath` is the path inside the workspace. With `absolute` the full path
+  // on this computer is copied instead.
+  //
+  // Returns true when the path was copied. A toast then says which path it
+  // was, unless `announce` is false. The copy button of the toolbar passes
+  // false, because it shows a tick of its own. When the path could not be
+  // copied, a toast says so in every case.
+  async copyPath(
+    relPath: string,
+    absolute = false,
+    announce = true,
+  ): Promise<boolean> {
+    const inside = relPath.replace(/\/$/, '');
+    const text =
+      absolute && this.workspace
+        ? absolutePath(this.workspace.root, inside)
+        : inside;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (announce) this.notify(`Copied ${text}`);
+      return true;
+    } catch {
+      this.notify('The path could not be copied to the clipboard.', 'error');
+      return false;
+    }
+  }
+
+  // Selects a file or folder and opens the dialog that starts a visual of it.
+  // If it has a visual already, the dialog starts from that visual's
+  // instructions. The dialog is not opened when no visual can be made: for a
+  // file that is not text, and for a folder that holds no code or too much of
+  // it. The editor area then says why.
+  async visualise(path: string) {
+    await this.selectFile(path);
+    if (this.selected !== path) return;
+    if (this.selectedIsFolder) {
+      const folder = this.folderInfo;
+      if (!folder || folder.tooLarge || folder.files.length === 0) return;
+    } else if (!this.fileInfo || this.fileInfo.binary) return;
+    if (!this.visualArtifact) return this.askInstructions();
+    await this.setTab('visual');
+    this.askInstructions(true);
+  }
+
+  // Selects a file and opens the dialog that starts a step-through of it. If
+  // the file has a step-through already, the dialog starts from that one's
+  // instructions. The dialog is not opened for a file that is not text.
+  async stepThrough(path: string) {
+    await this.selectFile(path);
+    if (this.selected !== path || !this.fileInfo || this.fileInfo.binary)
+      return;
+    await this.setTab('steps');
+    this.askInstructions(!!this.stepsArtifact, 'stepthrough');
+  }
+
+  // Selects a file or a folder and opens the dialog that starts one of the
+  // four views of it. A map is made of a folder, and the other views of a
+  // file; for the wrong one of the two nothing happens. If the view exists
+  // already, the dialog starts from its instructions. The dialog is not
+  // opened for a file that is not text, or for a folder that holds no code
+  // or too much of it.
+  async makeView(path: string, view: ViewName) {
+    if (path.endsWith('/') !== (view === 'map')) return;
+    await this.selectFile(path);
+    if (this.selected !== path) return;
+    if (this.selectedIsFolder) {
+      const folder = this.folderInfo;
+      if (!folder || folder.tooLarge || folder.files.length === 0) return;
+    } else if (!this.fileInfo || this.fileInfo.binary) return;
+    await this.setTab(view);
+    this.askInstructions(!!this.viewArtifact(view), 'view', view);
+  }
+
+  // Selects a file and opens the Animate dialog for it. If the file has a
+  // film already, the dialog starts from that film's instructions and
+  // companions. The dialog is not opened for a file that is not text.
+  async animate(path: string) {
+    await this.selectFile(path);
+    if (this.selected !== path || !this.fileInfo || this.fileInfo.binary)
+      return;
+    if (!this.filmArtifact) return this.askAnimate();
+    await this.setTab('film');
+    this.askAnimate(true);
   }
 
   // Called before the user leaves the place on screen. If that place is a film,
@@ -429,7 +693,9 @@ class AppState {
   }
 
   goBack(): Promise<void> {
-    return this.goToPlace(this.placeIndex - 1);
+    return this.goToPlace(
+      this.selected ? this.placeIndex - 1 : this.placeIndex,
+    );
   }
   goForward(): Promise<void> {
     return this.goToPlace(this.placeIndex + 1);
@@ -469,6 +735,7 @@ class AppState {
       return back ? this.goBack() : this.goForward();
     }
     this.leavePlace();
+    this.cameFrom = this.selected;
     this.placeIndex = index;
     // `moves` is raised without `move`, so that the selections below record no
     // new place.
@@ -477,9 +744,11 @@ class AppState {
       if (place.tab === 'film') this.resumeFilmAt = place.filmTime;
       if (place.selected.startsWith(PIPELINE_PREFIX))
         await this.selectPipeline(place.selected.slice(PIPELINE_PREFIX.length));
-      else if (place.selected.endsWith('/'))
+      else if (place.selected.endsWith('/')) {
         await this.selectFolder(place.selected);
-      else {
+        // A folder opens on its visual. Its map is the other thing it has.
+        if (place.tab === 'map') await this.setTab('map');
+      } else {
         await this.selectFile(
           place.selected,
           place.tab === 'source' && place.line != null ? place.line : undefined,
@@ -488,6 +757,7 @@ class AppState {
       }
     } finally {
       this.moves--;
+      this.noteOpenFile();
     }
   }
 
@@ -497,7 +767,7 @@ class AppState {
     if (artifact.kind === 'pipeline') return this.selectPipeline(artifact.id);
     await this.move(async () => {
       await this.selectFile(artifact.subject[0]);
-      await this.setTab(artifact.kind === 'film' ? 'film' : 'visual');
+      await this.setTab(tabOf(artifact.kind));
     });
   }
 
@@ -561,6 +831,7 @@ class AppState {
         return;
       this.detail = detail;
       this.selectedNode = null;
+      this.stepNode = null;
       this.legendOn = false;
       this.rationaleOn = false;
       this.layers = Object.fromEntries(
@@ -576,8 +847,13 @@ class AppState {
   }
 
   // Opens the instructions step for the selected file. `regenerate` starts from
-  // the instructions of the version on screen.
-  askInstructions(regenerate = false) {
+  // the instructions of the version on screen. `kind` is the job the step
+  // starts: a visual, a step-through, or a view, which `view` then names.
+  askInstructions(
+    regenerate = false,
+    kind: InstructionsAsk['kind'] = 'visualise',
+    view?: ViewName,
+  ) {
     if (!this.selected) return;
     const subject = this.selected;
     const initial = regenerate
@@ -585,7 +861,8 @@ class AppState {
       : '';
     this.withStore(() => {
       this.instructionsAsk = {
-        kind: 'visualise',
+        kind,
+        view,
         subject,
         initial,
         regenerate,
@@ -621,6 +898,10 @@ class AppState {
     if (artifact?.kind === 'pipeline')
       this.askCompose((artifact.parts ?? []).map((part) => part.artifact));
     else if (artifact?.kind === 'film') this.askAnimate(true);
+    else if (artifact?.kind === 'stepthrough')
+      this.askInstructions(true, 'stepthrough');
+    else if (isView(artifact?.kind))
+      this.askInstructions(true, 'view', artifact?.kind as ViewName);
     else this.askInstructions(true);
   }
 
@@ -766,7 +1047,7 @@ class AppState {
     }
     if (this.selected !== job.subject) return;
     await this.move(async () => {
-      this.tab = made?.kind === 'film' ? 'film' : 'visual';
+      this.tab = tabOf(made?.kind);
       this.pickedVersion = null;
       await this.loadDetail();
     });
@@ -978,6 +1259,8 @@ class AppState {
       this.expanded = {};
       this.selected = null;
       this.fileInfo = null;
+      this.openFiles = [];
+      this.menu = null;
       this.example = null;
       this.tab = 'visual';
       this.workspace = info;
@@ -1004,6 +1287,8 @@ class AppState {
     this.workspace = null;
     this.selected = null;
     this.fileInfo = null;
+    this.openFiles = [];
+    this.menu = null;
     this.example = null;
     this.places = [];
     this.placeIndex = -1;
@@ -1072,6 +1357,27 @@ class AppState {
         this.tab = 'film';
       else if (this.tab === 'film' && !this.filmArtifact && this.visualArtifact)
         this.tab = 'visual';
+      // A file without a step-through does not stay on that tab's empty
+      // state when it has a visual or a film to show.
+      else if (this.tab === 'steps' && !this.stepsArtifact)
+        this.tab = this.visualArtifact
+          ? 'visual'
+          : this.filmArtifact
+            ? 'film'
+            : 'steps';
+      // The same holds for a view the file does not have. A map is made of a
+      // folder, so a file is never left on the Map tab.
+      else if (
+        isView(this.tab) &&
+        (this.tab === 'map' || !this.viewArtifact(this.tab))
+      )
+        this.tab = this.visualArtifact
+          ? 'visual'
+          : this.filmArtifact
+            ? 'film'
+            : this.tab === 'map'
+              ? 'visual'
+              : this.tab;
       this.pickedVersion = null;
       this.detail = null;
       this.fileInfo = null;
@@ -1083,8 +1389,8 @@ class AppState {
     }
   }
 
-  // Selects a folder, to make or show a visual of the whole folder. A folder
-  // has no source view and no film, so the Visual tab is the only one.
+  // Selects a folder, to make or show a visual or a map of the whole folder.
+  // A folder has no source view and no film. It opens on the Visual tab.
   async selectFolder(relDir: string) {
     await this.move(() => this.showFolder(relDir));
   }
@@ -1118,16 +1424,18 @@ class AppState {
       for (const dir of changes.dirs) {
         if (this.children[dir]) await this.loadDir(dir);
       }
-      if (this.selected && changes.paths.includes(this.selected)) {
-        const stillThere = (this.children[parentOf(this.selected)] ?? []).some(
-          (e) => e.relPath === this.selected,
-        );
-        if (stillThere) this.fileInfo = await api.fileInfo(this.selected);
-        else {
-          this.selected = null;
-          this.fileInfo = null;
-        }
+      // A file that was deleted loses its file tab. Whether a file is still
+      // there is read from the entries of its folder, so a file whose folder
+      // is not loaded is left alone. If the deleted file was on screen,
+      // closing its tab shows the tab next to it.
+      for (const path of changes.paths) {
+        if (!this.openFiles.some((file) => file.path === path)) continue;
+        const siblings = this.children[parentOf(path)];
+        if (!siblings || siblings.some((e) => e.relPath === path)) continue;
+        await this.closeOpenFile(path);
       }
+      if (this.selected && changes.paths.includes(this.selected))
+        this.fileInfo = await api.fileInfo(this.selected);
       // A changed source file may have made an artifact stale, or current
       // again.
       if (

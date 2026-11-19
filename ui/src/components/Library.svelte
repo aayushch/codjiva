@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { portCount } from '$lib/artifacts';
+  import { kindWord, portCount } from '$lib/artifacts';
   import { app, LIBRARY_MIN, TREE_MIN } from '$lib/state/app.svelte';
   import Icon from './Icon.svelte';
   import Poster from './Poster.svelte';
@@ -97,7 +97,7 @@
             <div class="lib-text">
               <div class="t">{artifact.title}</div>
               <div class="m">
-                {artifact.kind}{artifact.durationSec
+                {kindWord(artifact)}{artifact.durationSec
                   ? ' · ' + formatDuration(artifact.durationSec)
                   : ''} · v{artifact.currentVersion}{#if artifact.stale}{' · '}<span
                     class="stale">stale</span

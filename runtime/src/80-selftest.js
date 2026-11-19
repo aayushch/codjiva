@@ -284,6 +284,31 @@ const selfTest = async (env, opts) => {
   // Where each packet was at the previous sample, for the packet size check.
   const packetBoxes = new Map();
 
+  // The element that gives a machine, a frame or a state its outline. A
+  // machine starts with its drop shadow, so its outline is the second element
+  // of its group. A frame and a state have no shadow, so their outline is the
+  // first.
+  const housingBody = (el) =>
+    el.getAttribute('data-cj') === 'machine'
+      ? el.children[1] || el
+      : el.children[0] || el;
+
+  // The form and kind of a packet as one string, such as "element primary".
+  // A packet without a `data-form` attribute is a crate.
+  const packetLook = (el) =>
+    (el.getAttribute('data-form') || 'crate') +
+    ' ' +
+    el.getAttribute('data-kind');
+  // The same string for a row of a legend.
+  const rowLook = (row) => (row.form || 'crate') + ' ' + row.kind;
+  // How a message names a look. A crate is named by its kind alone.
+  const lookInWords = (look) => {
+    const [form, kind] = look.split(' ');
+    return form === 'crate'
+      ? 'kind "' + kind + '"'
+      : 'form "' + form + '" and kind "' + kind + '"';
+  };
+
   // ---- checks that look at one drawn frame
   // ------------------------------------------------- box: the scene box.
   // prefix: its class prefix. t: film time, for the report. holding: true when
@@ -326,10 +351,13 @@ const selfTest = async (env, opts) => {
         }
       }
     }
-    // 4. Text overlap: label against a machine it is neither inside nor clear
-    //    of.
+    // 4. Text overlap: label against a machine, a frame or a state it is
+    //    neither inside nor clear of.
     const machines = Array.from(
-      box.querySelectorAll('.world [data-cj="machine"]'),
+      box.querySelectorAll(
+        '.world [data-cj="machine"], .world [data-cj="frame"], ' +
+          '.world [data-cj="state"]',
+      ),
     )
       .filter(
         (el) =>
@@ -337,7 +365,7 @@ const selfTest = async (env, opts) => {
           !el.closest('.cj-lift') &&
           !el.closest('.cj-bay'),
       )
-      .map((el) => ({ el, box: boxOf(el.children[1] || el) }));
+      .map((el) => ({ el, box: boxOf(housingBody(el)) }));
     labels.forEach((label) => {
       // A numbered marker is meant to sit on the edge or corner of the part it
       // points at.
@@ -352,7 +380,10 @@ const selfTest = async (env, opts) => {
             t,
             a: describe(label.el, prefix),
             b: describe(machine.el, prefix),
-            hint: 'This label crosses the edge of a machine. Put it fully inside the machine or fully clear of it. Fix only this label.',
+            hint:
+              'This label crosses the edge of a ' +
+              machine.el.getAttribute('data-cj') +
+              '. Put it fully inside or fully clear of it. Fix only this label.',
           });
         }
       });
@@ -459,10 +490,9 @@ const selfTest = async (env, opts) => {
       });
     }
 
-    // 9. Packets of one kind must be one size. Only packets that have not moved
-    //    since the last
-    // sample are compared, because a packet may shrink or grow briefly while it
-    // enters or leaves.
+    // 9. Packets of one form and kind must be one size. Only packets that have
+    //    not moved since the last sample are compared, because a packet may
+    //    shrink or grow briefly while it enters or leaves.
     const sizes = {};
     box.querySelectorAll('.world [data-cj="packet"]').forEach((el) => {
       if (
@@ -481,11 +511,11 @@ const selfTest = async (env, opts) => {
         Math.abs(last[1] - b[1]) < 0.5 &&
         Math.abs(last[2] - b[2]) < 0.5;
       if (!still) return;
-      const kind = el.getAttribute('data-kind');
-      (sizes[kind] = sizes[kind] || []).push({ el, w: b[2] });
+      const look = packetLook(el);
+      (sizes[look] = sizes[look] || []).push({ el, w: b[2] });
     });
-    Object.keys(sizes).forEach((kind) => {
-      const list = sizes[kind].sort((a, b) => a.w - b.w);
+    Object.keys(sizes).forEach((look) => {
+      const list = sizes[look].sort((a, b) => a.w - b.w);
       const small = list[0];
       const large = list[list.length - 1];
       if (large.w > small.w * 1.15) {
@@ -494,13 +524,13 @@ const selfTest = async (env, opts) => {
           severity: 'warning',
           scene: sceneId,
           t,
-          key: kind,
+          key: look,
           a: describe(small.el, prefix),
           b: describe(large.el, prefix),
           hint:
-            'Packets of kind "' +
-            kind +
-            '" are drawn at different sizes. Keep every packet at scale 1 except while it enters or leaves.',
+            'Packets of ' +
+            lookInWords(look) +
+            ' are drawn at different sizes. Keep every packet at scale 1 except while it enters or leaves.',
         });
       }
     });
@@ -638,6 +668,41 @@ const selfTest = async (env, opts) => {
     return a === b;
   };
 
+  // 15. Legend coverage: every look a packet is drawn in has a legend row.
+  // `rows` is the legend of the film or visual. `usedLooks` maps each look
+  // that is drawn to the id of a scene that draws it. `file` is the file the
+  // legend is written in, for the hint.
+  const checkLegend = (rows, usedLooks, file) => {
+    const listed = {};
+    (rows || []).forEach((row) => {
+      listed[rowLook(row)] = 1;
+    });
+    Object.keys(usedLooks).forEach((look) => {
+      if (listed[look]) return;
+      const [form, kind] = look.split(' ');
+      report({
+        check: 'legend',
+        severity: 'warning',
+        scene: usedLooks[look],
+        key: look,
+        message:
+          'Packets of ' +
+          lookInWords(look) +
+          ' are used but the legend does not list them.',
+        hint:
+          form === 'crate'
+            ? 'Add a legend row for "' + kind + '" to ' + file + '.'
+            : 'Add a legend row with "kind": "' +
+              kind +
+              '" and "form": "' +
+              form +
+              '" to ' +
+              file +
+              '.',
+      });
+    });
+  };
+
   registry.loadErrors.forEach((e) => {
     report({
       check: 'exception',
@@ -684,6 +749,40 @@ const selfTest = async (env, opts) => {
       checkFrame(box, 'v', 'v', 0, true);
     });
     visual.openMarker(-1);
+    // A map draws one page per level. Each page is shown and checked, and
+    // the map is left on the page it was on.
+    if (visual.pages) {
+      const shown = visual.pages.current;
+      visual.pages.ids.forEach((id) => {
+        visual.pages.open(id);
+        checkFrame(box, 'v', 'v', 0, true);
+      });
+      visual.pages.open(shown);
+    }
+    // The packets inside a pipeline's bay belong to a part, which has a
+    // legend of its own, so they need no row in this one.
+    const drawn = {};
+    box.querySelectorAll('.world [data-cj="packet"]').forEach((el) => {
+      if (!el.closest('.cj-bay')) drawn[packetLook(el)] = 'v';
+    });
+    checkLegend(env.data.visual.legend, drawn, 'visual.json');
+    // A step-through: every example is run, and the drawing is checked once
+    // more with a step on screen. `stats.simRefs` lists the code references
+    // the steps gave, which the app compares with the workspace.
+    if (visual.stepper) {
+      const found = visual.stepper.check();
+      found.issues.forEach(report);
+      stats.simRefs = found.refs;
+      checkFrame(box, 'v', 'v', 0, true);
+    } else if (env.data.visual.stepper) {
+      report({
+        check: 'sim',
+        severity: 'error',
+        scene: 'v',
+        message: 'The step-through could not be started.',
+        hint: 'Check that sim.js calls CJ.defineSim({ init, step, vars, outputs }).',
+      });
+    }
     stats.samples = 1 + visual.markers.length;
     const errors = issues.filter((i) => i.severity === 'error').length;
     return {
@@ -699,7 +798,9 @@ const selfTest = async (env, opts) => {
   // -----------------------------------------------------------------------------
   const film = env.film;
   const ids = {};
-  const usedKinds = {};
+  // The looks of the packets the film draws, each with the id of the last
+  // scene that drew it.
+  const usedLooks = {};
   let previous = null;
 
   for (const scene of film.scenes) {
@@ -794,8 +895,7 @@ const selfTest = async (env, opts) => {
     }
 
     box.querySelectorAll('.world [data-cj="packet"]').forEach((el) => {
-      if (!el.closest('.cj-legend'))
-        usedKinds[el.getAttribute('data-kind')] = id;
+      if (!el.closest('.cj-legend')) usedLooks[packetLook(el)] = id;
     });
 
     if (scene.ready) {
@@ -918,25 +1018,7 @@ const selfTest = async (env, opts) => {
     await new Promise((done) => setTimeout(done, 0));
   }
 
-  // 15. Legend coverage.
-  const listed = {};
-  (env.data.film.legend || []).forEach((row) => {
-    listed[row.kind] = 1;
-  });
-  Object.keys(usedKinds).forEach((kind) => {
-    if (!listed[kind])
-      report({
-        check: 'legend',
-        severity: 'warning',
-        scene: usedKinds[kind],
-        key: kind,
-        message:
-          'Packets of kind "' +
-          kind +
-          '" are used but the legend does not list them.',
-        hint: 'Add a legend row for "' + kind + '" to film.json.',
-      });
-  });
+  checkLegend(env.data.film.legend, usedLooks, 'film.json');
 
   // 13. The stage font itself.
   if (document.fonts && !document.fonts.check('18px "JetBrains Mono"')) {

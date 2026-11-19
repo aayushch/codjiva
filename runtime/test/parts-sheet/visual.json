@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "title": "Parts sheet · packet forms, cursor and frame",
+  "camera": { "cx": 960, "cy": 560, "z": 1 },
+  "legend": [
+    { "kind": "primary", "form": "element", "html": "A menu item · one entry of <code>items</code>" },
+    { "kind": "secondary", "form": "element", "html": "The <code>More</code> item, with a number on it" },
+    { "kind": "transient", "form": "element", "html": "An item that is drawn for a moment and removed" },
+    { "kind": "secondary", "form": "record", "html": "A row of the table <code>rows</code>" },
+    { "kind": "transient", "form": "record", "html": "A temporary copy of a row" },
+    { "kind": "primary", "form": "value", "html": "A number · <code>count</code>, with its value written on it" }
+  ],
+  "nodes": [
+    { "id": "frame", "label": "menu", "role": "A frame: a region of the screen", "select": ["frame"] },
+    { "id": "mach", "label": "render()", "role": "A machine: code that runs", "select": ["mach"] }
+  ]
+}

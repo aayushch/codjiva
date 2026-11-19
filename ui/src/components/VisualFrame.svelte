@@ -2,16 +2,22 @@
   import { app } from '$lib/state/app.svelte';
   import ArtifactFrame from './ArtifactFrame.svelte';
 
-  // Shows a still visual in the sandboxed frame, with zoom controls over its
-  // corner. Panning, zooming with the wheel, hovering and clicking are handled
-  // by the visual itself.
+  // Shows a still visual or a step-through in the sandboxed frame, with zoom
+  // controls over its corner. Panning, zooming with the wheel, hovering and
+  // clicking are handled by the visual itself.
+  //
+  // `steps` is true for a step-through. A step-through has a strip of panels
+  // along the bottom of its frame, so the zoom controls are placed above that
+  // strip and not in the corner, where they would cover it.
   let {
     src,
     title,
+    steps = false,
     onselect = () => {},
   }: {
     src: string;
     title: string;
+    steps?: boolean;
     onselect?: (nodeId: string | null) => void;
   } = $props();
 
@@ -25,6 +31,8 @@
 
   function onmessage(message: any) {
     if (message.cj === 'selected') onselect(message.nodeId);
+    // A step-through reports the state that the step on screen is in.
+    else if (message.cj === 'step') app.stepNode = message.nodeId ?? null;
     else if (message.cj === 'picked') {
       // The user pointed at an element for their feedback.
       app.picked =
@@ -54,7 +62,7 @@
 <div class="canvas" bind:this={canvas}>
   <ArtifactFrame bind:this={frame} {src} {title} {onmessage} />
   {#if problem}<div class="frame-problem">{problem}</div>{/if}
-  <div class="zoomctl">
+  <div class="zoomctl" class:above-strip={steps}>
     <button
       class="btn tip-up tip-end"
       aria-label="Zoom out"

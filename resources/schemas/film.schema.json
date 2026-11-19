@@ -12,6 +12,7 @@
     },
     "legend": {
       "type": "array",
+      "maxItems": 6,
       "items": {
         "type": "object",
         "properties": {
@@ -23,6 +24,17 @@
               "batch",
               "tally"
             ]
+          },
+          "form": {
+            "enum": [
+              "crate",
+              "record",
+              "value",
+              "key",
+              "element",
+              "chunk"
+            ],
+            "description": "the shape of the packet; a crate when omitted. Not allowed with the kinds batch and tally."
           },
           "html": {
             "type": "string"

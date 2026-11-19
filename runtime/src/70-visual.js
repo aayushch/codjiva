@@ -14,12 +14,26 @@ hover highlight, click to select, layer toggles and numbered markers. You only d
 | `title` | Shown in the title band. |
 | `camera` | `{ cx, cy, z }`: the default framing. Choose it so the whole flow is visible with at least 40 px of margin. |
 | `state` | The plant state to show, merged over the plant's `defaults`. Pick a moment where the interesting parts are visible at once. |
-| `nodes` | The clickable parts: `{ id, label, role, refs: [{ path, line }], select: [names] }`. `select` lists the unprefixed names of the elements that highlight together; give each clickable machine one wrapping element. Whatever is drawn inside a selected element, such as the labels on a machine, is highlighted with it. A plate inside a machine can be a node of its own: a click on it selects it, and a click beside it selects the machine. |
+| `nodes` | The clickable parts: `{ id, label, role, refs: [{ path, line, end }], select: [names] }`. `select` lists the unprefixed names of the elements that highlight together; give each clickable machine one wrapping element. Whatever is drawn inside a selected element, such as the labels on a machine, is highlighted with it. A plate inside a machine can be a node of its own: a click on it selects it, and a click beside it selects the machine. A node also carries the detail that the app shows when the viewer selects it (see "Node detail"). |
 | `layers` | `{ data: [...], control: [...], errors: [...], labels: [...] }`. Each entry is an unprefixed element name, a name ending in `*` (matches `pipe1`, `pipe2`, ...), or a class selector starting with `.` (such as `.pl` and `.plt` for all labels and plates). |
 | `markers` | 3 to 8 points of interest: `{ x, y, n, bubble: { kicker, html, tail, alarm } }`. `n` is the number shown, in reading order along the flow. Clicking a marker opens its bubble beside it. |
-| `legend` | Optional rows `{ kind, html }`, one per packet kind used. |
+| `legend` | Optional rows `{ kind, form, html }`, one for each combination of packet kind and form the plant draws. Leave `form` out for a crate. A row names one thing. At most 6 rows, and at most 3 different forms. |
 
 A node may also have a `rationale`: why the code does what the node stands for (see Rationale).
+
+### Node detail
+
+The drawing stays calm, and the detail of a part is shown beside it when the viewer selects the part. Give
+every node that stands for code the fields below that apply to it. They cost nothing in the drawing, so do
+not hold back: this is where the viewer finds what the code really does.
+
+| Field | Meaning |
+|-------|---------|
+| `refs` | `[{ path, line, end }]`. The first entry is the code of this part: `line` is its first line and `end` its last, at most 24 lines. The app shows those lines under the part's name, so never copy code into another field. |
+| `inputs` | What the part reads: up to 6 short texts, each a name from the code and what it is, such as `now: the time of the order`. |
+| `outputs` | What the part writes or returns, in the same form: `w.count++`. |
+| `transitions` | Where the work goes from here: `[{ when, to }]`. `when` is the condition in a few words (`an order arrives`, `count > 30`, `on error`). `to` is the id of another node, or a few words when the target is not drawn. |
+| `edgeCases` | What a reader would not expect: `[{ text, example, refs }]`. `text` is one or two sentences on what the code does in the case. `example` is an input that shows it, when there is one. `refs` name the line that makes it so. List every one you find: a limit that is off by one, a value that is never reset, input that is accepted although it looks wrong, a branch that can never run. Only what the code shows: no guesses about what was intended. |
 */
 
 const buildVisual = (visual, stage, post) => {
@@ -186,6 +200,16 @@ const buildVisual = (visual, stage, post) => {
     cy: visual.camera.cy,
     z: visual.camera.z,
   };
+  // The part of the world the viewer can move over, as [x, y, width,
+  // height]. A visual is drawn on the 1920 x 1080 sheet. A view may be
+  // larger and says how large in `visual.bounds`; it may also be zoomed out
+  // further, so that all of it fits in the window.
+  const limits = visual.bounds || [0, 0, STAGE_W, STAGE_H];
+  const leastZoom = visual.bounds ? 0.12 : 0.5;
+  const insideX = (x) =>
+    Math.min(limits[0] + limits[2], Math.max(limits[0], x));
+  const insideY = (y) =>
+    Math.min(limits[1] + limits[3], Math.max(limits[1], y));
   const view = { cx: home.cx, cy: home.cy, z: home.z };
   let hovered = null;
   let selected = null;
@@ -338,9 +362,27 @@ const buildVisual = (visual, stage, post) => {
     });
   };
 
+  // Functions that other parts of the runtime add to be told what the viewer
+  // does. Every function in `hooks.select` is called with the id of the node
+  // that was selected, or null. The step-through adds one, to show that node
+  // in its panel. A view may also have its own `onSelect`, which gets the
+  // handle this function returns and the id.
+  //
+  // Every function in `hooks.open` is called with the id of a node when the
+  // viewer clicks that node twice within DOUBLE_CLICK milliseconds. A map
+  // adds one, to go into the node. The second click is recognised here and
+  // not by the browser's own double-click event: the first click redraws
+  // the highlight under the pointer, and one browser engine then no longer
+  // reports the two clicks as a double-click.
+  const hooks = { select: [], open: [] };
+  const DOUBLE_CLICK = 450;
+  let lastClick = { id: null, at: 0 };
+  let handle = null;
   const select = (id, silent) => {
     selected = id && nodeById[id] ? id : null;
     draw();
+    hooks.select.forEach((told) => told(selected));
+    if (visual.onSelect && handle) visual.onSelect(handle, selected);
     if (!silent) post({ cj: 'selected', nodeId: selected });
   };
 
@@ -363,10 +405,10 @@ const buildVisual = (visual, stage, post) => {
     const before = view.z * CAMERA_SCALE;
     const wx = view.cx + (vx - VIEW_CX) / before;
     const wy = view.cy + (vy - VIEW_CY) / before;
-    view.z = Math.min(3, Math.max(0.5, view.z * factor));
+    view.z = Math.min(3, Math.max(leastZoom, view.z * factor));
     const after = view.z * CAMERA_SCALE;
-    view.cx = Math.min(STAGE_W, Math.max(0, wx - (vx - VIEW_CX) / after));
-    view.cy = Math.min(STAGE_H, Math.max(0, wy - (vy - VIEW_CY) / after));
+    view.cx = insideX(wx - (vx - VIEW_CX) / after);
+    view.cy = insideY(wy - (vy - VIEW_CY) / after);
     draw();
   };
 
@@ -403,8 +445,8 @@ const buildVisual = (visual, stage, post) => {
       const dy = ev.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
       if (drag.moved) {
-        view.cx = Math.min(STAGE_W, Math.max(0, drag.cx - dx / k));
-        view.cy = Math.min(STAGE_H, Math.max(0, drag.cy - dy / k));
+        view.cx = insideX(drag.cx - dx / k);
+        view.cy = insideY(drag.cy - dy / k);
         draw();
       }
       return;
@@ -452,7 +494,13 @@ const buildVisual = (visual, stage, post) => {
     }
     if (under && under.closest && under.closest('.bub')) return;
     openMarker = -1;
-    select(nodeAt(ev.clientX, ev.clientY));
+    const id = nodeAt(ev.clientX, ev.clientY);
+    const now = performance.now();
+    const twice =
+      !!id && id === lastClick.id && now - lastClick.at < DOUBLE_CLICK;
+    lastClick = { id: twice ? null : id, at: now };
+    if (twice && hooks.open.length) hooks.open.forEach((told) => told(id));
+    else select(id);
   });
   m.view.addEventListener('pointerleave', () => {
     if (hovered) {
@@ -482,7 +530,7 @@ const buildVisual = (visual, stage, post) => {
 
   draw();
 
-  return {
+  handle = {
     kind: 'visual',
     visual,
     box,
@@ -490,8 +538,31 @@ const buildVisual = (visual, stage, post) => {
     view,
     nodes,
     markers,
+    hooks,
     draw,
     fit,
+    nodeAt,
+    // Makes the box `bounds` (`[x, y, width, height]`) the default framing,
+    // which Fit returns to, and shows it.
+    fitTo(bounds) {
+      Object.assign(home, cameraFor(bounds));
+      fit();
+    },
+    // Forgets which node the pointer is over. A map calls it when it shows
+    // another level, because the node under the pointer is then hidden and
+    // must not stay highlighted.
+    clearHover() {
+      hovered = null;
+      tip.style.opacity = 0;
+      draw();
+    },
+    // Moves the camera to the world point `cx, cy` without changing the
+    // zoom.
+    panTo(cx, cy) {
+      view.cx = insideX(cx);
+      view.cy = insideY(cy);
+      draw();
+    },
     select,
     setLayers,
     layers: () => Object.assign({}, layerOn),
@@ -533,4 +604,5 @@ const buildVisual = (visual, stage, post) => {
       draw();
     },
   };
+  return handle;
 };

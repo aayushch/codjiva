@@ -231,7 +231,10 @@ export type Join = {
 export type Part = { key: string; artifact: string; version: number };
 
 export type JobRequest = {
-  kind: 'visualise' | 'animate' | 'compose' | 'feedback';
+  kind:
+    'visualise' | 'animate' | 'compose' | 'stepthrough' | 'view' | 'feedback';
+  // For a view job: which of the four views to make.
+  view?: ViewName;
   // The file the artifact explains. Empty for a feedback job, which names a
   // version instead.
   subject: string[];
@@ -374,7 +377,15 @@ export type JobEvent =
   | { type: 'failed'; code: string; message: string }
   | { type: 'cancelled' };
 
-export type ArtifactKind = 'visual' | 'film' | 'pipeline';
+// The four views. A view is drawn by the runtime from data that the agent
+// wrote, without coordinates. `schema` shows the data shapes of the code,
+// `lanes` who talks to whom in time order, `structure` a data structure in
+// memory step by step, and `map` a folder level by level.
+export type ViewName = 'schema' | 'lanes' | 'structure' | 'map';
+// A step-through is a visual that the viewer can run on an input, one step
+// at a time.
+export type ArtifactKind =
+  'visual' | 'film' | 'pipeline' | 'stepthrough' | ViewName;
 
 export type VersionSummary = {
   version: number;
@@ -406,7 +417,9 @@ export type ArtifactSummary = {
   parts?: Part[];
 };
 
-export type CodeRef = { path: string; line: number };
+// A place in the code. `end` is the last line when the reference names a
+// range of lines and not one line.
+export type CodeRef = { path: string; line: number; end?: number };
 // Why the code does what a node of a visual or a bubble of a film describes.
 // `text` is plain words with identifiers between backticks. `basis` says
 // where the reason comes from: "stated" when a comment or a name in the code
@@ -417,6 +430,16 @@ export type Rationale = {
   basis: 'stated' | 'inferred';
   refs: CodeRef[];
 };
+// One way the work goes on from a part. `to` is the id of another node, or a
+// few words when the target is not drawn.
+export type NodeTransition = { when: string; to: string };
+// Something the code does that a reader would not expect. `example` is an
+// input that shows it. `refs` name the lines that make it so.
+export type EdgeCase = { text: string; example?: string; refs: CodeRef[] };
+// One part of a visual or a step-through that the viewer can select. Besides
+// its name and role it carries the detail the inspector shows for it: the
+// code behind it (the first entry of `refs`), what it reads and writes, where
+// the work goes next, and its edge cases.
 export type VisualNode = {
   id: string;
   label: string;
@@ -424,6 +447,49 @@ export type VisualNode = {
   refs?: CodeRef[];
   rationale?: Rationale;
   select: string[];
+  inputs?: string[];
+  outputs?: string[];
+  transitions?: NodeTransition[];
+  edgeCases?: EdgeCase[];
+  // What kind of thing the node is, in a view: `struct` or `enum` in a
+  // schema, `service` or `thread` in lanes, `file` or `function` on a map.
+  kind?: string;
+  // In a schema: the fields of the type, in the order of the code.
+  fields?: SchemaField[];
+  // On a map: the id of the node this one is inside, and the workspace path
+  // of the file or folder it stands for.
+  parent?: string;
+  path?: string;
+};
+// One field of a type in a schema view. An enum's values are fields without
+// a `type`. `key` is true for a field that identifies the record.
+export type SchemaField = {
+  name: string;
+  type?: string;
+  note?: string;
+  key?: boolean;
+  optional?: boolean;
+};
+// In a schema view: the function `by` reads or writes the field `field` of
+// the node `node`, at the place `ref` names as `path:line`.
+export type FieldUse = {
+  node: string;
+  field: string;
+  by: string;
+  how: 'reads' | 'writes';
+  ref: string;
+};
+// On a map: the node `from` uses the node `to`.
+export type MapLink = {
+  from: string;
+  to: string;
+  kind: string;
+  label?: string;
+};
+// What a step-through adds to a visual, as far as the app reads it.
+export type Stepper = {
+  input: { label: string; hint?: string };
+  presets: { label: string; input: string }[];
 };
 // One chapter of a film as film.json holds it, as far as the app reads it.
 export type FilmScene = {
@@ -477,6 +543,13 @@ export type ArtifactDetail = {
   definition: {
     title?: string;
     nodes?: VisualNode[];
+    // Set for a step-through only.
+    stepper?: Stepper;
+    // Set for a view: which view it is, and the parts of its data that the
+    // inspector shows beside the nodes.
+    view?: ViewName;
+    uses?: FieldUse[];
+    links?: MapLink[];
     layers?: Record<string, string[]>;
     legend?: unknown[];
     // The chapters of a film. A visual has none.

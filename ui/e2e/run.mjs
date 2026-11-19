@@ -43,6 +43,22 @@ const build = (name) =>
 build('film');
 build('visual');
 build('pipeline');
+build('stepthrough');
+// The four reference views, which the mock shows for a view of each name.
+for (const view of ['schema', 'lanes', 'structure', 'map'])
+  execFileSync(
+    'cargo',
+    [
+      'run',
+      '-q',
+      '-p',
+      'codjiva-build',
+      '--',
+      path.join(root, 'runtime/reference/views', view),
+      path.join(out, 'artifact/reference', `view-${view}.html`),
+    ],
+    { cwd: root, stdio: ['ignore', 'ignore', 'inherit'] },
+  );
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -194,7 +210,7 @@ const windowHeight = page.viewportSize().height;
   );
   await page
     .locator('.dock.idle')
-    .getByRole('button', { name: 'Close' })
+    .getByRole('button', { name: 'Close', exact: true })
     .click();
   check(
     (await page.locator('.dock').count()) === 0,
@@ -259,7 +275,7 @@ check(
   'the job log shows the write guard result',
 );
 check(
-  /\$0\.42/.test(await page.locator('.dock-foot').textContent()),
+  /\$0\.42/.test(await page.locator('.dock-meta').textContent()),
   'the dock shows what the job cost',
 );
 check(
@@ -293,7 +309,7 @@ check(
 await shot('03d-tree-tint');
 await row('internal').click();
 await row('handler.go').waitFor();
-await page.getByRole('button', { name: 'Close' }).click();
+await page.getByRole('button', { name: 'Close', exact: true }).click();
 
 // ---- the library can be closed to its heading, and its top edge can be
 // dragged
@@ -600,6 +616,44 @@ await page
   .locator('.inspector h3', { hasText: 'Submit()' })
   .waitFor({ timeout: 5000 });
 check(true, 'clicking a machine shows its name and role in the inspector');
+// The inspector also shows the detail of the part: the lines of its code,
+// read from the file, what it reads and writes, where the work goes on, and
+// its edge cases.
+await page.locator('.inspector .excerpt-line').first().waitFor();
+const partDetail = await page.evaluate(() => {
+  const inspector = document.querySelector('.inspector');
+  return {
+    firstLine: inspector.querySelector('.excerpt-num').textContent,
+    lines: inspector.querySelectorAll('.excerpt-line').length,
+    heading: inspector.querySelector('.excerpt .ref').textContent,
+    io: Array.from(inspector.querySelectorAll('.io-row')).map(
+      (el) => el.textContent,
+    ),
+    transitions: Array.from(inspector.querySelectorAll('.transition')).map(
+      (el) => el.textContent.replace(/\s+/g, ' ').trim(),
+    ),
+    edgeCase: inspector.querySelector('.edge-case')?.textContent ?? '',
+  };
+});
+check(
+  partDetail.firstLine === '20' &&
+    partDetail.lines === 7 &&
+    partDetail.heading === 'handler.go:20–26' &&
+    partDetail.io.includes('o: the order') &&
+    partDetail.transitions[0] === 'the order is valid → flushLocked()' &&
+    /repeated ID/.test(partDetail.edgeCase) &&
+    /handler\.go:22/.test(partDetail.edgeCase),
+  'the inspector shows the code, the inputs, the transitions and the edge cases of a part',
+  JSON.stringify(partDetail),
+);
+// A transition that leads to another part selects that part.
+await page.locator('.inspector .transition button').first().click();
+await page.locator('.inspector h3', { hasText: 'flushLocked()' }).waitFor();
+// The drawing learns of the selection through a message, a moment later.
+await visual.locator('.v-flush.cj-selected').waitFor();
+check(true, 'a transition in the inspector selects the part it leads to');
+await page.mouse.click(gate.x + gate.width / 2, gate.y + gate.height / 2);
+await page.locator('.inspector h3', { hasText: 'Submit()' }).waitFor();
 await shot('03d-visual');
 check(
   await visual.locator('.v-pipe10').isVisible(),
@@ -759,7 +813,7 @@ check(
   (await page.locator('.toolbar select option').count()) === 2,
   'a cancelled job adds no version',
 );
-await page.getByRole('button', { name: 'Close' }).click();
+await page.getByRole('button', { name: 'Close', exact: true }).click();
 
 // ---- several jobs at the same time: a second file can be visualised while
 // the first job runs, and only a second job for the same visual is refused
@@ -848,7 +902,7 @@ check(
     ),
   'a job that has ended can be removed from the list',
 );
-await page.getByRole('button', { name: 'Close' }).click();
+await page.getByRole('button', { name: 'Close', exact: true }).click();
 await row('handler.go').click();
 await page.locator('.toolbar select').waitFor();
 check(
@@ -1030,6 +1084,60 @@ check(
   'the dock says how long the running job usually takes',
   await page.locator('.dock .pill.estimate').textContent(),
 );
+// The tags under the job's title are on one line and inside the column, and the
+// row of buttons below the steps holds the Cancel button and no tag.
+const dockLayout = await page.evaluate(() => {
+  const column = document.querySelector('.dock .steps').getBoundingClientRect();
+  const pills = Array.from(document.querySelectorAll('.dock-meta .pill')).map(
+    (el) => el.getBoundingClientRect(),
+  );
+  const foot = document.querySelector('.dock-foot');
+  return {
+    pills: pills.length,
+    oneLine: pills.every((box) => Math.abs(box.top - pills[0].top) < 1),
+    inside: pills.every(
+      (box) => box.left >= column.left && box.right <= column.right,
+    ),
+    footButtons: Array.from(foot.querySelectorAll('button')).map((el) =>
+      el.textContent.trim(),
+    ),
+    footPills: foot.querySelectorAll('.pill').length,
+  };
+});
+check(
+  dockLayout.pills === 3 &&
+    dockLayout.oneLine &&
+    dockLayout.inside &&
+    dockLayout.footButtons.join() === 'Cancel' &&
+    dockLayout.footPills === 0,
+  'the tags of a job are on one line, and Cancel is by itself below the steps',
+  JSON.stringify(dockLayout),
+);
+// A step whose label is too long for one line wraps, grows taller, and pushes
+// the next step down. The label is made longer here because the in-memory
+// backend plays no fix round, which is the step with the longest label.
+const wrapped = await page.evaluate(() => {
+  const steps = Array.from(document.querySelectorAll('.dock .step'));
+  const label = steps[0].querySelector('.label');
+  const text = label.textContent;
+  const before = steps[0].getBoundingClientRect().height;
+  label.textContent = 'Fixing what the checks found in the film (round 12)';
+  const first = steps[0].getBoundingClientRect();
+  const second = steps[1].getBoundingClientRect();
+  const words = label.getBoundingClientRect();
+  const result = {
+    before,
+    after: first.height,
+    clear: second.top >= words.bottom,
+  };
+  label.textContent = text;
+  return result;
+});
+check(
+  wrapped.after > wrapped.before && wrapped.clear,
+  'a step with a long label wraps without touching the step below it',
+  JSON.stringify(wrapped),
+);
 await shot('09b-animate-job');
 // The user reads the source while the film is being made. The finished film
 // replaces the source view without a click.
@@ -1053,7 +1161,7 @@ check(
     1 && (await page.locator('.lib-item').count()) === 2,
   'the file now has a film next to its visual',
 );
-await page.getByRole('button', { name: 'Close' }).click();
+await page.getByRole('button', { name: 'Close', exact: true }).click();
 await page.locator('.chapter-row').nth(2).click();
 await page.waitForFunction(() =>
   /^3 \/ 4/.test(document.querySelector('.player .chap').textContent),
@@ -1439,7 +1547,7 @@ check(
       .count()) === 0,
   'feedback adds a version and what was attached is cleared',
 );
-await page.getByRole('button', { name: 'Close' }).click();
+await page.getByRole('button', { name: 'Close', exact: true }).click();
 
 // ---- changing the outline restarts the film with the edited outline
 await page
@@ -1495,7 +1603,7 @@ check(
   (await page.locator('.toolbar select option').count()) === 3,
   'a film made from an outline the user edited is shown as a new version',
 );
-await page.getByRole('button', { name: 'Close' }).click();
+await page.getByRole('button', { name: 'Close', exact: true }).click();
 await page.locator('.tab', { hasText: 'Visual' }).click();
 await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
 check(true, 'the Visual tab still shows the visual of the same file');
@@ -1527,12 +1635,14 @@ check(
   await page.locator('.empty .meta').textContent(),
 );
 check(
-  (await page.locator('.toolbar .tab').count()) === 1 &&
+  (await page.locator('.toolbar .tab').allTextContents())
+    .map((text) => text.trim())
+    .join() === 'Visual,Map' &&
     (await page.locator('.toolbar .crumb').textContent()).replace(
       /\s+/g,
       '',
     ) === 'internal/orders/',
-  'a folder has only the Visual tab',
+  'a folder has the Visual tab and the Map tab',
 );
 await shot('10-folder');
 await page.getByRole('button', { name: 'Visualise this folder…' }).click();
@@ -1563,7 +1673,7 @@ check(
     (await page.locator('.lib-item').count()) === 3,
   'the folder gets a badge in the tree and its visual is in the library',
 );
-await page.getByRole('button', { name: 'Close' }).click();
+await page.getByRole('button', { name: 'Close', exact: true }).click();
 await row('handler.go').click();
 await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
 
@@ -1603,7 +1713,7 @@ check(
       .count()) === 0,
   'the button in the dock opens the finished visual and its file',
 );
-await page.getByRole('button', { name: 'Close' }).click();
+await page.getByRole('button', { name: 'Close', exact: true }).click();
 check(
   /ports · 1 in · 0 out/.test(
     await page.locator('.lib-item', { hasText: 'store.go' }).textContent(),
@@ -1703,7 +1813,7 @@ check(
   ) && (await page.locator('.lib-tick:checked').count()) === 0,
   'the pipeline is in the library and the ticks are cleared',
 );
-await page.getByRole('button', { name: 'Close' }).click();
+await page.getByRole('button', { name: 'Close', exact: true }).click();
 await shot('11b-pipeline');
 await page.locator('.inspector .part-row').first().click();
 await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
@@ -1732,6 +1842,439 @@ check(
 );
 await shot('04-source');
 
+// ---- file tabs
+// Every file that was selected so far has a tab. The context menu of a tab
+// closes the others.
+const tabNames = () => page.locator('.file-tab .name').allTextContents();
+const fileTab = (name) =>
+  page
+    .locator('.file-tab')
+    .filter({ has: page.getByText(name, { exact: true }) });
+const menuItems = () => page.locator('.menu-item').allTextContents();
+check(
+  (await tabNames()).length > 1 &&
+    (await page.locator('.file-tab.on .name').textContent()) === 'handler.go',
+  'every selected file has a tab, and the tab of the file on screen is marked',
+  (await tabNames()).join(),
+);
+await fileTab('handler.go').click({ button: 'right' });
+check(
+  (await menuItems()).join('|') ===
+    'Close|Close the other tabs|Copy path|Copy relative path',
+  'a right-click on a tab opens its menu',
+  (await menuItems()).join('|'),
+);
+await page.locator('.menu-item', { hasText: 'Close the other tabs' }).click();
+check(
+  (await tabNames()).join() === 'handler.go' &&
+    (await page.locator('.menu').count()) === 0,
+  'Close the other tabs leaves one tab, and choosing a command closes the menu',
+  (await tabNames()).join(),
+);
+await row('store.go').click();
+await page.locator('.file-tab.on', { hasText: 'store.go' }).waitFor();
+check(
+  (await tabNames()).join() === 'handler.go,store.go',
+  'a click on a file in the tree opens it in a new tab',
+  (await tabNames()).join(),
+);
+// Each tab remembers its own view. handler.go was left on Source. store.go is
+// switched to Visual here.
+await page.locator('.tab', { hasText: 'Visual' }).click();
+await fileTab('handler.go').click();
+await page.locator('.row.selected', { hasText: 'handler.go' }).waitFor();
+await page.locator('.source-line').first().waitFor();
+const handlerView = await page.locator('.tab.on').textContent();
+await fileTab('store.go').click();
+await page.locator('.row.selected', { hasText: 'store.go' }).waitFor();
+check(
+  /Source/.test(handlerView) &&
+    /Visual/.test(await page.locator('.tab.on').textContent()),
+  'a tab comes back in the view it was left in',
+  handlerView + ' | ' + (await page.locator('.tab.on').textContent()),
+);
+// A new tab is put directly after the tab the user came from.
+await fileTab('handler.go').click();
+await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
+await row('limiter.go').click();
+await page.locator('.file-tab.on', { hasText: 'limiter.go' }).waitFor();
+check(
+  (await tabNames()).join() === 'handler.go,limiter.go,store.go',
+  'a new tab is put directly after the tab the user came from',
+  (await tabNames()).join(),
+);
+await shot('13-file-tabs');
+// Closing the tab on screen shows the tab to its right.
+await fileTab('limiter.go').locator('.file-tab-close').click();
+await page.locator('.file-tab.on', { hasText: 'store.go' }).waitFor();
+check(
+  (await tabNames()).join() === 'handler.go,store.go' &&
+    (await page.locator('.row.selected .name').textContent()) === 'store.go',
+  'closing the tab on screen shows the tab to its right',
+  (await tabNames()).join(),
+);
+// A click of the middle button closes a tab. This tab is not on screen, so
+// the file on screen stays.
+await fileTab('handler.go').click({ button: 'middle' });
+check(
+  (await tabNames()).join() === 'store.go' &&
+    (await page.locator('.row.selected .name').textContent()) === 'store.go',
+  'a middle click closes a tab and leaves the file on screen alone',
+  (await tabNames()).join(),
+);
+// Closing the last tab leaves nothing selected, and Back opens it again.
+await fileTab('store.go').locator('.file-tab-close').click();
+await page.getByText('Select a file in the explorer').waitFor();
+check(
+  (await page.locator('.file-tab').count()) === 0 &&
+    (await page.locator('.row.selected').count()) === 0,
+  'closing the last tab leaves nothing selected',
+);
+await page.locator('.toolbar [aria-label="Back"]').click();
+await page.locator('.file-tab.on', { hasText: 'store.go' }).waitFor();
+check(
+  (await tabNames()).join() === 'store.go',
+  'Back opens the tab that was closed last',
+  (await tabNames()).join(),
+);
+
+// ---- the context menu of the tree, and copying a path
+// Chromium lets a test read the clipboard once it has been given leave. The
+// other engines do not, so there the toast is the only evidence.
+const canReadClipboard = engineName === 'chromium';
+if (canReadClipboard)
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+await row('limiter.go').click({ button: 'right' });
+check(
+  (await menuItems()).join('|') ===
+    'Visualise…|Animate…|Step through…|Schema view…|Lanes view…|Structure view…|Copy path|Copy relative path' &&
+    (await page.evaluate(() => document.activeElement.textContent)) ===
+      'Visualise…',
+  'a right-click on a file opens a menu, with keyboard focus on its first command',
+  (await menuItems()).join('|'),
+);
+await shot('13b-context-menu');
+await page.keyboard.press('ArrowDown');
+const afterArrow = await page.evaluate(
+  () => document.activeElement.textContent,
+);
+await page.keyboard.press('Escape');
+check(
+  afterArrow === 'Animate…' && (await page.locator('.menu').count()) === 0,
+  'the arrow keys move through the menu and Escape closes it',
+  afterArrow,
+);
+await row('limiter.go').click({ button: 'right' });
+await page.locator('.menu-item', { hasText: 'Copy relative path' }).click();
+await page
+  .locator('.toast', { hasText: 'Copied internal/orders/limiter.go' })
+  .waitFor();
+check(
+  !canReadClipboard || (await clipboard()) === 'internal/orders/limiter.go',
+  'Copy relative path puts the path inside the workspace on the clipboard',
+);
+await row('limiter.go').click({ button: 'right' });
+await page.locator('.menu-item', { hasText: 'Copy path' }).first().click();
+const copiedFull = await page
+  .locator('.toast', {
+    hasText: /Copied .+[\\/]internal[\\/]orders[\\/]limiter\.go/,
+  })
+  .textContent();
+check(
+  !canReadClipboard || 'Copied ' + (await clipboard()) === copiedFull,
+  'Copy path puts the full path on the clipboard',
+  copiedFull,
+);
+// A folder can be visualised and cannot be animated.
+await row('billing').click({ button: 'right' });
+check(
+  (await menuItems()).join('|') ===
+    'Visualise this folder…|Map this folder…|Copy path|Copy relative path',
+  'the menu of a folder has no Animate command',
+  (await menuItems()).join('|'),
+);
+await page.keyboard.press('Escape');
+// A press of the pointer outside the menu closes it.
+await row('limiter.go').click({ button: 'right' });
+await page.locator('.titlebar .ws').click();
+check(
+  (await page.locator('.menu').count()) === 0,
+  'a click outside the menu closes it',
+);
+// Animate in the menu selects the file and opens the Animate dialog for it.
+await row('limiter.go').click({ button: 'right' });
+await page.locator('.menu-item', { hasText: 'Animate…' }).click();
+await page.locator('.dialog', { hasText: 'limiter.go' }).waitFor();
+check(
+  (await page.locator('.row.selected .name').textContent()) === 'limiter.go' &&
+    (await page.locator('.file-tab.on .name').textContent()) === 'limiter.go',
+  'Animate in the menu selects the file and opens the Animate dialog',
+);
+await page.keyboard.press('Escape');
+await page.locator('.dialog').waitFor({ state: 'detached' });
+// Visualise in the menu opens the instructions step for the file.
+await row('limiter.go').click({ button: 'right' });
+await page.locator('.menu-item', { hasText: 'Visualise…' }).click();
+await page.locator('.dialog', { hasText: 'limiter.go' }).waitFor();
+check(
+  (await page.getByRole('button', { name: /^Visualise/ }).count()) > 0,
+  'Visualise in the menu opens the instructions step for the file',
+);
+await page.keyboard.press('Escape');
+await page.locator('.dialog').waitFor({ state: 'detached' });
+// The button after the path in the toolbar copies the path the toolbar shows.
+await page.locator('.toolbar .copy-path').click();
+await page.locator('.toolbar .copy-path[data-tip="Copied"]').waitFor();
+check(
+  !canReadClipboard || (await clipboard()) === 'internal/orders/limiter.go',
+  'the copy button in the toolbar copies the path and says so',
+);
+await page.locator('.toolbar .crumb').click({ button: 'right' });
+check(
+  (await menuItems()).join('|') === 'Copy path|Copy relative path',
+  'a right-click on the path in the toolbar offers both ways to copy it',
+  (await menuItems()).join('|'),
+);
+await page.keyboard.press('Escape');
+// ---- a step-through: a visual the user can run on an input
+await row('limiter.go').click();
+await page.locator('.file-tab.on', { hasText: 'limiter.go' }).waitFor();
+await page.locator('.tab', { hasText: 'Step-through' }).click();
+await page.getByRole('button', { name: 'Step through…' }).click();
+await page.locator('.dialog', { hasText: 'Step through limiter.go' }).waitFor();
+await shot('14-stepthrough-dialog');
+await page
+  .locator('.dialog')
+  .getByRole('button', { name: 'Step through', exact: true })
+  .click();
+await page
+  .locator('.dock .step', { hasText: 'Writing the step function' })
+  .waitFor();
+const stepRequestKind = await page.evaluate(
+  () => window.__mockLastRequest.kind,
+);
+check(
+  (await page.locator('.dock .kicker').first().textContent()).includes(
+    'Step through',
+  ) && stepRequestKind === 'stepthrough',
+  'Step through starts a step-through job, which lists its own steps',
+  stepRequestKind,
+);
+const steps = page.frameLocator('.canvas iframe');
+await steps.locator('#cj-count').waitFor({ timeout: 20000 });
+await page
+  .locator('.inspector .kicker', { hasText: 'Current state' })
+  .waitFor();
+check(
+  (await page.locator('.tab.on').textContent()).includes('Step-through') &&
+    (await steps.locator('#cj-count').textContent()) === 'step 1 / 3' &&
+    (await page.locator('.inspector h3').first().textContent()) ===
+      'Allowing' &&
+    /step-through · v1/.test(
+      (await page.locator('.lib-item.on').textContent()).replace(/\s+/g, ' '),
+    ),
+  'the finished step-through is on its own tab, and the inspector describes the state it is in',
+  await steps.locator('#cj-count').textContent(),
+);
+await page.getByRole('button', { name: 'Close', exact: true }).click();
+// The inspector follows the steps.
+await steps
+  .locator('#cj-presets button', { hasText: 'Over the hard limit' })
+  .click();
+await steps.locator('#cj-last').click();
+await page.locator('.inspector h3', { hasText: 'Blocked' }).waitFor();
+check(
+  (await page.locator('.inspector .edge-case').count()) === 2 &&
+    (await page.locator('.inspector .excerpt-line').count()) > 0,
+  'the inspector follows the steps, with the edge cases and the code of the state',
+);
+await shot('14b-stepthrough');
+// An edge case with an example runs the step-through on that example.
+await page.locator('.inspector .edge-case .chip').first().click();
+await steps.locator('#cj-count', { hasText: '/ 61' }).waitFor();
+check(
+  (await steps.locator('#cj-input').inputValue()) === 'o'.repeat(61) &&
+    (await steps.locator('#cj-count').textContent()) === 'step 1 / 61',
+  'an edge case in the inspector runs the step-through on its example',
+  await steps.locator('#cj-count').textContent(),
+);
+// A click on a state pins it in the inspector, whatever the step on screen.
+const noWindow = await steps.locator('.v-none').first().boundingBox();
+await page.mouse.click(
+  noWindow.x + noWindow.width / 2,
+  noWindow.y + noWindow.height / 2,
+);
+await page.locator('.inspector .kicker', { hasText: 'Selected' }).waitFor();
+check(
+  (await page.locator('.inspector h3').first().textContent()) === 'No window',
+  'a click on a state pins it in the inspector',
+);
+// The context menu now offers to make the step-through again.
+await row('limiter.go').click({ button: 'right' });
+check(
+  (await menuItems()).includes('Step through again…'),
+  'the menu of a file that has a step-through offers to make it again',
+  (await menuItems()).join('|'),
+);
+await page.keyboard.press('Escape');
+
+// ---- the views, which Codjiva draws from data
+// A file's schema, lanes and structure views share the tab called More.
+await row('handler.go').click();
+await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
+await page.locator('.tab.more-views').click();
+check(
+  (await menuItems()).map((text) => text.trim()).join('|') ===
+    'Schema|Lanes|Structure',
+  'the More tab lists the views of a file',
+  (await menuItems()).join('|'),
+);
+await page.locator('.menu-item', { hasText: 'Schema' }).click();
+await page.getByRole('button', { name: 'Make the schema view…' }).click();
+await page
+  .locator('.dialog', { hasText: 'Make the schema view of handler.go' })
+  .waitFor();
+await page
+  .locator('.dialog')
+  .getByRole('button', { name: 'Make the view', exact: true })
+  .click();
+await page
+  .locator('.dock .kicker', { hasText: 'Schema · handler.go' })
+  .waitFor();
+const viewRequest = await page.evaluate(() => window.__mockLastRequest);
+const schema = page.frameLocator('.canvas iframe');
+await schema.locator('.v-Order').first().waitFor({ timeout: 20000 });
+check(
+  viewRequest.kind === 'view' &&
+    viewRequest.view === 'schema' &&
+    (await page.locator('.tab.more-views.on').textContent()).includes(
+      'Schema',
+    ) &&
+    /schema view · v1/.test(
+      (await page.locator('.lib-item.on').textContent()).replace(/\s+/g, ' '),
+    ),
+  'a view job makes the schema view, which is shown under the More tab',
+  JSON.stringify(viewRequest),
+);
+await page.getByRole('button', { name: 'Close', exact: true }).click();
+// Selecting a type shows its fields, and who writes each of them.
+// Closing the job panel gives the frame more room, and the drawing is fitted
+// again a moment later. `settled` returns the box of an element once the
+// element has stopped moving, so that a click lands on it.
+const settled = async (locator) => {
+  let box = await locator.boundingBox();
+  for (let tries = 0; tries < 20; tries++) {
+    await page.waitForTimeout(100);
+    const again = await locator.boundingBox();
+    const still = again.x === box.x && again.y === box.y;
+    box = again;
+    if (still) break;
+  }
+  return box;
+};
+const orderCard = await settled(schema.locator('.v-Order').first());
+await page.mouse.click(orderCard.x + 40, orderCard.y + 12);
+await page.locator('.inspector h3', { hasText: /^Order$/ }).waitFor();
+const fieldsShown = await page.evaluate(() => ({
+  fields: document.querySelectorAll('.inspector .field-row').length,
+  uses: Array.from(document.querySelectorAll('.inspector .field-use')).map(
+    (el) => el.textContent.replace(/\s+/g, ' ').trim(),
+  ),
+}));
+check(
+  fieldsShown.fields === 9 &&
+    fieldsShown.uses.includes('written by price') &&
+    fieldsShown.uses.includes('read by Submit'),
+  'the inspector lists the fields of a type and the functions that write and read them',
+  JSON.stringify(fieldsShown),
+);
+await shot('15-schema-view');
+// The function that writes a field leads to its line in the source.
+await page
+  .locator('.inspector .field-use button', { hasText: 'price' })
+  .first()
+  .click();
+await page.locator('.tab.on', { hasText: 'Source' }).waitFor();
+// The in-memory backend's copy of the file is shorter than the real file the
+// view was made of, so the line itself cannot be looked for here.
+check(
+  /handler\.go/.test(await page.locator('.toolbar .crumb').textContent()) &&
+    (await page.locator('.source-line').count()) > 0,
+  'a function that writes a field opens the source of its file',
+);
+
+// A lanes view is played one message at a time, like a step-through.
+await page.locator('.tab.more-views').click();
+await page.locator('.menu-item', { hasText: 'Lanes' }).click();
+await page.getByRole('button', { name: 'Make the lanes view…' }).click();
+await page
+  .locator('.dialog')
+  .getByRole('button', { name: 'Make the view', exact: true })
+  .click();
+const lanes = page.frameLocator('.canvas iframe');
+await lanes.locator('#cj-count').waitFor({ timeout: 20000 });
+await page.getByRole('button', { name: 'Close', exact: true }).click();
+await lanes.locator('#cj-next').click();
+await page.locator('.inspector h3', { hasText: 'Limiter' }).waitFor();
+check(
+  (await lanes.locator('#cj-count').textContent()) === 'step 2 / 6' &&
+    (await page.locator('.zoomctl.above-strip').count()) === 1,
+  'a lanes view is stepped through, and the inspector follows the participant',
+  await lanes.locator('#cj-count').textContent(),
+);
+await shot('15b-lanes-view');
+
+// A folder has a map. Its menu in the explorer starts one.
+await row('orders').click({ button: 'right' });
+await page.locator('.menu-item', { hasText: 'Map this folder…' }).click();
+await page.locator('.dialog', { hasText: 'Make the map of orders/' }).waitFor();
+await page
+  .locator('.dialog')
+  .getByRole('button', { name: 'Make the map', exact: true })
+  .click();
+const map = page.frameLocator('.canvas iframe');
+await map.locator('.v-orders').first().waitFor({ timeout: 20000 });
+await page.getByRole('button', { name: 'Close', exact: true }).click();
+check(
+  (await page.locator('.tab.on').textContent()).trim().startsWith('Map') &&
+    (await page.locator('.file-tab.on .name').textContent()) === 'orders/',
+  'the map of a folder is shown on the Map tab of the folder',
+);
+// Two clicks on a box that has parts inside open its level.
+const packageBox = await settled(map.locator('.v-orders').first());
+await page.mouse.dblclick(
+  packageBox.x + packageBox.width / 2,
+  packageBox.y + 20,
+);
+await map.locator('#stepbar [data-page="orders"]').waitFor();
+// A node that stands for a file links to it and to what was made of it.
+const fileBox = await settled(map.locator('.v-handler').first());
+await page.mouse.click(fileBox.x + fileBox.width / 2, fileBox.y + 20);
+await page.locator('.inspector h3', { hasText: 'handler.go' }).waitFor();
+const mapLinks = await page.locator('.inspector button.ref').allTextContents();
+check(
+  mapLinks.some((text) => text.includes('Open internal/orders/handler.go')) &&
+    mapLinks.some((text) => text.includes('Show its schema view')) &&
+    mapLinks.some((text) => text.includes('Show its visual')),
+  'a file on the map links to the file and to everything that was made of it',
+  mapLinks.join(' | '),
+);
+await shot('15c-map-view');
+await page
+  .locator('.inspector button.ref', { hasText: 'Show its schema view' })
+  .click();
+await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
+check(
+  (await page.locator('.tab.more-views.on').textContent()).includes('Schema'),
+  'a link on the map opens the schema view of that file',
+);
+
+// The checks that follow were written with the Source view showing, which a
+// file opened next keeps.
+await page.locator('.tab', { hasText: 'Source' }).click();
+await page.locator('.source-line').first().waitFor();
+
 // ---- quick open
 await page.keyboard.press(`${mod}+p`);
 await page.getByPlaceholder('Go to file…').fill('ledger');
@@ -1743,6 +2286,72 @@ check(
   (await row('billing').count()) === 1,
   'quick-open selects the file and expands the folders above it',
 );
+
+// ---- the tree keeps its scroll position while the user works in it
+// The window is made short, so that the tree is shorter than its rows and
+// can be scrolled. ledger.py is selected and is the third row.
+await page.setViewportSize({ width: 1600, height: 560 });
+const tree = page.locator('.tree');
+const scrollDown = () =>
+  tree.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+    return el.scrollTop;
+  });
+// True when the selected row is inside the visible part of the tree.
+const selectedInView = () =>
+  page.evaluate(() => {
+    const view = document.querySelector('.tree').getBoundingClientRect();
+    const row = document.querySelector('.row.selected');
+    if (!row) return false;
+    const box = row.getBoundingClientRect();
+    return box.top >= view.top - 1 && box.bottom <= view.bottom + 1;
+  });
+// The folder `web` is closed first when it is open, so that the click below
+// opens it. Opening a folder adds rows below it and leaves every row above
+// it where it is.
+const webWasOpen = (await row('src').count()) === 1;
+if (webWasOpen) {
+  await row('web').click();
+  await row('src').waitFor({ state: 'detached' });
+}
+// The tree is scrolled until the row of `web` is its first visible row.
+// The selected row is then above the visible part.
+const scrolledTo = await tree.evaluate((el) => {
+  const web = Array.from(el.querySelectorAll('.row')).find(
+    (one) => one.getAttribute('title') === 'web',
+  );
+  el.scrollTop +=
+    web.getBoundingClientRect().top - el.getBoundingClientRect().top;
+  return el.scrollTop;
+});
+await page.waitForTimeout(100);
+const outOfView = !(await selectedInView());
+await row('web').click();
+await row('src').waitFor();
+await page.waitForTimeout(150);
+const afterToggle = await tree.evaluate((el) => el.scrollTop);
+check(
+  outOfView && scrolledTo > 0 && afterToggle === scrolledTo,
+  'opening a folder does not scroll the tree back to the selected file',
+  `selected row out of view: ${outOfView}, scrollTop ${scrolledTo} -> ${afterToggle}`,
+);
+// A selection made outside the tree still scrolls the tree to its row.
+await page.locator('.file-tab', { hasText: 'handler.go' }).click();
+await page.locator('.row.selected', { hasText: 'handler.go' }).waitFor();
+await scrollDown();
+await page.locator('.file-tab', { hasText: 'ledger.py' }).click();
+await page.locator('.row.selected', { hasText: 'ledger.py' }).waitFor();
+await page.waitForTimeout(150);
+check(
+  await selectedInView(),
+  'choosing a file tab scrolls the tree to the row of that file',
+  String(await tree.evaluate((el) => el.scrollTop)),
+);
+if (!webWasOpen) {
+  await row('web').click();
+  await row('src').waitFor({ state: 'detached' });
+}
+await page.setViewportSize({ width: 1600, height: 960 });
 
 // ---- keyboard navigation in the tree
 await page.locator('.tree').focus();

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { VIEWS } from '$lib/artifacts';
   import { targetOfArtifact } from '$lib/jobs';
   import { app } from '$lib/state/app.svelte';
   import Icon from './Icon.svelte';
@@ -10,6 +11,17 @@
   const info = $derived(app.fileInfo);
   const folder = $derived(app.folderInfo);
   const onFilmTab = $derived(app.tab === 'film');
+  const onStepsTab = $derived(app.tab === 'steps');
+  // The view the open tab is for, when it is one of the four views.
+  const view = $derived(VIEWS.find((one) => one.name === app.tab) ?? null);
+  // True while a job is making that view of the file or folder on screen.
+  const viewBusy = $derived(
+    !!view &&
+      !!app.selected &&
+      app.isBusy(
+        targetOfArtifact({ kind: view.name, subject: [app.selected] }),
+      ),
+  );
   // True while a job is making the visual of the file or folder on screen,
   // and true while a job is making the film of the file on screen. The button
   // that would start the same job again is disabled meanwhile and says what
@@ -22,17 +34,27 @@
     !!app.selected &&
       app.isBusy(targetOfArtifact({ kind: 'film', subject: [app.selected] })),
   );
+  const stepsBusy = $derived(
+    !!app.selected &&
+      app.isBusy(
+        targetOfArtifact({ kind: 'stepthrough', subject: [app.selected] }),
+      ),
+  );
   const noAgent = $derived(app.agentsLoaded && !app.activeAgent);
   // True when no job can be started for the file on screen.
   const blocked = $derived(!info || info.binary || noAgent);
+  // What has been made of the file so far, in words. A step-through is
+  // named after the visual and the film when the file has one.
   const has = $derived(
-    app.visualArtifact && app.filmArtifact
+    (app.visualArtifact && app.filmArtifact
       ? 'a visual and a film'
       : app.visualArtifact
         ? 'a visual, no film yet'
         : app.filmArtifact
           ? 'a film, no visual yet'
-          : 'no visuals yet',
+          : app.stepsArtifact
+            ? 'no visual or film yet'
+            : 'no visuals yet') + (app.stepsArtifact ? ', a step-through' : ''),
   );
   // An estimate in thousands of tokens, as "about 12 thousand tokens".
   const tokens = (n: number) =>
@@ -70,6 +92,40 @@
   </button>
 {/snippet}
 
+<!-- The button that starts a step-through of the selected file. -->
+{#snippet stepThrough(primary: boolean)}
+  <button
+    class="btn"
+    class:primary
+    disabled={blocked || stepsBusy}
+    onclick={() => app.askInstructions(false, 'stepthrough')}
+  >
+    {#if stepsBusy}Making the step-through…{:else}<Icon
+        name="forward"
+        size={16}
+      />Step through…{/if}
+  </button>
+{/snippet}
+
+<!-- The button that starts the view the open tab is for. `off` is true when
+     no job can be started for what is selected. -->
+{#snippet makeView(off: boolean)}
+  {#if view}
+    <button
+      class="btn primary"
+      disabled={off || viewBusy}
+      onclick={() => app.askInstructions(false, 'view', view.name)}
+    >
+      {#if viewBusy}Making the {view.label.toLowerCase()}…{:else}<Icon
+          name="viz"
+          size={16}
+        />{view.name === 'map'
+          ? 'Map this folder…'
+          : `Make the ${view.label.toLowerCase()} view…`}{/if}
+    </button>
+  {/if}
+{/snippet}
+
 <div class="empty">
   <div class="card">
     {#if app.selectedIsFolder}
@@ -86,7 +142,11 @@
           <span>{tokens(folder.estimatedTokens)}</span>
         </div>
         <div class="actions">
-          {#if visualBusy}
+          {#if view}
+            {@render makeView(
+              folder.tooLarge || folder.files.length === 0 || noAgent,
+            )}
+          {:else if visualBusy}
             <button class="btn" disabled>Visualising…</button>
           {:else}
             <button
@@ -126,8 +186,12 @@
               'No agent was found on this machine.'}
           </div>{/if}
         <div class="hint">
-          A folder's visual shows how its files work together, not the inside of
-          each one.
+          {#if view}
+            {view.about}
+          {:else}
+            A folder's visual shows how its files work together, not the inside
+            of each one.
+          {/if}
         </div>
       {:else}
         <div class="path">Reading…</div>
@@ -149,7 +213,11 @@
           <span>{has}</span>
         </div>
         <div class="actions">
-          {#if onFilmTab}
+          {#if view}
+            {@render makeView(blocked)}
+          {:else if onStepsTab}
+            {@render stepThrough(true)}
+          {:else if onFilmTab}
             {@render animate(true)}
             {#if !app.visualArtifact}{@render visualise(false)}{/if}
           {:else}
@@ -164,8 +232,16 @@
           </div>
         {/if}
         <div class="hint">
-          Visualise draws a still, explorable blueprint. Animate reads companion
-          files and makes a film.<br />
+          {#if view}
+            {view.about}
+          {:else if onStepsTab}
+            A step-through draws the states of this code and lets you run it on
+            any input, one step at a time. It suits parsers, state machines,
+            validators and other code whose behaviour depends on its input.
+          {:else}
+            Visualise draws a still, explorable blueprint. Animate reads
+            companion files and makes a film.
+          {/if}<br />
           Output is saved in <code>{app.info?.dotDir ?? '.codjiva'}/</code> as plain
           HTML.
         </div>
