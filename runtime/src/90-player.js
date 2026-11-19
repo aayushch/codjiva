@@ -329,6 +329,8 @@ CJ.boot = async (data) => {
         visual.stepper.go(msg.index);
       else if (msg.cj === 'input' && visual.stepper)
         visual.stepper.setInput(msg.value == null ? '' : msg.value);
+      else if (msg.cj === 'panel' && visual.stepper)
+        visual.stepper.setPanelHeight(msg.height);
       else if (msg.cj === 'page' && visual.pages)
         visual.pages.open(msg.id == null ? '' : msg.id);
       else if (msg.cj === 'pick') setPicking(msg.on !== false);

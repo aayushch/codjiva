@@ -136,6 +136,7 @@ const DEFAULT_SETTINGS: Settings = {
     dockHeight: null,
     libraryOpen: true,
     libraryHeight: null,
+    stepPanelHeight: null,
   },
   checkForUpdates: true,
 };

@@ -1065,13 +1065,26 @@ html.dragging-handle iframe {
   background: var(--shell-tick);
   opacity: 0.7;
 }
+/* The row of buttons at the bottom of the column of steps. The buttons are at
+   the right end of the row. The row is 37px tall: a 1px line and 36px below
+   it. That is the height of the closed library in the sidebar, which is a 1px
+   line and the 36px `.side-head`. Both end at the bottom of the window, so
+   the line above the buttons is level with the line above the closed
+   library. */
 .dock-foot {
   flex: none;
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 8px 16px;
+  justify-content: flex-end;
+  height: 37px;
+  padding: 0 16px;
   border-top: 1px solid var(--shell-border-soft);
+}
+.dock-foot .btn {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11px;
 }
 .log div {
   min-height: 1.45em;
@@ -2012,10 +2025,11 @@ iframe {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The zoom controls of a step-through. The strip of step panels along the
-   bottom of its frame is 190 px tall, and the controls sit just above it. */
+/* The zoom controls of a step-through are 12px above the strip of step panels
+   along the bottom of its frame. VisualFrame sets `--strip-h` to the height
+   of that strip. */
 .zoomctl.above-strip {
-  bottom: 202px;
+  bottom: calc(var(--strip-h, 190px) + 12px);
 }
 
 /* ---- the fields of a type of a schema view, in the inspector */

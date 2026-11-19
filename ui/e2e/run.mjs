@@ -2117,6 +2117,63 @@ check(
   (await page.locator('.inspector h3').first().textContent()) === 'No window',
   'a click on a state pins it in the inspector',
 );
+// The strip of panels under the step-through is resized by dragging its top
+// edge, and the app remembers the height.
+{
+  // The height of the strip, and how far the bottom of the zoom controls is
+  // above the strip's top edge.
+  const strip = async () => {
+    const panel = await steps.locator('#steppanel').boundingBox();
+    const zoom = await page.locator('.zoomctl').boundingBox();
+    return {
+      height: Math.round(panel.height),
+      zoomGap: Math.round(panel.y - (zoom.y + zoom.height)),
+    };
+  };
+  const before = await strip();
+  const edge = await steps.locator('#stepgrip').boundingBox();
+  const x = edge.x + edge.width / 2;
+  const y = edge.y + edge.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - 120, { steps: 4 });
+  await page.mouse.up();
+  await page.waitForFunction(
+    () => window.__mockSettings().layout.stepPanelHeight != null,
+    null,
+    { timeout: 5000 },
+  );
+  const dragged = await strip();
+  const saved = await page.evaluate(
+    () => window.__mockSettings().layout.stepPanelHeight,
+  );
+  check(
+    before.height === 190 &&
+      before.zoomGap === 12 &&
+      dragged.height === 310 &&
+      dragged.zoomGap === 12 &&
+      saved === 310,
+    "dragging the top edge of a step-through's panels makes them taller, moves the zoom buttons up and saves the height",
+    JSON.stringify({ before, dragged, saved }),
+  );
+  await shot('14c-stepthrough-tall');
+  // Leaving the step-through and coming back loads its page again.
+  await page.locator('.tab', { hasText: 'Source' }).click();
+  await page.locator('.tab', { hasText: 'Step-through' }).click();
+  await steps.locator('#cj-count').waitFor({ timeout: 20000 });
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.querySelector('.zoomctl')).bottom === '322px',
+    null,
+    { timeout: 5000 },
+  );
+  const reopened = await strip();
+  check(
+    reopened.height === 310 && reopened.zoomGap === 12,
+    'a step-through that is opened again has the height its panels were dragged to',
+    JSON.stringify(reopened),
+  );
+}
 // The context menu now offers to make the step-through again.
 await row('limiter.go').click({ button: 'right' });
 check(

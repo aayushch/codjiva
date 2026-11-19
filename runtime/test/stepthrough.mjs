@@ -221,6 +221,108 @@ for (const [name, engine] of [
       `${name}: embedded in the app, the panels lie under the stage`,
       JSON.stringify(layout),
     );
+
+    // The handle on the top edge of the panels sets their height. The sizes
+    // of the panels, the frame and the stage are read after each drag.
+    const sizes = () =>
+      embedded.page.evaluate(() => {
+        const box = (id) => document.getElementById(id).getBoundingClientRect();
+        const frame = box('frame');
+        const panel = box('steppanel');
+        const stage = box('stage');
+        return {
+          panel: Math.round(panel.height),
+          frame: Math.round(frame.height),
+          joined: Math.abs(frame.bottom - panel.top) < 1,
+          stageInFrame:
+            stage.top >= frame.top - 1 && stage.bottom <= frame.bottom + 1,
+        };
+      });
+    // Presses the handle, moves the pointer `dy` pixels down the page (a
+    // negative number moves it up) and releases it. The pointer stops 2px
+    // inside the top or the bottom of the 1080px page when `dy` would take
+    // it further.
+    const dragGrip = async (dy) => {
+      const grip = await embedded.page.locator('#stepgrip').boundingBox();
+      const x = grip.x + grip.width / 2;
+      const y = grip.y + grip.height / 2;
+      await embedded.page.mouse.move(x, y);
+      await embedded.page.mouse.down();
+      await embedded.page.mouse.move(x, Math.min(1078, Math.max(2, y + dy)), {
+        steps: 4,
+      });
+      await embedded.page.mouse.up();
+    };
+    const atStart = await sizes();
+    await dragGrip(-150);
+    const taller = await sizes();
+    check(
+      atStart.panel === 190 &&
+        taller.panel === 340 &&
+        taller.frame === atStart.frame - 150 &&
+        taller.joined &&
+        taller.stageInFrame,
+      `${name}: dragging the handle up makes the panels taller and fits the stage in the room that is left`,
+      JSON.stringify({ atStart, taller }),
+    );
+    await dragGrip(-2000);
+    const tallest = await sizes();
+    await dragGrip(2000);
+    const lowest = await sizes();
+    check(
+      tallest.frame === 120 &&
+        tallest.stageInFrame &&
+        lowest.panel === 80 &&
+        lowest.joined,
+      `${name}: the panels leave the stage 120px and are never lower than 80px`,
+      JSON.stringify({ tallest, lowest }),
+    );
+    // A release above the top of the page is not reported to the page in
+    // every browser. Moving the pointer afterwards, with no button pressed,
+    // must not go on resizing the panels.
+    {
+      const grip = await embedded.page.locator('#stepgrip').boundingBox();
+      const x = grip.x + grip.width / 2;
+      await embedded.page.mouse.move(x, grip.y + grip.height / 2);
+      await embedded.page.mouse.down();
+      await embedded.page.mouse.move(x, -400, { steps: 4 });
+      await embedded.page.mouse.up();
+      const released = await sizes();
+      await embedded.page.mouse.move(x, 400);
+      await embedded.page.mouse.move(x, 600);
+      const moved = await sizes();
+      check(
+        released.panel > 80 && moved.panel === released.panel,
+        `${name}: after a release outside the page, moving the pointer does not resize the panels`,
+        JSON.stringify({ released, moved }),
+      );
+    }
+    // The app sets the height through the step-through's handle, and a
+    // height of null brings back the height the panels start with.
+    {
+      const setHeight = (height) =>
+        embedded.page.evaluate(
+          (h) => window.__cj.visual.stepper.setPanelHeight(h),
+          height,
+        );
+      await setHeight(300);
+      const set = await sizes();
+      await setHeight(null);
+      const unset = await sizes();
+      check(
+        set.panel === 300 &&
+          set.joined &&
+          set.stageInFrame &&
+          unset.panel === 190,
+        `${name}: the app can set the height of the panels and bring back the height they start with`,
+        JSON.stringify({ set, unset }),
+      );
+    }
+    check(
+      embedded.errors.length === 0,
+      `${name}: resizing the panels logs no errors`,
+      embedded.errors[0],
+    );
     await embedded.context.close();
   }
 

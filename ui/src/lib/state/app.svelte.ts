@@ -526,6 +526,10 @@ class AppState {
   // library is as tall as its list, up to a share of the sidebar.
   libraryOpen = $state(true);
   libraryHeight = $state<number | null>(null);
+  // The height, in pixels, the user dragged the strip of panels under a
+  // step-through to. It is null until they drag it. VisualFrame sends it to
+  // every step-through it opens, so all step-throughs have the same height.
+  stepPanelHeight = $state<number | null>(null);
   // True while a film or visual fills the window and the panels around it are
   // hidden.
   theater = $state(false);
@@ -1912,6 +1916,7 @@ class AppState {
     this.dockHeight = layout.dockHeight;
     this.libraryOpen = layout.libraryOpen;
     this.libraryHeight = layout.libraryHeight;
+    this.stepPanelHeight = layout.stepPanelHeight;
   }
 
   // Writes the panels' sizes and open states to the settings, if they differ
@@ -1929,6 +1934,7 @@ class AppState {
       dockHeight: whole(this.dockHeight),
       libraryOpen: this.libraryOpen,
       libraryHeight: whole(this.libraryHeight),
+      stepPanelHeight: whole(this.stepPanelHeight),
     };
     if (JSON.stringify(layout) === JSON.stringify(this.settings.layout)) return;
     await this.saveSettings({ ...this.settings, layout });

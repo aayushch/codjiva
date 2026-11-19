@@ -128,6 +128,9 @@ pub struct Layout {
     /// The height the user dragged the library to. `None` means as tall as its
     /// list needs.
     pub library_height: Option<u32>,
+    /// The height the user dragged the strip of panels under a step-through
+    /// to. `None` means the height the step-through's own page starts with.
+    pub step_panel_height: Option<u32>,
 }
 
 impl Default for Layout {
@@ -140,6 +143,7 @@ impl Default for Layout {
             dock_height: None,
             library_open: true,
             library_height: None,
+            step_panel_height: None,
         }
     }
 }

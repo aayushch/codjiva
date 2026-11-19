@@ -142,6 +142,7 @@
       app.dockHeight,
       app.libraryOpen,
       app.libraryHeight,
+      app.stepPanelHeight,
     ];
     const timer = setTimeout(() => app.saveLayout(), 500);
     return () => clearTimeout(timer);

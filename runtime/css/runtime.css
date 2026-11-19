@@ -965,7 +965,11 @@ html.embed body.stepper #steppanel {
   grid-template-columns: 1.3fr 1fr 1fr 1.4fr;
   gap: 0 18px;
   width: auto;
-  height: 190px;
+  /* The three heights include the line on the strip's top edge. */
+  box-sizing: border-box;
+  height: var(--cj-strip-h, 190px);
+  min-height: 80px;
+  max-height: calc(100% - 120px);
   padding: 0 14px;
   overflow: hidden;
   border-left: 0;
@@ -979,6 +983,39 @@ html.embed body.stepper #steppanel section {
 }
 html.embed body.stepper #steppanel .cj-sp-state {
   display: none;
+}
+/* The strip starts 190px tall. The viewer changes its height by dragging the
+   handle `#stepgrip`, which is 6px tall and lies over the strip's top edge.
+   The runtime (75-stepper.js) then sets the height as the custom property
+   `--cj-strip-h` of `#steppanel`.
+   The strip is never less than 80px tall. It is never so tall that the stage
+   above it has less than 120px of height. A column whose content is taller
+   than the strip scrolls. Outside the app the panels are a column beside the
+   stage and there is no handle. */
+#stepgrip {
+  display: none;
+}
+html.embed body.stepper #stepgrip {
+  display: block;
+  flex: none;
+  position: relative;
+  z-index: 2;
+  height: 6px;
+  margin: -3px 0;
+  cursor: row-resize;
+  touch-action: none;
+}
+html.embed body.stepper #stepgrip:hover,
+body.cj-sizing #stepgrip {
+  background: color-mix(in srgb, var(--main) 35%, transparent);
+}
+/* While the handle is dragged, no text can be selected and the pointer keeps
+   the shape it has over the handle. */
+body.cj-sizing,
+body.cj-sizing * {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: row-resize !important;
 }
 
 /* ---------- views ----------

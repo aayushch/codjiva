@@ -9,6 +9,22 @@
   // `steps` is true for a step-through. A step-through has a strip of panels
   // along the bottom of its frame, so the zoom controls are placed above that
   // strip and not in the corner, where they would cover it.
+  //
+  // The height of the strip. The page inside the frame draws the strip, and
+  // the user sets its height by dragging the strip's top edge there. The page
+  // and this component exchange the height in `panel` messages.
+  //   - When the page reports `ready` for a step-through, this component
+  //     sends it `app.stepPanelHeight`, the height the user chose last, or
+  //     null if they never chose one.
+  //   - The page reports the height the strip has whenever it changes. That
+  //     height is kept in `stripHeight` and places the zoom controls. It can
+  //     be less than the height sent, because the page keeps room for the
+  //     drawing in a low window.
+  //   - When the report says the user dragged the strip (`byUser`), the
+  //     height also becomes `app.stepPanelHeight`, which the app saves with
+  //     its layout.
+  // A step-through built before the strip could be resized ignores the
+  // message and reports nothing. Its strip is always STRIP_DEFAULT tall.
   let {
     src,
     title,
@@ -24,6 +40,9 @@
   let frame: ReturnType<typeof ArtifactFrame> | undefined = $state();
   let canvas: HTMLDivElement | undefined = $state();
   let problem = $state<string | null>(null);
+  // The height of the strip, in pixels, until the page reports another.
+  const STRIP_DEFAULT = 190;
+  let stripHeight = $state(STRIP_DEFAULT);
 
   export function send(message: Record<string, unknown>) {
     frame?.send(message);
@@ -33,7 +52,13 @@
     if (message.cj === 'selected') onselect(message.nodeId);
     // A step-through reports the state that the step on screen is in.
     else if (message.cj === 'step') app.stepNode = message.nodeId ?? null;
-    else if (message.cj === 'picked') {
+    else if (message.cj === 'ready') {
+      if (message.stepper) send({ cj: 'panel', height: app.stepPanelHeight });
+    } else if (message.cj === 'panel') {
+      if (typeof message.height !== 'number') return;
+      stripHeight = message.height;
+      if (message.byUser) app.stepPanelHeight = message.height;
+    } else if (message.cj === 'picked') {
       // The user pointed at an element for their feedback.
       app.picked =
         message.selector || message.part ? { ...message, cj: undefined } : null;
@@ -62,7 +87,11 @@
 <div class="canvas" bind:this={canvas}>
   <ArtifactFrame bind:this={frame} {src} {title} {onmessage} />
   {#if problem}<div class="frame-problem">{problem}</div>{/if}
-  <div class="zoomctl" class:above-strip={steps}>
+  <div
+    class="zoomctl"
+    class:above-strip={steps}
+    style:--strip-h="{stripHeight}px"
+  >
     <button
       class="btn tip-up tip-end"
       aria-label="Zoom out"

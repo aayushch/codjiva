@@ -195,12 +195,101 @@ const shortExample = (text) => {
 //
 // The controls go into the element with the id `stepbar`, above the stage,
 // and the panels into the element with the id `steppanel`, to its right.
-// CJ.boot creates both.
+// CJ.boot creates both. This function adds the element with the id
+// `stepgrip` before the panels: the handle that sets their height when they
+// lie under the stage.
 const buildStepper = (visual, handle, post, layout) => {
   const spec = visual.stepper;
   const bar = document.getElementById('stepbar');
   const panel = document.getElementById('steppanel');
   document.body.classList.add('stepper');
+
+  // The handle that sets the height of the panels. It is shown only inside
+  // the Codjiva app, where the panels are a strip under the stage, and it
+  // lies on the top edge of that strip. Dragging it up makes the strip
+  // taller and the stage smaller. Dragging it down does the opposite.
+  //
+  // The height is the custom property `--cj-strip-h` of the panels' element,
+  // which the style sheet (runtime.css) reads only for the strip. The style
+  // sheet also sets the least and the greatest height of the strip.
+  //
+  // The app remembers the height. This page tells the app the strip's height
+  // in a `panel` message, and the app sends a `panel` message with the
+  // remembered height when it opens a step-through (see `setPanelHeight`).
+  const grip = document.createElement('div');
+  grip.id = 'stepgrip';
+  grip.setAttribute('role', 'separator');
+  grip.setAttribute('aria-orientation', 'horizontal');
+  grip.setAttribute('aria-label', 'Resize the panels');
+  grip.title = 'Drag to resize the panels';
+  panel.before(grip);
+
+  // Tells the app how tall the strip is, if the height differs from the one
+  // the app was told last. `byUser` is true when the viewer set the height by
+  // dragging the handle, which is the height the app remembers. Nothing is
+  // sent while the panels are a column beside the stage.
+  let reportedHeight = null;
+  const reportPanelHeight = (byUser) => {
+    if (!document.body.classList.contains('embed')) return;
+    const height = panel.offsetHeight;
+    if (height === reportedHeight) return;
+    reportedHeight = height;
+    post({ cj: 'panel', height, byUser });
+  };
+  // Makes the strip `height` pixels tall, within the limits of the style
+  // sheet, and fits the stage into the room that is left. A `height` that is
+  // not a positive number gives the strip the height the style sheet starts
+  // it with. The app calls this through the `panel` message.
+  const setPanelHeight = (height) => {
+    if (Number(height) > 0)
+      panel.style.setProperty('--cj-strip-h', Math.round(height) + 'px');
+    else panel.style.removeProperty('--cj-strip-h');
+    layout();
+    reportPanelHeight(false);
+  };
+  // A window that becomes lower can make the strip lower, because the strip
+  // always leaves room for the stage.
+  window.addEventListener('resize', () => reportPanelHeight(false));
+
+  // While the handle is dragged: the id of the pointer, where it was pressed,
+  // and how tall the strip was then. Null at every other time.
+  let gripDrag = null;
+  const endGripDrag = () => {
+    if (!gripDrag) return;
+    if (grip.hasPointerCapture(gripDrag.pointer))
+      grip.releasePointerCapture(gripDrag.pointer);
+    gripDrag = null;
+    document.body.classList.remove('cj-sizing');
+  };
+  grip.addEventListener('pointerdown', (ev) => {
+    // Cancelling the press keeps the browser from starting a text selection.
+    ev.preventDefault();
+    gripDrag = {
+      pointer: ev.pointerId,
+      y: ev.clientY,
+      height: panel.offsetHeight,
+    };
+    grip.setPointerCapture(ev.pointerId);
+    document.body.classList.add('cj-sizing');
+  });
+  grip.addEventListener('pointermove', (ev) => {
+    if (!gripDrag) return;
+    // A browser may not report a release that happens outside the page. A
+    // move with no button pressed therefore also ends the drag.
+    if (!ev.buttons) {
+      endGripDrag();
+      return;
+    }
+    const wanted = Math.max(1, gripDrag.height + gripDrag.y - ev.clientY);
+    panel.style.setProperty('--cj-strip-h', wanted + 'px');
+    // The style sheet's limits may have made the strip a different height
+    // from the one asked for. The height it really has is the one kept.
+    panel.style.setProperty('--cj-strip-h', panel.offsetHeight + 'px');
+    layout();
+    reportPanelHeight(true);
+  });
+  grip.addEventListener('pointerup', endGripDrag);
+  grip.addEventListener('pointercancel', endGripDrag);
 
   const nodes = {};
   handle.nodes.forEach((entry) => {
@@ -869,6 +958,7 @@ const buildStepper = (visual, handle, post, layout) => {
     play,
     pause,
     setInput,
+    setPanelHeight,
     check,
     get input() {
       return input;

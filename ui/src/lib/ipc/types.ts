@@ -87,6 +87,9 @@ export type UpdateInfo = { version: string; notes: string | null };
 
 // The panels around the editor area as the user left them: which are open, and
 // their sizes in pixels. A height of null means the height the app chooses.
+// `stepPanelHeight` is the height of the strip of panels under a step-through.
+// That strip is drawn by the step-through's own page, and null means the
+// height that page starts with.
 export type Layout = {
   sidebarOpen: boolean;
   sidebarWidth: number;
@@ -95,6 +98,7 @@ export type Layout = {
   dockHeight: number | null;
   libraryOpen: boolean;
   libraryHeight: number | null;
+  stepPanelHeight: number | null;
 };
 
 // An agent that could run jobs, as found on this machine.

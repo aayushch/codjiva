@@ -25,8 +25,8 @@
   // how long such a job usually takes, and what it cost. The tags stay on one
   // line. If they are wider than the column, the agent's name is cut short
   // and the other tags keep their full text. Then the steps. Last, below a
-  // dividing line, the buttons: Cancel while the job runs, and Close once it
-  // has ended.
+  // dividing line, the buttons at the right: Cancel while the job runs, and
+  // Close once it has ended.
   //
   // Several jobs can run at the same time. When `app.jobs` holds more than one
   // job, the dock has a list of them at its left edge. Clicking a job in the
