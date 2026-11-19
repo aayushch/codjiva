@@ -6,6 +6,11 @@ name: Test bundles
 on:
   workflow_dispatch:
 
+# The job only reads the repository, so the GITHUB_TOKEN gets read access and nothing else.
+# Attaching the installers to the run does not use the GITHUB_TOKEN.
+permissions:
+  contents: read
+
 jobs:
   bundle:
     strategy:

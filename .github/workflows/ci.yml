@@ -10,6 +10,10 @@ on:
     tags-ignore: ['v*']
   pull_request:
 
+# Every job only reads the repository, so the GITHUB_TOKEN gets read access and nothing else.
+permissions:
+  contents: read
+
 jobs:
   # Fails when a file is not formatted, when ESLint finds a mistake, or when a line is wider
   # than 80 columns. `npm run format` at the top of the repository fixes the formatting.
