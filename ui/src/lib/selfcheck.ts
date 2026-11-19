@@ -2,12 +2,14 @@
 // ui/src-tauri/src/selfcheck.rs).
 //
 // It tours the real window: opens a folder, selects a file, shows its source,
-// plays the example film inside the sandboxed frame and opens the example
-// visual. Each step is recorded as a named check, with a screenshot, and the
-// report is handed back to the app, which then quits.
+// follows a name in that source to its definition, plays the example film
+// inside the sandboxed frame and opens the example visual. Each step is
+// recorded as a named check, with a screenshot, and the report is handed back
+// to the app, which then quits.
 
 import { invoke } from '@tauri-apps/api/core';
 import { tick } from 'svelte';
+import { api, type NavLookup } from './ipc';
 import { app } from './state/app.svelte';
 
 // A skipped check could not be carried out in this environment. It does not
@@ -86,6 +88,179 @@ async function sourceScrollChecks(
         measured.gapAfterLastLine < 20,
       JSON.stringify(measured),
     );
+}
+
+// Tries code navigation in the source view that is on screen.
+//
+// The tour looks through the names in the first lines of the file for one
+// whose definition the core is certain of and that is defined somewhere
+// else. It then does what a user does, with real pointer events at the place
+// of that name: a click, which must select the name, open the panel with its
+// references and mark its uses in the code, and a click with the key for
+// "go to definition" held, which must show the line that defines the name.
+// Back must then return to the file the tour started in.
+//
+// A file that has no such name, such as a text file, skips the checks.
+async function navigationTour(
+  record: (name: string, ok: boolean, detail?: string) => void,
+  skip: (name: string, detail: string) => void,
+  shot: (name: string) => Promise<void>,
+) {
+  type Found = { path: string; x: number; y: number; lookup: NavLookup };
+  let asked = 0;
+  // The first name in view of the file on screen that leads somewhere
+  // else, with the point of the window it is at. Null when the first names
+  // of the file lead nowhere.
+  const nameOnScreen = async (): Promise<Found | null> => {
+    const path = app.selected;
+    const source = document.querySelector('.source') as HTMLElement | null;
+    if (!path || !source) return null;
+    source.scrollTop = 0;
+    await sleep(300);
+    const view = source.getBoundingClientRect();
+    let tried = 0;
+    for (const row of source.querySelectorAll('.source-line')) {
+      const holder = row.querySelector('.source-text');
+      const line = Number((row as HTMLElement).dataset.line);
+      if (!holder) continue;
+      const words = (holder.textContent ?? '').matchAll(/[A-Za-z_]\w{2,}/g);
+      for (const word of words) {
+        if (++tried > 150) return null;
+        asked++;
+        const lookup = await api.navLookup(path, line, word.index);
+        const target = lookup?.definitions[0];
+        if (!lookup?.certain || !target) continue;
+        if (target.path === path && target.line === line) continue;
+        // The point near the start of the word, if the word is in view.
+        const walker = document.createTreeWalker(holder, NodeFilter.SHOW_TEXT);
+        let before = 0;
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const length = (node as Text).data.length;
+          if (word.index < before + length) {
+            const range = new Range();
+            range.setStart(node, word.index - before);
+            range.setEnd(node, word.index - before + 1);
+            const box = range.getBoundingClientRect();
+            if (box.bottom < view.bottom && box.top > view.top)
+              return {
+                path,
+                x: box.left + 2,
+                y: box.top + box.height / 2,
+                lookup,
+              };
+            break;
+          }
+          before += length;
+        }
+      }
+    }
+    return null;
+  };
+
+  // The file on screen is tried first. It may be a text file, so a few
+  // files that define something are tried after it. They are found by
+  // asking for definitions with an "e" in their name, which nearly every
+  // workspace has.
+  let found = await nameOnScreen();
+  if (!found) {
+    const defined = await api.navSymbols('e', 60).catch(() => []);
+    const others = [...new Set(defined.map((hit) => hit.path))].slice(0, 6);
+    for (const other of others) {
+      await app.selectFile(other);
+      await app.setTab('source');
+      await until(() => document.querySelector('.source-line'));
+      found = await nameOnScreen();
+      if (found) break;
+    }
+  }
+  if (!found) {
+    skip(
+      'navigation: a name that leads to a definition',
+      `none among the ${asked} names that were tried`,
+    );
+    return;
+  }
+  const source = document.querySelector('.source') as HTMLElement;
+  const { path, x, y, lookup } = found;
+  const target = lookup.definitions[0];
+  const mac = app.info?.platform === 'macos';
+  // A click at the place of the name, with the key for "go to definition"
+  // held when `follow` is true.
+  const click = (follow: boolean) => {
+    const at = document.elementFromPoint(x, y) ?? source;
+    for (const type of ['mousedown', 'mouseup', 'click'])
+      at.dispatchEvent(
+        new MouseEvent(type, {
+          bubbles: true,
+          clientX: x,
+          clientY: y,
+          button: 0,
+          detail: 1,
+          metaKey: follow && mac,
+          ctrlKey: follow && !mac,
+        }),
+      );
+  };
+
+  click(false);
+  const selected = await until(() =>
+    app.symbol?.lookup.name === lookup.name
+      ? document.querySelector('.symbol-panel')
+      : null,
+  );
+  record(
+    'navigation: a click on a name selects it and opens its panel',
+    !!selected,
+    `${lookup.name} at ${path}:${lookup.line}`,
+  );
+  await until(() => app.symbol?.search === 'done');
+  record(
+    'navigation: the references of the selected name are listed',
+    (app.symbol?.references.length ?? 0) > 0 &&
+      !!document.querySelector('.symbol-panel .ref-row'),
+    `${app.symbol?.references.length ?? 0} references`,
+  );
+  await sleep(200);
+  const marked =
+    typeof Highlight !== 'undefined' && 'highlights' in CSS
+      ? (CSS.highlights.get('nav-use')?.size ?? 0)
+      : null;
+  if (marked === null)
+    skip(
+      'navigation: the uses of the selected name are marked',
+      'this webview cannot highlight ranges of text',
+    );
+  else
+    record(
+      'navigation: the uses of the selected name are marked',
+      marked > 0,
+      `${marked} marks`,
+    );
+  await shot('04-source-name');
+
+  click(true);
+  const arrived = await until(() =>
+    app.selected === target.path && app.sourceLine === target.line
+      ? document.querySelector('.source-line.ref')
+      : null,
+  );
+  record(
+    'navigation: a click with the key held goes to the definition',
+    !!arrived && text('.source-line.ref .source-num') === String(target.line),
+    `${target.path}:${target.line}`,
+  );
+  await sleep(300);
+  await shot('04b-source-definition');
+
+  if (target.path !== path) {
+    await app.goBack();
+    record(
+      'navigation: Back returns to the file the name was followed from',
+      !!(await until(() => app.selected === path && app.tab === 'source')),
+    );
+  }
+  app.clearSymbol();
+  await until(() => !document.querySelector('.symbol-panel'));
 }
 
 // Runs one Visualise job on `file` and checks what the app shows for it: the
@@ -634,6 +809,20 @@ async function runSelfCheck(config: SelfCheckConfig): Promise<void> {
         );
         await tick();
         await sleep(200);
+        // No agent was asked about this file, so the core has no kept
+        // answer for it, and none of the six views on the card is marked
+        // as suggested.
+        const kept = await api.suggestCached(file).then(
+          (answer) => (answer === null ? 'none' : 'an answer'),
+          (error) => `failed: ${error?.message ?? error}`,
+        );
+        record(
+          'the card of a file offers its six views and none is suggested yet',
+          kept === 'none' &&
+            document.querySelectorAll('.empty .pick').length === 6 &&
+            !document.querySelector('.empty .pick.suggested'),
+          `kept answer: ${kept}`,
+        );
         await shot('02-empty-state');
         await app.setTab('source');
         const line = await until(() => document.querySelector('.source-line'));
@@ -646,6 +835,12 @@ async function runSelfCheck(config: SelfCheckConfig): Promise<void> {
         await shot('03-source');
         await sourceScrollChecks('', record);
         await shot('03b-source-end');
+        await navigationTour(
+          record,
+          (name, detail) =>
+            checks.push({ name, ok: false, skipped: true, detail }),
+          shot,
+        );
       } else {
         record('a source file was found to select', false);
       }

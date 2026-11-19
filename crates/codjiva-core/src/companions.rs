@@ -18,10 +18,13 @@
 //! example the folder that holds third-party code.
 
 use crate::workspace::Workspace;
+use codjiva_nav::imports::{
+    dir_of, imported_specifiers, resolve, without_extension,
+};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use regex::Regex;
 use serde::Serialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
@@ -166,157 +169,6 @@ pub fn check_ignore(
 
 fn regex(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
     cell.get_or_init(|| Regex::new(pattern).expect("the pattern is valid"))
-}
-
-/// The module names and paths the subject's text imports, includes or requires.
-///
-/// The patterns cover the common forms: a quoted path after `import`, `from`,
-/// `require`, `include`, `load` or `source`; a dotted or `::` separated name
-/// after `import`, `from`, `use` or `using`, with leading dots for a relative
-/// Python import; and the quoted lines of a Go import block.
-fn imported_specifiers(text: &str) -> Vec<String> {
-    static QUOTED: OnceLock<Regex> = OnceLock::new();
-    static NAMED: OnceLock<Regex> = OnceLock::new();
-    static GO_BLOCK: OnceLock<Regex> = OnceLock::new();
-    static GO_LINE: OnceLock<Regex> = OnceLock::new();
-    let quoted = regex(
-        &QUOTED,
-        r#"(?m)(?:^\s*#\s*(?:include|import)\s*|\b(?:import|from|require|include|include_once|require_once|require_relative|load|source)\b[^"'`\n;]*?)["'<]([^"'>\n]+)["'>]"#,
-    );
-    let named = regex(
-        &NAMED,
-        r"(?m)^\s*(?:pub\s+)?(?:import|from|use|using)\s+(?:static\s+)?(\.*[A-Za-z_][\w.:]*)",
-    );
-    let go_block = regex(&GO_BLOCK, r"(?s)\bimport\s*\(([^)]*)\)");
-    let go_line = regex(&GO_LINE, r#""([^"\n]+)""#);
-
-    let mut found: BTreeSet<String> = BTreeSet::new();
-    for capture in quoted.captures_iter(text) {
-        found.insert(capture[1].trim().to_string());
-    }
-    for capture in named.captures_iter(text) {
-        let name = capture[1].trim_end_matches(['.', ':']);
-        // Leading dots are Python's relative imports: one dot is the file's own
-        // package, and each further dot is one package up.
-        let dots = name.len() - name.trim_start_matches('.').len();
-        let prefix = if dots == 0 {
-            String::new()
-        } else {
-            format!("./{}", "../".repeat(dots - 1))
-        };
-        found.insert(format!(
-            "{prefix}{}",
-            name[dots..].replace("::", "/").replace('.', "/")
-        ));
-    }
-    for block in go_block.captures_iter(text) {
-        for line in go_line.captures_iter(&block[1]) {
-            found.insert(line[1].to_string());
-        }
-    }
-    found.into_iter().filter(|s| !s.is_empty()).collect()
-}
-
-/// A path without its last extension: `src/a/handler.test.ts` gives
-/// `src/a/handler.test`.
-fn without_extension(path: &str) -> &str {
-    let name_start = path.rfind('/').map_or(0, |i| i + 1);
-    match path[name_start..].rfind('.') {
-        Some(dot) if dot > 0 => &path[..name_start + dot],
-        _ => path,
-    }
-}
-
-fn dir_of(path: &str) -> &str {
-    path.rfind('/').map_or("", |i| &path[..i])
-}
-
-/// Joins a relative specifier such as `./util` or `../lib/a.h` onto a folder,
-/// resolving `.` and `..`. Returns `None` when it would leave the workspace.
-fn join_relative(dir: &str, specifier: &str) -> Option<String> {
-    let mut parts: Vec<&str> =
-        dir.split('/').filter(|p| !p.is_empty()).collect();
-    for part in specifier.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            other => parts.push(other),
-        }
-    }
-    Some(parts.join("/"))
-}
-
-/// The workspace files one import specifier names.
-///
-/// Three ways are tried, and the first that finds something is used:
-///   1. The specifier as a path relative to the subject's folder, with or
-///      without an extension, or as a folder that holds an index file.
-///   2. A file anywhere whose path without extension ends with the specifier.
-///      This finds `ingest/limits.py` for `ingest.limits` and
-///      `include/LogWriter.h` for `LogWriter.h`.
-///   3. A folder anywhere whose path ends with the specifier's last two parts.
-///      This finds the files of a Go package for its import path.
-fn resolve<'a>(
-    specifier: &str,
-    subject: &str,
-    files: &'a [String],
-) -> Vec<&'a String> {
-    let clean = specifier
-        .trim_start_matches("@/")
-        .trim_start_matches("~/")
-        .trim_matches('/');
-    if clean.is_empty() {
-        return Vec::new();
-    }
-    let spec_stem = without_extension(clean);
-
-    if let Some(joined) = join_relative(dir_of(subject), clean) {
-        let stem = without_extension(&joined).to_string();
-        let direct: Vec<&String> = files
-            .iter()
-            .filter(|f| {
-                let file_stem = without_extension(f);
-                **f == joined
-                    || file_stem == joined
-                    || file_stem == stem
-                    || (dir_of(f) == joined
-                        && matches!(
-                            without_extension(
-                                f.rsplit('/').next().unwrap_or("")
-                            ),
-                            "index" | "mod" | "__init__"
-                        ))
-            })
-            .collect();
-        if !direct.is_empty() {
-            return direct;
-        }
-    }
-
-    let tail = spec_stem.trim_start_matches("./").trim_start_matches("../");
-    let ends_with_path = |path: &str, tail: &str| {
-        path == tail || path.ends_with(&format!("/{tail}"))
-    };
-    let by_file: Vec<&String> = files
-        .iter()
-        .filter(|f| {
-            ends_with_path(without_extension(f), tail)
-                || ends_with_path(f, clean)
-        })
-        .collect();
-    if !by_file.is_empty() {
-        return by_file;
-    }
-
-    let parts: Vec<&str> = tail.split('/').collect();
-    let folder = parts[parts.len().saturating_sub(2)..].join("/");
-    files
-        .iter()
-        .filter(|f| ends_with_path(dir_of(f), &folder))
-        .take(6)
-        .collect()
 }
 
 /// The names the subject declares: the word after `class`, `struct`, `func`,
@@ -681,34 +533,6 @@ mod tests {
 
     fn paths(list: &[Suggestion]) -> Vec<&str> {
         list.iter().map(|s| s.path.as_str()).collect()
-    }
-
-    #[test]
-    fn import_forms_of_several_languages_are_recognised() {
-        let text = "import { a } from './transport';\nconst r = \
-                    require(\"../lib/retry\");\n#include \
-                    \"LogWriter.h\"\n#include <vector>\nfrom ingest.limits \
-                    import X\nimport os.path\nuse \
-                    crate::agents::process;\nusing System.Text;\nimport \
-                    (\n\t\"fmt\"\n\t\"example.com/shop/internal/orders\"\n)\n";
-        let found = imported_specifiers(text);
-        for expected in [
-            "./transport",
-            "../lib/retry",
-            "LogWriter.h",
-            "vector",
-            "ingest/limits",
-            "os/path",
-            "crate/agents/process",
-            "System/Text",
-            "fmt",
-            "example.com/shop/internal/orders",
-        ] {
-            assert!(
-                found.iter().any(|f| f == expected),
-                "{expected} is missing from {found:?}"
-            );
-        }
     }
 
     #[test]

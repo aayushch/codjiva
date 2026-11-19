@@ -256,6 +256,7 @@ pub fn backends(settings: &Settings, keys: &Keys) -> Vec<Arc<dyn Backend>> {
                 supports_resume: true,
                 verified: true,
                 default_model: None,
+                quick_model: None,
                 limits: String::new(),
             };
             match provider(spec, settings, keys) {

@@ -445,6 +445,7 @@ mod tests {
             supports_resume: true,
             verified: true,
             default_model: None,
+            quick_model: None,
             limits: String::new(),
         };
         Setup {

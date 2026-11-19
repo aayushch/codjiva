@@ -1,0 +1,8 @@
+(formal_parameter type: (_) @local.type name: (identifier) @local)
+(spread_parameter (variable_declarator name: (identifier) @local))
+(local_variable_declaration type: (_) @local.type declarator: (variable_declarator name: (identifier) @local))
+(catch_formal_parameter name: (identifier) @local)
+(enhanced_for_statement type: (_) @local.type name: (identifier) @local)
+(lambda_expression parameters: (identifier) @local)
+(inferred_parameters (identifier) @local)
+(resource type: (_) @local.type name: (identifier) @local)

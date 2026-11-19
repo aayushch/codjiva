@@ -33,6 +33,7 @@
   import Settings from './components/Settings.svelte';
   import SourceView from './components/SourceView.svelte';
   import Splitter from './components/Splitter.svelte';
+  import SymbolPanel from './components/SymbolPanel.svelte';
   import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import Toolbar from './components/Toolbar.svelte';
@@ -88,12 +89,15 @@
   // `hasSidebar`, `hasInspector` and `hasDock` say whether the panel belongs on
   // the screen at all, and so whether its handle is there. `showSidebar`,
   // `showInspector` and `showDock` say whether the panel is open. Full screen
-  // hides all three. The inspector also needs an artifact on screen to
-  // describe.
+  // hides all three. The inspector also needs something to describe: an
+  // artifact on screen, or a name that is selected in the source view. For
+  // such a name the panel holds `SymbolPanel` in place of `Inspector`.
   const hasSidebar = $derived(!!app.workspace && !app.theater);
   const showSidebar = $derived(hasSidebar && app.sidebarOpen);
   const showArtifact = $derived(app.artifactShown);
-  const hasInspector = $derived(showArtifact && !app.theater);
+  const hasInspector = $derived(
+    (showArtifact || app.symbolShown) && !app.theater,
+  );
   const showInspector = $derived(hasInspector && app.inspectorOpen);
 
   // The sidebar's width when a drag of its handle began, or 0 if the sidebar
@@ -262,9 +266,12 @@
       app.dockOpen = !app.dockOpen;
       return;
     }
-    if (key === 'p' && app.workspace) {
+    // The key with P goes to a file by name, and the key with T to a
+    // definition by name. Both open the same dialog.
+    if ((key === 'p' || key === 't') && app.workspace) {
       event.preventDefault();
-      app.dialog = app.dialog === 'quickopen' ? null : 'quickopen';
+      if (app.dialog === 'quickopen') app.dialog = null;
+      else app.openQuickOpen(key === 't');
     } else if (key === 'o') {
       event.preventDefault();
       app.pickAndOpen();
@@ -280,6 +287,7 @@
 <svelte:window
   bind:innerHeight={windowHeight}
   onkeydown={onKey}
+  onfocus={() => app.windowFocused()}
   onmouseup={(e) => {
     if (app.workspace && !app.dialog && (e.button === 3 || e.button === 4)) {
       e.preventDefault();
@@ -310,8 +318,7 @@
             ? '⌘'
             : 'Ctrl+'}P)"
           aria-label="Go to file"
-          onclick={() => (app.dialog = 'quickopen')}
-          ><Icon name="search" /></button
+          onclick={() => app.openQuickOpen()}><Icon name="search" /></button
         >
       </div>
       <FileTree />
@@ -367,7 +374,14 @@
           </div>
         </div>
       {:else if app.tab === 'source' && !app.selectedPipelineId}
-        <SourceView relPath={app.selected} line={app.sourceLine} />
+        <SourceView
+          relPath={app.selected}
+          line={app.sourceLine}
+          span={app.sourceSpan}
+          top={app.resumeSourceAt}
+          reveal={app.sourceReveal}
+          refresh={app.sourceRefresh}
+        />
       {:else if showArtifact && app.currentArtifact}
         {#key `${app.currentArtifact.id}/${app.shownVersion}`}
           {#if showsFilm(app.currentArtifact)}
@@ -395,7 +409,9 @@
     {/if}
   </main>
 
-  {#if showInspector}<Inspector />{/if}
+  {#if showInspector}
+    {#if app.symbolShown}<SymbolPanel />{:else}<Inspector />{/if}
+  {/if}
   {#if hasInspector}
     <div class="insp-edge" class:closed={!showInspector}>
       <Splitter

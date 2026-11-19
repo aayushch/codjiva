@@ -22,10 +22,16 @@ import type {
   Changes,
   FileContent,
   FileInfo,
+  FileKind,
   JobEvent,
+  NavKind,
+  NavLookup,
+  NavReference,
+  NavTarget,
   Settings,
   StoreStatus,
   TreeEntry,
+  ViewSuggestion,
   ValidateRequest,
   ValidationReport,
 } from './types';
@@ -476,6 +482,87 @@ const cancelledJobs = new Map<string, () => void>();
 // that two jobs started in the same millisecond get different ids.
 let mockJobsStarted = 0;
 
+// Code navigation over the made-up workspace. It stands in for the core's
+// navigation and is much simpler: a definition is a name after a keyword
+// such as `func`, `type` or `class`, a use is the same word anywhere in a
+// file with the same ending, and nothing is known about scopes. That is
+// enough for the interface's own behaviour to be tried and tested.
+const KEYWORD = 'func(?:\\s*\\([^)]*\\))?|type|class|def|function|const|var';
+const DEFINED = new RegExp(`\\b(${KEYWORD})\\s+([A-Za-z_]\\w*)`, 'g');
+const KINDS: Record<string, NavKind> = {
+  type: 'struct',
+  class: 'class',
+  const: 'constant',
+  var: 'variable',
+};
+const endingOf = (path: string) => path.split('.').pop() ?? '';
+// What the stand-in agent answers when it is asked which kind of artifact
+// suits a file: an order of the six kinds that depends only on the file's
+// ending, so that a test knows it. `suggestions` holds the answers given so
+// far, by path.
+const SUGGESTED: Record<string, FileKind[]> = {
+  go: ['visual', 'film', 'lanes', 'stepthrough', 'schema', 'structure'],
+  py: ['schema', 'visual', 'structure', 'film', 'lanes', 'stepthrough'],
+  ts: ['lanes', 'visual', 'film', 'schema', 'stepthrough', 'structure'],
+};
+const suggestions = new Map<string, ViewSuggestion>();
+// The text of the file at `path` as lines.
+const fileLines = (path: string) => (FILES[path] ?? '').split('\n');
+// Every definition named `name` in files with the same ending as `from`,
+// those of `from` itself first. With `name` null, every definition there is.
+function definitionsIn(from: string, name: string | null): NavTarget[] {
+  const found: NavTarget[] = [];
+  for (const path of Object.keys(FILES)) {
+    if (name !== null && endingOf(path) !== endingOf(from)) continue;
+    fileLines(path).forEach((text, row) => {
+      for (const match of text.matchAll(DEFINED)) {
+        if (name !== null && match[2] !== name) continue;
+        const column = match.index + match[0].length - match[2].length;
+        found.push({
+          path,
+          line: row + 1,
+          column,
+          endColumn: column + match[2].length,
+          kind:
+            KINDS[match[1]] ?? (match[1].includes('(') ? 'method' : 'function'),
+          container: null,
+          declaration: false,
+          group: path === from ? 'file' : 'folder',
+          text,
+        });
+      }
+    });
+  }
+  return found.sort(
+    (a, b) => Number(a.path !== from) - Number(b.path !== from),
+  );
+}
+// Every place where `name` stands as a whole word in the file at `path`.
+function usesIn(path: string, name: string): NavReference[] {
+  const word = new RegExp(`(?<![\\w$])${name}(?![\\w$])`, 'g');
+  return fileLines(path).flatMap((text, row) =>
+    Array.from(text.matchAll(word), (match) => ({
+      path,
+      line: row + 1,
+      column: match.index,
+      endColumn: match.index + name.length,
+      role: 'use' as const,
+      text,
+    })),
+  );
+}
+// The word at a place of a file, with its columns, or null.
+function wordIn(path: string, line: number, column: number) {
+  const text = fileLines(path)[line - 1] ?? '';
+  let start = column;
+  let end = column;
+  while (start > 0 && /\w/.test(text[start - 1])) start--;
+  while (end < text.length && /\w/.test(text[end])) end++;
+  return start === end || /\d/.test(text[start])
+    ? null
+    : { name: text.slice(start, end), column: start, endColumn: end };
+}
+
 export const mockApi: Api = {
   async appInfo() {
     return {
@@ -559,6 +646,95 @@ export const mockApi: Api = {
       truncated: false,
       highlighter: langOf(relPath.split('/').pop()!)[1],
     };
+  },
+  async navLookup(relPath, line, column): Promise<NavLookup | null> {
+    const word = wordIn(relPath, line, column);
+    if (!word) return null;
+    const definitions = definitionsIn(relPath, word.name);
+    // The definitions in the clicked file are the likely ones when there
+    // are any. Otherwise all are equally likely.
+    const here = definitions.filter((one) => one.path === relPath).length;
+    // The type of a name that the clicked line builds, as `Meter` for
+    // `meter` in `meter := &Meter{}`.
+    const built = new RegExp(`\\b${word.name}\\s*:=\\s*&?([A-Z]\\w*)`);
+    const typeName = fileLines(relPath)[line - 1]?.match(built)?.[1] ?? null;
+    const types = typeName ? definitionsIn(relPath, typeName) : [];
+    return {
+      name: word.name,
+      line,
+      column: word.column,
+      endColumn: word.endColumn,
+      basis: 'name',
+      role: 'use',
+      occurrences: usesIn(relPath, word.name),
+      definitions,
+      likely: here || definitions.length,
+      typeName: types.length ? typeName : null,
+      types,
+      certain: definitions.length === 1,
+      indexing: false,
+    };
+  },
+  async navReferences(relPath, line, column, onEvent) {
+    const word = wordIn(relPath, line, column);
+    const paths = [
+      relPath,
+      ...Object.keys(FILES).filter(
+        (path) => path !== relPath && endingOf(path) === endingOf(relPath),
+      ),
+    ];
+    const found = word ? paths.map((path) => usesIn(path, word.name)) : [];
+    const references = found.flat();
+    // The answer comes a moment later, as it does from the core.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    if (references.length) onEvent({ type: 'found', references });
+    onEvent({
+      type: 'done',
+      total: references.length,
+      files: found.filter((of) => of.length).length,
+      exact: false,
+      truncated: false,
+    });
+  },
+  async navCancel() {},
+  async navSymbols(query, limit = 50) {
+    const wanted = query.trim().toLowerCase();
+    if (!wanted) return [];
+    return definitionsIn('', null)
+      .map((target) => ({
+        ...target,
+        name: target.text.slice(target.column, target.endColumn),
+      }))
+      .filter((hit) => hit.name.toLowerCase().includes(wanted))
+      .slice(0, limit);
+  },
+  async navRefresh() {},
+  async suggestCached(relPath) {
+    return suggestions.get(relPath) ?? null;
+  },
+  async suggestViews(relPath): Promise<ViewSuggestion> {
+    if (FILES[relPath] == null)
+      throw fail('not_found', 'Could not read that file.');
+    // The answer comes a moment later, as it does from an agent.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const name = relPath.split('/').pop()!;
+    const order = SUGGESTED[endingOf(relPath)] ?? SUGGESTED.go;
+    const made: ViewSuggestion = {
+      path: relPath,
+      ranked: order.map((kind, place) => ({
+        kind,
+        reason:
+          place === 0
+            ? `The stand-in agent puts this first for ${name}.`
+            : `Shows less of ${name} than the kinds above it.`,
+      })),
+      agent: 'Mock Agent',
+      model: 'small',
+      createdAt: new Date().toISOString(),
+      sourceHash: 'sha256:mock',
+    };
+    suggestions.set(relPath, made);
+    return made;
   },
   async filesSearch(query, limit = 50) {
     const needle = query.toLowerCase().replace(/\s+/g, '');

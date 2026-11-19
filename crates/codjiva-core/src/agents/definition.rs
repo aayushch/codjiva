@@ -37,6 +37,12 @@ pub struct AgentDefinition {
     /// the program.
     #[serde(default)]
     pub default_model: Option<String>,
+    /// A small, fast model of this program, for a short question that needs
+    /// no drawing, such as which kind of artifact suits a file. `None` when
+    /// the program has none that is known here. Such a question then uses
+    /// the same model as a job.
+    #[serde(default)]
+    pub quick_model: Option<String>,
     /// Added when Settings names how much effort the model should spend on
     /// thinking.
     #[serde(default)]

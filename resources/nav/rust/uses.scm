@@ -1,0 +1,13 @@
+(call_expression function: (identifier) @call)
+(call_expression function: (field_expression field: (field_identifier) @call))
+(call_expression function: (scoped_identifier name: (identifier) @call))
+(call_expression function: (generic_function function: (identifier) @call))
+(call_expression function: (generic_function function: (scoped_identifier name: (identifier) @call)))
+(call_expression function: (generic_function function: (field_expression field: (field_identifier) @call)))
+(macro_invocation macro: (identifier) @call)
+(macro_invocation macro: (scoped_identifier name: (identifier) @call))
+(field_expression value: (_) @qualifier field: (field_identifier) @member)
+(scoped_identifier path: (_) @qualifier name: (identifier) @member)
+(scoped_type_identifier path: (_) @qualifier name: (type_identifier) @member)
+(field_initializer field: (field_identifier) @member)
+(type_identifier) @type

@@ -5,7 +5,14 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import type { Api, AppInfo, Changes, JobEvent, ValidateRequest } from './types';
+import type {
+  Api,
+  AppInfo,
+  Changes,
+  JobEvent,
+  NavRefsEvent,
+  ValidateRequest,
+} from './types';
 import type { Update } from '@tauri-apps/plugin-updater';
 
 let platform = '';
@@ -82,6 +89,23 @@ export const tauriApi: Api = {
     invoke('artifact_open_in_browser', { id, version }),
   artifactReveal: (id, version) => invoke('artifact_reveal', { id, version }),
   guardRevert: (violations) => invoke('guard_revert', { violations }),
+  navLookup: (relPath, line, column, declaration) =>
+    invoke('nav_lookup', { relPath, line, column, declaration }),
+  async navReferences(relPath, line, column, onEvent) {
+    const channel = new Channel<NavRefsEvent>();
+    channel.onmessage = onEvent;
+    await invoke('nav_references', {
+      relPath,
+      line,
+      column,
+      onEvent: channel,
+    });
+  },
+  navCancel: () => invoke('nav_cancel'),
+  navSymbols: (query, limit) => invoke('nav_symbols', { query, limit }),
+  navRefresh: () => invoke('nav_refresh'),
+  suggestCached: (relPath) => invoke('suggest_cached', { relPath }),
+  suggestViews: (relPath) => invoke('suggest_views', { relPath }),
   async onValidateRequest(handler) {
     return listen<ValidateRequest>('validate-request', (event) =>
       handler(event.payload),

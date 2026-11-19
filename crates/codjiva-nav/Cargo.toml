@@ -1,0 +1,27 @@
+[package]
+name = "codjiva-nav"
+description = "Code navigation for Codjiva: where a name is defined and where it is used"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+regex.workspace = true
+memchr.workspace = true
+rayon.workspace = true
+tree-sitter.workspace = true
+tree-sitter-c.workspace = true
+tree-sitter-cpp.workspace = true
+tree-sitter-go.workspace = true
+tree-sitter-java.workspace = true
+tree-sitter-javascript.workspace = true
+tree-sitter-python.workspace = true
+tree-sitter-rust.workspace = true
+tree-sitter-typescript.workspace = true
+
+[dev-dependencies]
+ignore.workspace = true
+tempfile.workspace = true
+serde_json.workspace = true

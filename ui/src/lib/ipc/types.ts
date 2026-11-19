@@ -110,6 +110,8 @@ export type AgentInfo = {
   verified: boolean;
   // The model jobs use when Settings names none, for agents that have one.
   defaultModel?: string | null;
+  // A small, fast model for a short question, for agents that name one.
+  quickModel?: string | null;
   // What the user should know about how far this agent can be confined. Empty
   // for an agent that its own permission rules confine to the folder it writes
   // into.
@@ -295,6 +297,140 @@ export type IgnoreCheck = {
   matchedPaths: string[];
   // The patterns that could not be read as a pattern.
   invalid: string[];
+};
+
+// Code navigation in the source view. The Rust side is the crate
+// `codjiva-nav`. A line is counted from 1. A column is counted from 0 and is
+// an index into the line's text as a JavaScript string.
+
+// A range of characters on one line: from `column` up to, but not including,
+// `endColumn`.
+export type NavSpan = { line: number; column: number; endColumn: number };
+// What kind of thing a definition is.
+export type NavKind =
+  | 'function'
+  | 'method'
+  | 'class'
+  | 'struct'
+  | 'interface'
+  | 'trait'
+  | 'enum'
+  | 'type'
+  | 'constant'
+  | 'variable'
+  | 'field'
+  | 'enumerator'
+  | 'namespace'
+  | 'module'
+  | 'macro';
+// How close a definition is to the place the name was clicked, closest
+// first.
+//   - `scope`: the name is a parameter or a local variable, and this is the
+//     place in the same function that defines it.
+//   - `owner`: the code says what the name belongs to, and this definition
+//     belongs to that. `sink.write()` names the owner. A name inside a method
+//     of a C++ or Java class can belong to that class without anything in
+//     front of it.
+//   - `inherited`: this definition belongs to something the owner derives
+//     from, such as a base class.
+//   - `file`: defined in the file the name was clicked in.
+//   - `imported`: defined in a file that file imports.
+//   - `folder`: defined in another file of the same folder.
+//   - `elsewhere`: defined anywhere else in the workspace.
+export type NavGroup =
+  | 'scope'
+  | 'owner'
+  | 'inherited'
+  | 'file'
+  | 'imported'
+  | 'folder'
+  | 'elsewhere';
+// What one occurrence of a name is. `declaration` is a place that announces
+// the name without its body, such as a prototype in a C header. `text` means
+// the word was found in a file that is not parsed, so nothing is known about
+// how it is used there.
+export type NavRole =
+  'definition' | 'declaration' | 'call' | 'type' | 'use' | 'text';
+// One place that defines a name. `text` is the line of code.
+export type NavTarget = NavSpan & {
+  path: string;
+  kind: NavKind;
+  container: string | null;
+  declaration: boolean;
+  group: NavGroup;
+  text: string;
+};
+// What is known about the name at one place of a file.
+export type NavLookup = NavSpan & {
+  name: string;
+  // How the answer was found.
+  //   - `scope`: the name is local to a function and its definition was
+  //     found exactly.
+  //   - `name`: every definition with this name is a candidate, ranked by how
+  //     close it is.
+  //   - `text`: the file's language is not parsed, so the name was read as a
+  //     word of text.
+  basis: 'scope' | 'name' | 'text';
+  role: NavRole;
+  // Every place in the same file where the name means the same thing.
+  occurrences: NavSpan[];
+  // The places that define the name, best first.
+  definitions: NavTarget[];
+  // How many entries at the start of `definitions` the code around the name
+  // points to. The entries after them only have the same name. Equal to the
+  // length of `definitions` when nothing tells them apart.
+  likely: number;
+  // The type the code gives the name, as written, when the workspace defines
+  // that type, and the places that define it. `types` is empty when
+  // `typeName` is null.
+  typeName: string | null;
+  types: NavTarget[];
+  // True when the first definition is the one the name can mean, so the
+  // interface can go there without asking.
+  certain: boolean;
+  // True while the workspace is still being indexed.
+  indexing: boolean;
+};
+// One place where a name is used. `text` is the line of code.
+export type NavReference = NavSpan & {
+  path: string;
+  role: NavRole;
+  text: string;
+};
+// What a search for references reports while it runs: more references, in
+// the order they are listed, and at the end how it went. `exact` is true when
+// the name is local to a function, so the list is all of its uses and nothing
+// else. `truncated` is true when the search stopped at its limit.
+export type NavRefsEvent =
+  | { type: 'found'; references: NavReference[] }
+  | {
+      type: 'done';
+      total: number;
+      files: number;
+      exact: boolean;
+      truncated: boolean;
+    };
+// A kind of artifact that can be made of one file.
+export type FileKind =
+  'visual' | 'film' | 'stepthrough' | 'schema' | 'lanes' | 'structure';
+// An agent's answer to which kind of artifact suits a file. `ranked` holds
+// the kinds, best first, each with one sentence of reason. A kind the agent
+// left out is not listed. `sourceHash` is the hash of the file's content when
+// the agent was asked.
+export type ViewSuggestion = {
+  path: string;
+  ranked: { kind: FileKind; reason: string }[];
+  agent: string;
+  model: string | null;
+  createdAt: string;
+  sourceHash: string;
+};
+// One definition found by its name.
+export type SymbolHit = NavSpan & {
+  name: string;
+  kind: NavKind;
+  container: string | null;
+  path: string;
 };
 
 // An area of the window, in CSS pixels from the top-left of the page.
@@ -658,6 +794,36 @@ export interface Api {
   // The address the sandboxed frame loads for a path served by the app, such as
   // `reference/film`.
   artifactUrl(path: string): string;
+  // Says what the name at a place of a file is and where it is defined.
+  // `declaration` asks for prototypes before bodies. Returns null when there
+  // is no name at that place.
+  navLookup(
+    relPath: string,
+    line: number,
+    column: number,
+    declaration?: boolean,
+  ): Promise<NavLookup | null>;
+  // Searches for the uses of the name at a place of a file. `onEvent` is
+  // called as they are found. The promise resolves when the search has ended.
+  // Starting another search, or calling `navCancel`, ends a running one early.
+  navReferences(
+    relPath: string,
+    line: number,
+    column: number,
+    onEvent: (event: NavRefsEvent) => void,
+  ): Promise<void>;
+  navCancel(): Promise<void>;
+  // Lists definitions whose name contains `query`, best first.
+  navSymbols(query: string, limit?: number): Promise<SymbolHit[]>;
+  // Asks the core to look for files that changed since navigation last read
+  // them.
+  navRefresh(): Promise<void>;
+  // The kept answer to which kind of artifact suits a file, or null when the
+  // agent was never asked about the file as it is now.
+  suggestCached(relPath: string): Promise<ViewSuggestion | null>;
+  // Asks the agent which kind of artifact suits a file. The promise resolves
+  // when the agent has answered, which takes a few seconds or more.
+  suggestViews(relPath: string): Promise<ViewSuggestion>;
   // Asks the latest release on GitHub whether it is newer than this app.
   // Returns that version, or null if this app is the newest.
   updateCheck(): Promise<UpdateInfo | null>;

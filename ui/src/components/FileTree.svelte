@@ -36,8 +36,12 @@
     return found;
   });
   // For each folder, how many files and folders somewhere inside it have a
-  // visual or a film. The row of such a folder is tinted, so that a closed
-  // folder shows that it leads to one.
+  // visual or a film. The row of such a folder has a small dot at its right
+  // end, so that a closed folder shows that it leads to one. The dot is
+  // smaller than the one a file or folder has for its own visual.
+  //
+  // The background of a row is left for two things only: the selected row
+  // and the row under the mouse.
   const holds = $derived.by(() => {
     const counts = new Map<string, number>();
     for (const path of badges.keys()) {
@@ -75,9 +79,11 @@
   let revealed: string | null = null;
 
   // When the selection changes, this effect moves the cursor to the selected
-  // row and scrolls that row into view. A selection can be made outside the
-  // tree, for example through quick-open or a file tab, and its row may be
-  // scrolled out of view at that moment.
+  // row. A selection can be made outside the tree, for example through
+  // quick-open or a file tab, and its row may be scrolled out of view at that
+  // moment. In that case the tree is scrolled so that the row is in the
+  // middle, with its neighbours above and below it. A row that is already in
+  // view stays where it is, so that a click on a row never moves the tree.
   //
   // It does this once for each selection. The effect also runs when `rows`
   // changes, because the selected row can be added to `rows` after the
@@ -95,9 +101,31 @@
     if (index < 0) return;
     revealed = selectedPath;
     cursor = index;
-    reveal(index);
+    if (!inView(index)) centre(index);
   });
 
+  // True when the whole row at `index` is in the visible part of the tree.
+  function inView(index: number) {
+    if (!viewport) return false;
+    const top = index * ROW_HEIGHT;
+    return (
+      top >= viewport.scrollTop &&
+      top + ROW_HEIGHT <= viewport.scrollTop + viewport.clientHeight
+    );
+  }
+
+  // Scrolls the tree so that the row at `index` is in the middle of the
+  // visible part. For a row near the start or the end of the tree, the
+  // browser stops at the end of the scroll range, so the row is as close to
+  // the middle as the tree allows.
+  function centre(index: number) {
+    if (!viewport) return;
+    viewport.scrollTop =
+      index * ROW_HEIGHT - (viewport.clientHeight - ROW_HEIGHT) / 2;
+  }
+
+  // Scrolls the tree just far enough that the row at `index` is in view.
+  // The arrow keys use this, so that the tree moves one row at a time.
   function reveal(index: number) {
     if (!viewport) return;
     const top = index * ROW_HEIGHT;
@@ -235,7 +263,6 @@
           class="row"
           class:selected={row.entry.relPath === selectedPath}
           class:cursor={index === cursor}
-          class:holds={inside > 0}
           style:--depth={row.depth}
           role="treeitem"
           aria-selected={row.entry.relPath === selectedPath}
@@ -277,6 +304,8 @@
                 ? 'Has a visual that is stale'
                 : 'Has a visual'}
             ></span>
+          {:else if inside > 0}
+            <span class="dot inside"></span>
           {/if}
         </div>
       {/each}

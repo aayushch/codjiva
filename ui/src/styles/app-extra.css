@@ -318,17 +318,29 @@ html.dragging-handle iframe {
   min-width: 100%;
   width: max-content;
 }
+/* A line is a block with the number as an inline block in front of the
+   text, and not a flex row: WebKit draws no text highlight (`::highlight`
+   below) inside a flex or a grid container. */
 .source-line {
-  display: flex;
+  display: block;
   height: 20px;
   white-space: pre;
 }
+/* The line a jump led to. The class `ref` is also the class of a link in
+   the inspector (app-shell.css), which has padding, a pointer and an
+   underline when the pointer is over it. A line of code has none of
+   these. */
 .source-line.ref {
+  padding: 0;
+  cursor: inherit;
   background: color-mix(in srgb, var(--main) 14%, transparent);
   box-shadow: inset 3px 0 0 var(--main);
 }
+.source-line.ref:hover {
+  text-decoration: none;
+}
 .source-num {
-  flex: none;
+  display: inline-block;
   padding-left: 1ch;
   padding-right: 2ch;
   text-align: right;
@@ -371,6 +383,154 @@ html.dragging-handle iframe {
 .source-bar .btn {
   text-transform: none;
   letter-spacing: 0;
+}
+/* The hint takes the room between the label and the buttons, and is cut
+   short when the bar is narrow. The label and the buttons keep their size. */
+.source-bar > span,
+.source-bar .btn {
+  flex: none;
+  white-space: nowrap;
+}
+.source-bar .source-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+/* The marks of code navigation in the source view. SourceView.svelte gives
+   each of these names the ranges of text it covers.
+   - nav-use: every use of the selected name in the file.
+   - nav-selected: the selected name itself.
+   - nav-target: the name that a jump led to.
+   - nav-link: the name under the pointer while the key for "go to
+     definition" is held. */
+::highlight(nav-use) {
+  background-color: color-mix(in srgb, var(--second) 22%, transparent);
+}
+::highlight(nav-selected) {
+  background-color: color-mix(in srgb, var(--main) 34%, transparent);
+}
+::highlight(nav-target) {
+  background-color: color-mix(in srgb, var(--main) 50%, transparent);
+}
+::highlight(nav-link) {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.source.linking {
+  cursor: pointer;
+}
+
+/* ---------- the panel of a selected name ---------- */
+.symbol-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.symbol-head .kicker {
+  margin: 0;
+}
+.symbol-panel h3 {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+.symbol-panel .symbol-basis {
+  font-size: 12px;
+  color: var(--muted);
+}
+/* One place in a list: a definition or a reference. */
+.nav-row {
+  display: block;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+.nav-row:hover,
+.nav-row.on {
+  background: color-mix(in srgb, var(--main) 12%, transparent);
+}
+.nav-row.on {
+  box-shadow: inset 2px 0 0 var(--main);
+}
+.nav-row .nav-where {
+  display: block;
+  font-size: 12px;
+  color: var(--accent);
+}
+.nav-row .muted,
+.nav-file .muted {
+  color: var(--muted);
+}
+/* The line that opens the definitions that only share the name. */
+.nav-others > summary {
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.nav-others > summary:hover {
+  color: var(--ink);
+}
+/* The line of code of a place. It is cut at the edge of the panel. */
+.nav-code {
+  display: block;
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  line-height: 17px;
+  font-variant-ligatures: none;
+}
+.nav-code mark {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--main) 34%, transparent);
+  color: inherit;
+}
+/* A reference is one row: the line number, the code and what the name is
+   there. */
+.nav-row.ref-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.nav-row.ref-row .nav-code {
+  flex: 1;
+  min-width: 0;
+}
+.nav-num {
+  flex: none;
+  min-width: 3ch;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--shell-tick);
+}
+.nav-tag {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+/* The heading of the references of one file. */
+.nav-file {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 2px 6px;
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.nav-file .name {
+  color: var(--second);
 }
 /* The colours of code in the source view, one for each kind of code that
    lib/highlight.ts tells apart. Numbers are amber and function names are cyan,
@@ -669,6 +829,138 @@ html.dragging-handle iframe {
 }
 .check.off {
   opacity: 0.6;
+}
+/* The card of a file that has no artifact of the open tab's kind. Its
+   width is fixed and so is the height of each of its parts, so that the card
+   has one size for every file and does not change when the agent answers. */
+.empty {
+  overflow: auto;
+}
+.empty .card.file-card {
+  box-sizing: border-box;
+  width: 660px;
+  max-width: none;
+  gap: 0;
+  padding: 26px 32px 22px;
+}
+.file-card .fname,
+.file-card .path {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-card .fname {
+  font-size: 24px;
+  line-height: 32px;
+}
+.file-card .path {
+  font-size: 13px;
+  line-height: 20px;
+}
+.file-card .meta {
+  height: 18px;
+  margin-top: 4px;
+}
+/* The six small cards, three in a row. The space between them keeps the
+   border of one from touching the border of the next. */
+.picks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  align-self: stretch;
+  margin-top: 20px;
+}
+.pick {
+  position: relative;
+  box-sizing: border-box;
+  height: 94px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--shell-button) 55%, transparent);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* The name is at the top of every small card, whatever the length of the
+     text under it. */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.pick:hover:not(:disabled),
+.pick:focus-visible {
+  border-color: var(--main);
+  outline: none;
+}
+.pick:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.pick.suggested {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+/* The word "suggested", on the top edge of the small card. It covers a
+   piece of the border, so it has the colour of the card behind it. */
+.pick-tag {
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--ground);
+  border: 1px solid var(--accent);
+  font-size: 10.5px;
+  line-height: 14px;
+  color: var(--accent);
+}
+.pick-name {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+  line-height: 20px;
+  color: var(--second);
+}
+.pick-made {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--main);
+}
+.pick-about {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--muted);
+}
+/* The note under the small cards. It is three lines high whatever it says. */
+.pick-note {
+  align-self: stretch;
+  height: 54px;
+  margin: 14px 0 12px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  color: var(--muted);
+}
+.pick-note b {
+  font-weight: 500;
+  color: var(--second);
+}
+.pick-note.warn {
+  color: var(--main);
+}
+.file-card .hint {
+  margin-top: 12px;
 }
 .empty .hint.warn {
   color: var(--main);
@@ -1019,6 +1311,10 @@ html.dragging-handle iframe {
   background: var(--main);
   vertical-align: middle;
 }
+/* The tab of the kind that the agent put first for the selected file. */
+.tabs .tab.suggested {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
 .dock.with-outline {
   grid-template-columns: 320px 1fr minmax(280px, 34%);
 }
@@ -1354,19 +1650,17 @@ html.dragging-handle iframe {
   bottom: calc(100% + 6px);
 }
 
-/* A folder that has a file with a visual or a film somewhere inside it. The
-   tint is on every folder above such a file, so the way to it can be followed
-   through closed folders. */
-.row.holds {
-  background: color-mix(in srgb, var(--main) 10%, transparent);
-  color: var(--second);
-}
-.row.holds .ico {
-  color: var(--main);
-}
-.row.holds:hover,
-.row.holds.selected {
-  background: color-mix(in srgb, var(--main) 18%, var(--shell-button));
+/* The dot of a folder that has a file with a visual or a film somewhere
+   inside it. Every folder above such a file has one, so the way to the file
+   can be followed through closed folders. It is smaller and paler than the
+   dot a file has for its own visual, and its margin puts the middle of both
+   dots in one column. */
+.row .dot.inside {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin: 0 1.5px;
+  opacity: 0.6;
 }
 
 /* ---- the library: a heading that opens and closes it, a list that scrolls, an
@@ -1584,6 +1878,31 @@ iframe {
   font: inherit;
   text-align: left;
   white-space: nowrap;
+}
+/* A command with a sentence of explanation under its label. */
+.menu-item.explained {
+  height: auto;
+  max-width: 340px;
+  padding: 7px 10px;
+  white-space: normal;
+}
+.menu-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.menu-mark {
+  flex: none;
+  font-size: 11px;
+  color: var(--main);
+}
+.menu-detail {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--shell-text-2);
 }
 .menu-item:hover:not(:disabled),
 .menu-item:focus-visible {

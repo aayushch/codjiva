@@ -16,6 +16,11 @@
   // Keys. The arrow keys move through the commands that are not disabled, and
   // Enter or Space runs the one that has focus. The first such command has
   // focus when the menu opens.
+  //
+  // A command can have a sentence of explanation, `detail`, which is drawn
+  // under its label, and a short word, `mark`, which is drawn at the right
+  // end of its label. A menu with such a command is wider and its lines are
+  // taller.
   const MARGIN = 8;
 
   let box: HTMLDivElement | undefined = $state();
@@ -104,9 +109,16 @@
       {:else}
         <button
           class="menu-item"
+          class:explained={!!item.detail}
           role="menuitem"
           disabled={item.disabled}
-          onclick={() => choose(item)}>{item.label}</button
+          onclick={() => choose(item)}
+          ><span class="menu-label"
+            >{item.label}{#if item.mark}<span class="menu-mark"
+                >{item.mark}</span
+              >{/if}</span
+          >{#if item.detail}<span class="menu-detail">{item.detail}</span
+            >{/if}</button
         >
       {/if}
     {/each}

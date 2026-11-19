@@ -18,6 +18,7 @@
   ],
   "modelArgs": ["--model", "{model}"],
   "defaultModel": "sonnet",
+  "quickModel": "haiku",
   "effortArgs": ["--effort", "{effort}"],
   "resumeArgs": ["--resume", "{sessionId}"],
   "budgetArgs": ["--max-budget-usd", "{maxBudgetUsd}"],

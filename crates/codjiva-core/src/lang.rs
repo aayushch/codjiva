@@ -1,8 +1,10 @@
 //! Names a file's language from its name, for display only.
 //!
-//! Codjiva never parses code and nothing in the app behaves differently per
-//! language. This table only produces the label shown next to a file and the
-//! hint the source viewer uses to colour it.
+//! This table produces the label shown next to a file and the hint the source
+//! viewer uses to colour it. Nothing in this crate behaves differently per
+//! language because of it. The one part of the app that reads code by its
+//! language is code navigation, in the `codjiva-nav` crate, which has its own
+//! table of the languages it can parse.
 
 /// `(extension, label shown to the user, highlighter id)`. The highlighter id
 /// is the language name the source viewer's highlighter understands; an empty
@@ -35,13 +37,13 @@ const BY_EXTENSION: &[(&str, &str, &str)] = &[
     ("js", "JavaScript", "javascript"),
     ("mjs", "JavaScript", "javascript"),
     ("cjs", "JavaScript", "javascript"),
-    ("jsx", "JavaScript", "javascript"),
+    ("jsx", "JavaScript", "jsx"),
     ("ts", "TypeScript", "typescript"),
     ("mts", "TypeScript", "typescript"),
     ("cts", "TypeScript", "typescript"),
-    ("tsx", "TypeScript", "typescript"),
-    ("svelte", "Svelte", "xml"),
-    ("vue", "Vue", "xml"),
+    ("tsx", "TypeScript", "tsx"),
+    ("svelte", "Svelte", "svelte"),
+    ("vue", "Vue", "vue"),
     ("dart", "Dart", "dart"),
     ("lua", "Lua", "lua"),
     ("pl", "Perl", "perl"),
@@ -64,8 +66,8 @@ const BY_EXTENSION: &[(&str, &str, &str)] = &[
     ("ps1", "PowerShell", "powershell"),
     ("bat", "Batch", "dos"),
     ("cmd", "Batch", "dos"),
-    ("html", "HTML", "xml"),
-    ("htm", "HTML", "xml"),
+    ("html", "HTML", "html"),
+    ("htm", "HTML", "html"),
     ("xml", "XML", "xml"),
     ("css", "CSS", "css"),
     ("scss", "SCSS", "scss"),

@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/codjiva-build", "crates/codjiva-core", "ui/src-tauri"]
+members = [
+  "crates/codjiva-build",
+  "crates/codjiva-core",
+  "crates/codjiva-nav",
+  "ui/src-tauri",
+]
 
 [workspace.package]
 version = "0.4.0"
@@ -29,6 +34,20 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 futures-util = "0.3"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 codjiva-build = { path = "crates/codjiva-build" }
+codjiva-nav = { path = "crates/codjiva-nav" }
+memchr = "2"
+rayon = "1"
+# The parsers that code navigation reads source files with. Each grammar crate
+# compiles a C parser, so building the workspace needs a C compiler.
+tree-sitter = "0.27"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-go = "0.25"
+tree-sitter-java = "0.23"
+tree-sitter-javascript = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
 codjiva-core = { path = "crates/codjiva-core" }
 
 # Stripping symbols breaks proc-macro loading with the linker shipped on macOS 27

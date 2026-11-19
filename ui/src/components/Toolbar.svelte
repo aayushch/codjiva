@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { isView, showsFilm, VIEWS } from '$lib/artifacts';
+  import { FILE_KINDS, isView, showsFilm, VIEWS } from '$lib/artifacts';
   import { targetOfArtifact } from '$lib/jobs';
   import { api } from '$lib/ipc';
   import { app, type MenuItem } from '$lib/state/app.svelte';
@@ -15,9 +15,14 @@
   //
   // A file has more views than fit in the bar as tabs of their own. Its
   // schema, lanes and structure views share one tab, labelled "More". A click
-  // on it opens a menu of the three, and choosing one shows that view. While
-  // one of them is showing, the tab has that view's name. A folder has two
-  // tabs of its own, Visual and Map.
+  // on it opens a menu of the three, each with a sentence on what it is for,
+  // and choosing one shows that view. While one of them is showing, the tab
+  // has that view's name. A folder has two tabs of its own, Visual and Map.
+  //
+  // Which of a file's six tabs to use. The user can ask the agent which kind
+  // of artifact suits the file (`app.askSuggestion`). The tab of the kind the
+  // agent puts first is then underlined, and its tooltip gives the agent's
+  // reason. The menu of the "More" tab has the command that asks.
   //
   // The copy button puts the path inside the workspace on the clipboard, which
   // is the path the bar shows. A right-click on the path opens a menu that
@@ -40,13 +45,52 @@
   const hasFileView = $derived(
     fileViews.some((view) => app.viewArtifact(view.name) != null),
   );
-  // The menu of the "More" tab: one command per view of a file. A view that
-  // has been made is marked.
-  const viewMenu = (): MenuItem[] =>
-    fileViews.map((view) => ({
-      label: view.label + (app.viewArtifact(view.name) ? '  · made' : ''),
+  // What the tooltip of a tab says: what the kind of that tab is for, and
+  // the agent's reason when the agent put that kind first.
+  function tipOf(tab: string): string {
+    const kind = FILE_KINDS.find((one) => one.tab === tab);
+    if (!kind) return '';
+    const first = app.suggestion?.ranked[0];
+    return first?.kind === kind.kind
+      ? `Suggested for this file. ${first.reason}\n\n${kind.about}`
+      : kind.about;
+  }
+  // True when the agent put the kind of this tab first for the selected file.
+  const isSuggested = (tab: string) =>
+    FILE_KINDS.some((one) => one.tab === tab && one.kind === app.suggestedKind);
+  // The view of the "More" tab that the agent put first, if it is one of
+  // them.
+  const suggestedView = $derived(
+    fileViews.find((view) => view.name === app.suggestedKind) ?? null,
+  );
+  // The menu of the "More" tab. It has one command per view of a file, with
+  // a sentence on what the view is for. A view is marked when the agent put
+  // it first, and when it has been made. The last command asks the agent
+  // which kind suits the file. It is disabled while no agent is available
+  // and while the agent is answering.
+  const viewMenu = (): MenuItem[] => [
+    ...fileViews.map((view) => ({
+      label: view.label,
+      detail: view.about,
+      mark: [
+        view.name === app.suggestedKind ? 'suggested' : '',
+        app.viewArtifact(view.name) ? 'made' : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
       action: () => app.setTab(view.name),
-    }));
+    })),
+    'separator',
+    {
+      label: app.suggesting
+        ? 'Asking which view fits…'
+        : app.suggestion
+          ? 'Ask again which view fits this file'
+          : 'Which view fits this file?',
+      disabled: app.suggesting || !app.activeAgent,
+      action: () => app.askSuggestion(true),
+    },
+  ];
 
   // True for a moment after the copy button was pressed. The button shows a
   // tick meanwhile, in place of its icon.
@@ -263,6 +307,8 @@
       <button
         class="tab"
         class:on={app.tab === 'visual'}
+        class:suggested={!app.selectedIsFolder && isSuggested('visual')}
+        title={app.selectedIsFolder ? undefined : tipOf('visual')}
         onclick={() => app.setTab('visual')}
         >Visual{#if app.visualArtifact}<span
             class="has"
@@ -283,6 +329,8 @@
         <button
           class="tab"
           class:on={app.tab === 'film'}
+          class:suggested={isSuggested('film')}
+          title={tipOf('film')}
           onclick={() => app.setTab('film')}
           >Film{#if app.filmArtifact}<span
               class="has"
@@ -292,6 +340,8 @@
         <button
           class="tab"
           class:on={app.tab === 'steps'}
+          class:suggested={isSuggested('steps')}
+          title={tipOf('steps')}
           onclick={() => app.setTab('steps')}
           >Step-through{#if app.stepsArtifact}<span
               class="has"
@@ -301,8 +351,11 @@
         <button
           class="tab more-views"
           class:on={shownView != null}
+          class:suggested={suggestedView != null}
           aria-haspopup="menu"
-          title="The other views of this file: schema, lanes and structure"
+          title={suggestedView
+            ? `Suggested for this file: ${suggestedView.label}. ${app.suggestion?.ranked[0]?.reason ?? ''}`
+            : 'The other views of this file: schema, lanes and structure'}
           onclick={(event) => app.openMenu(event, viewMenu())}
           >{shownView ? shownView.label : 'More'} ▾{#if hasFileView}<span
               class="has"

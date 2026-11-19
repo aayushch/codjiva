@@ -1,0 +1,6 @@
+(call function: (identifier) @call)
+(call function: (attribute attribute: (identifier) @call))
+(attribute object: (_) @qualifier attribute: (identifier) @member)
+(keyword_argument name: (identifier) @member)
+(type (identifier) @type)
+(class_definition superclasses: (argument_list (identifier) @type))

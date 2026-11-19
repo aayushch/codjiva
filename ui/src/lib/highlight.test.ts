@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { highlightLines, lineToHtml } from './highlight';
+import { GRAMMARS, highlightLines, lineToHtml } from './highlight';
 
 // A piece of code as the highlighter reports it. The colour names the kind.
 const piece = (content: string, kind?: string) => ({
@@ -80,5 +81,43 @@ describe('highlightLines', () => {
   it('shows a file of an unknown language as plain text', async () => {
     expect(await highlightLines('a < b\nc', '')).toEqual(['a &lt; b', 'c']);
     expect(await highlightLines('a < b', 'klingon')).toEqual(['a &lt; b']);
+  });
+
+  it('colours the script, the markup and the style of a Svelte file', async () => {
+    const lines = await highlightLines(
+      [
+        '<script lang="ts">',
+        '  // The text beside the dial.',
+        '  let { label }: { label: string } = $props();',
+        '</script>',
+        '<div class="dial">{label}</div>',
+        '<style>',
+        '  .dial { width: 6rem; }',
+        '</style>',
+      ].join('\n'),
+      'svelte',
+    );
+    expect(lines[1]).toContain('class="tk-comment"');
+    expect(lines[2]).toContain('<span class="tk-keyword">let</span>');
+    expect(lines[2]).toContain('<span class="tk-type">string</span>');
+    expect(lines[4]).toContain('<span class="tk-keyword">div</span>');
+    expect(lines[4]).toContain('<span class="tk-string">"dial"</span>');
+    expect(lines[6]).toContain('<span class="tk-member">width</span>');
+    expect(lines[6]).toContain('<span class="tk-number">6rem</span>');
+  });
+
+  it('has a grammar for every language id the core names', () => {
+    // Each row of the tables in lang.rs ends with the id of the grammar
+    // that colours the language, or with "" for a language shown as plain
+    // text: `("svelte", "Svelte", "svelte"),`.
+    const table = readFileSync(
+      new URL('../../../crates/codjiva-core/src/lang.rs', import.meta.url),
+      'utf8',
+    );
+    const ids = [...table.matchAll(/^\s*\("[^"]+", "[^"]+", "([^"]*)"\),$/gm)]
+      .map((row) => row[1])
+      .filter((id) => id !== '');
+    expect(ids.length).toBeGreaterThan(40);
+    expect(ids.filter((id) => !GRAMMARS[id])).toEqual([]);
   });
 });

@@ -2773,6 +2773,7 @@ mod tests {
             supports_resume: true,
             verified: true,
             default_model: None,
+            quick_model: None,
             limits: String::new(),
         };
         let provider = Arc::new(
@@ -4311,6 +4312,7 @@ mod tests {
                 supports_resume: true,
                 verified: true,
                 default_model: None,
+                quick_model: None,
                 limits: String::new(),
             }
         }
@@ -4440,6 +4442,7 @@ mod tests {
                 supports_resume: false,
                 verified: true,
                 default_model: None,
+                quick_model: None,
                 limits: String::new(),
             }
         }

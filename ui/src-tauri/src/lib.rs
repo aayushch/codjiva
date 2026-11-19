@@ -7,6 +7,7 @@
 mod artifacts;
 mod capture;
 mod jobs;
+mod nav;
 mod protocol;
 mod selfcheck;
 
@@ -31,6 +32,7 @@ pub struct AppState {
     watcher: Mutex<Option<DirWatcher>>,
     settings: RwLock<Settings>,
     jobs: jobs::JobState,
+    nav: nav::NavState,
 }
 
 impl AppState {
@@ -340,6 +342,7 @@ pub fn run() {
             watcher: Mutex::new(None),
             settings: RwLock::new(loaded),
             jobs: jobs::JobState::default(),
+            nav: nav::NavState::default(),
         })
         .register_asynchronous_uri_scheme_protocol(
             names::SCHEME,
@@ -377,6 +380,8 @@ pub fn run() {
             jobs::job_start,
             jobs::job_estimate,
             jobs::job_cancel,
+            jobs::suggest_cached,
+            jobs::suggest_views,
             jobs::job_validated,
             jobs::api_providers,
             jobs::api_key_set,
@@ -395,6 +400,11 @@ pub fn run() {
             artifacts::artifact_open_in_browser,
             artifacts::artifact_reveal,
             artifacts::guard_revert,
+            nav::nav_lookup,
+            nav::nav_references,
+            nav::nav_cancel,
+            nav::nav_symbols,
+            nav::nav_refresh,
             selfcheck::selfcheck_config,
             selfcheck::selfcheck_capture,
             selfcheck::selfcheck_edit_file,

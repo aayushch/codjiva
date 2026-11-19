@@ -79,6 +79,7 @@ impl Backend for ReplayBackend {
             supports_resume: true,
             verified: true,
             default_model: None,
+            quick_model: None,
             limits: String::new(),
         }
     }

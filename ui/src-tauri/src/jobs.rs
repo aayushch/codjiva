@@ -14,6 +14,7 @@ use codjiva_core::env::ShellEnv;
 use codjiva_core::error::{AppError, Result};
 use codjiva_core::jobs::{self, JobContext, JobEvent, JobRequest, Validator};
 use codjiva_core::settings::Settings;
+use codjiva_core::suggest;
 use codjiva_core::timing::{self, Estimate, Timing};
 use serde::Serialize;
 use serde_json::Value;
@@ -606,6 +607,43 @@ pub async fn job_start(
         }
     });
     Ok(job_id)
+}
+
+/// The kept answer to which kind of artifact suits the file at `rel_path`, or
+/// `None` when the agent was never asked about the file as it is now.
+#[tauri::command]
+pub fn suggest_cached(
+    rel_path: String,
+    state: State<'_, AppState>,
+) -> Result<Option<suggest::Suggestion>> {
+    Ok(suggest::cached(&*state.workspace()?, &rel_path))
+}
+
+/// Asks the agent that would run the next job which kind of artifact suits
+/// the file at `rel_path`, and returns its answer when it has one. That takes
+/// as long as the agent needs to start and to answer.
+///
+/// The agent's small model is asked when its definition names one, whatever
+/// model Settings names for jobs, because the question is short. Otherwise
+/// the model of a job is asked.
+#[tauri::command]
+pub async fn suggest_views(
+    rel_path: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<suggest::Suggestion> {
+    let workspace = state.workspace()?;
+    let settings = state.settings();
+    let (backend, model) = agent_for_next_job(&app, &settings).await?;
+    let model = backend.info().quick_model.or(model);
+    suggest::ask(
+        &workspace,
+        backend.as_ref(),
+        model,
+        &rel_path,
+        &CancellationToken::new(),
+    )
+    .await
 }
 
 /// Asks a running job to stop. The job reports `cancelled` on its event channel

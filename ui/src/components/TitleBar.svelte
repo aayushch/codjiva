@@ -12,8 +12,8 @@
   // While a workspace is open the bar has three buttons that show and hide the
   // panels around the editor area: the sidebar button at the left end, and the
   // job panel and inspector buttons at the right end. The inspector button is
-  // disabled while no visual or film is on screen, because the inspector has
-  // nothing to describe then.
+  // disabled while the panel has nothing to describe: no visual or film is on
+  // screen, and no name is selected in the source view.
   //
   // The update notice is at the left of the agent status while a newer
   // version of the app waits, is being installed, is ready or failed to
@@ -107,8 +107,8 @@
       >
       <button
         class="tb-btn tip-end"
-        class:on={app.inspectorOpen && app.artifactShown}
-        disabled={!app.artifactShown}
+        class:on={app.inspectorOpen && (app.artifactShown || app.symbolShown)}
+        disabled={!app.artifactShown && !app.symbolShown}
         data-tip="{app.inspectorOpen
           ? 'Hide'
           : 'Show'} the inspector ({alt}{cmd}0)"

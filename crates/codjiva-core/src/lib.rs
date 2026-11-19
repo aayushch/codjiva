@@ -18,9 +18,13 @@ pub mod prompts;
 pub mod reference;
 pub mod settings;
 pub mod store;
+pub mod suggest;
 pub mod timing;
 pub mod util;
 pub mod watch;
 pub mod workspace;
 
+/// Code navigation: where a name is defined and where it is used. It is a
+/// crate of its own because it compiles the parsers of several languages.
+pub use codjiva_nav as nav;
 pub use error::{AppError, Result};

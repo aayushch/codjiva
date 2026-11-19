@@ -117,6 +117,8 @@ const SCOPES: [Kind, string[]][] = [
       'entity.other.attribute-name',
       'support.type.property-name',
       'meta.object-literal.key',
+      'variable.css',
+      'variable.argument.css',
     ],
   ],
   [
@@ -160,8 +162,11 @@ function kindOf(token: ThemedToken): Kind | null {
 
 // The grammar of each language the app names (see lang.rs in the core crate),
 // by the id the app uses for it. Each grammar is loaded when a file of that
-// language is first shown.
-const GRAMMARS: Record<string, () => Promise<unknown>> = {
+// language is first shown. A grammar for a file that mixes languages brings
+// the grammars of those languages with it: the one for Svelte also colours
+// the TypeScript between `<script>` tags and the CSS between `<style>` tags.
+// The test in `highlight.test.ts` compares this list with lang.rs.
+export const GRAMMARS: Record<string, () => Promise<unknown>> = {
   bash: () => import('shiki/langs/bash.mjs'),
   c: () => import('shiki/langs/c.mjs'),
   clojure: () => import('shiki/langs/clojure.mjs'),
@@ -180,10 +185,12 @@ const GRAMMARS: Record<string, () => Promise<unknown>> = {
   graphql: () => import('shiki/langs/graphql.mjs'),
   groovy: () => import('shiki/langs/groovy.mjs'),
   haskell: () => import('shiki/langs/haskell.mjs'),
+  html: () => import('shiki/langs/html.mjs'),
   ini: () => import('shiki/langs/ini.mjs'),
   java: () => import('shiki/langs/java.mjs'),
   javascript: () => import('shiki/langs/javascript.mjs'),
   json: () => import('shiki/langs/json.mjs'),
+  jsx: () => import('shiki/langs/jsx.mjs'),
   julia: () => import('shiki/langs/julia.mjs'),
   kotlin: () => import('shiki/langs/kotlin.mjs'),
   less: () => import('shiki/langs/less.mjs'),
@@ -204,9 +211,12 @@ const GRAMMARS: Record<string, () => Promise<unknown>> = {
   scala: () => import('shiki/langs/scala.mjs'),
   scss: () => import('shiki/langs/scss.mjs'),
   sql: () => import('shiki/langs/sql.mjs'),
+  svelte: () => import('shiki/langs/svelte.mjs'),
   swift: () => import('shiki/langs/swift.mjs'),
+  tsx: () => import('shiki/langs/tsx.mjs'),
   typescript: () => import('shiki/langs/typescript.mjs'),
   vbnet: () => import('shiki/langs/vb.mjs'),
+  vue: () => import('shiki/langs/vue.mjs'),
   x86asm: () => import('shiki/langs/asm.mjs'),
   xml: () => import('shiki/langs/xml.mjs'),
   yaml: () => import('shiki/langs/yaml.mjs'),
@@ -269,13 +279,19 @@ async function highlighterFor(
   return [ready, name];
 }
 
+// The lines of a file's text. A trailing newline ends the last line; it does
+// not start an empty one. `highlightLines` returns one HTML string for each
+// of these lines, in the same order.
+export function linesOf(text: string): string[] {
+  return (text.endsWith('\n') ? text.slice(0, -1) : text).split('\n');
+}
+
 // Returns the file as HTML lines. `language` is the app's id for the file's
 // language, or "" for none.
 export async function highlightLines(
   text: string,
   language: string,
 ): Promise<string[]> {
-  // A trailing newline ends the last line; it does not start an empty one.
   const body = text.endsWith('\n') ? text.slice(0, -1) : text;
   const plain = () => body.split('\n').map(escapeHtml);
   if (!GRAMMARS[language] || body.length > HIGHLIGHT_LIMIT_BYTES)

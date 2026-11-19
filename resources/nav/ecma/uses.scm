@@ -1,0 +1,6 @@
+(call_expression function: (identifier) @call)
+(call_expression function: (member_expression property: (property_identifier) @call))
+(new_expression constructor: (identifier) @call)
+(member_expression object: (_) @qualifier property: (property_identifier) @member)
+(member_expression object: (_) @qualifier property: (private_property_identifier) @member)
+(pair key: (property_identifier) @member)

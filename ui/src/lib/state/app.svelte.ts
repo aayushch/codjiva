@@ -12,20 +12,25 @@ import {
   type Changes,
   type Feedback,
   type FileInfo,
+  type FileKind,
   type FolderInfo,
   type Join,
   type JobRequest,
   type Layout,
+  type NavLookup,
+  type NavReference,
+  type NavSpan,
   type Outline,
   type PickedElement,
   type RecentWorkspace,
   type Settings,
   type TreeEntry,
   type ViewName,
+  type ViewSuggestion,
   type ValidateRequest,
   type WorkspaceInfo,
 } from '$lib/ipc';
-import { isView, PIPELINE_PREFIX, showsFilm } from '$lib/artifacts';
+import { FILE_KINDS, isView, PIPELINE_PREFIX, showsFilm } from '$lib/artifacts';
 import {
   newJob,
   reduceJob,
@@ -57,9 +62,18 @@ export type Toast = { id: number; kind: 'info' | 'error'; text: string };
 
 // One line of a context menu: a command with its label, or a dividing line
 // between two groups of commands. A disabled command is shown greyed out and
-// does nothing.
+// does nothing. `detail` is a sentence shown under the label, for a command
+// that needs explaining. `mark` is a short word shown at the right end of the
+// label, such as "made".
 export type MenuItem =
-  { label: string; action: () => void; disabled?: boolean } | 'separator';
+  | {
+      label: string;
+      action: () => void;
+      disabled?: boolean;
+      detail?: string;
+      mark?: string;
+    }
+  | 'separator';
 // The context menu on screen: its commands, and the point of the window, in
 // pixels from the top-left corner, where the user asked for it.
 export type Menu = { x: number; y: number; items: MenuItem[] };
@@ -113,13 +127,36 @@ export type FilmMoment = {
 };
 
 // One place the user has been, for the Back and Forward buttons: what was
-// selected, the tab, the line the source view was at, and for a film how far it
-// had played when the user left.
+// selected and the tab. For the source view it also holds `line`, the line
+// that was marked there, and `top`, the first line that was in view when the
+// user left, so that Back shows the file scrolled as it was. For a film it
+// holds how far the film had played when the user left.
 export type Place = {
   selected: string;
   tab: ViewTab;
   line: number | null;
+  top: number | null;
   filmTime: number | null;
+};
+
+// The name the user selected in the source view, with what navigation knows
+// about it.
+//   - `path` is the file the name was selected in.
+//   - `lookup` is what the name is and where it is defined.
+//   - `references` are its uses as far as the search has found them.
+//   - `search` says how far that search is: not started, running or ended.
+//   - `outcome` is the search's last report, once it has ended.
+export type NavSymbol = {
+  path: string;
+  lookup: NavLookup;
+  references: NavReference[];
+  search: 'idle' | 'running' | 'done';
+  outcome: {
+    total: number;
+    files: number;
+    exact: boolean;
+    truncated: boolean;
+  } | null;
 };
 // How many places are remembered. The oldest are dropped first.
 const PLACES_KEPT = 100;
@@ -173,6 +210,35 @@ class AppState {
   // The line the source viewer scrolls to and highlights, when a code reference
   // was followed.
   sourceLine = $state<number | null>(null);
+  // The characters of `sourceLine` that the source viewer marks, when what was
+  // followed leads to a name and not only to a line.
+  sourceSpan = $state<NavSpan | null>(null);
+  // How many times the source viewer has been asked to show `sourceLine`. The
+  // viewer scrolls to the line whenever this number changes, so that going to
+  // the same line twice scrolls there twice.
+  sourceReveal = $state(0);
+  // The first line in view in the source viewer, which the viewer keeps up to
+  // date. It is not shown anywhere, so it is a plain number.
+  sourceTop = 1;
+  // How many times the file in the source viewer has changed on disk while
+  // it was selected. The viewer reads the file again when this changes.
+  sourceRefresh = $state(0);
+  // The first line the source viewer shows when its file is ready. Back and
+  // Forward set it so that a file is scrolled as the user left it. With null
+  // the viewer goes to `sourceLine`, or to the top of the file.
+  resumeSourceAt = $state<number | null>(null);
+
+  // The name selected in the source view, or null. `selectSymbol` sets it.
+  symbol = $state<NavSymbol | null>(null);
+  // Counts the lookups that were started, so that a slow answer to an old
+  // click cannot replace the answer to a newer one.
+  private lookups = 0;
+  // The time, in milliseconds, of the last request to look for changed files
+  // because the window came to the front.
+  private lastNavRefresh = 0;
+  // The text the quick-open dialog starts with. "#" makes it search for
+  // definitions by name.
+  quickOpenStart = $state('');
 
   // The file tabs above the toolbar, from left to right. Every file, folder
   // and pipeline the user selects gets a tab, and keeps it until the user
@@ -242,6 +308,73 @@ class AppState {
       ) ?? null
     );
   }
+  // The artifact of the given kind that was made of the selected file, or
+  // null.
+  artifactOfKind(kind: FileKind): ArtifactSummary | null {
+    return (
+      this.artifacts.find(
+        (a) => a.kind === kind && a.subject[0] === this.selected,
+      ) ?? null
+    );
+  }
+
+  // The last answer an agent gave to which kind of artifact suits a file.
+  // It can be about a file other than the selected one, for example after
+  // the user selected another file while the agent was still answering.
+  private lastSuggestion = $state<ViewSuggestion | null>(null);
+  // The agent's answer for the selected file, or null when there is none.
+  suggestion = $derived(
+    this.lastSuggestion?.path === this.selected ? this.lastSuggestion : null,
+  );
+  // The path of the file the agent is being asked about, or null while no
+  // question is running.
+  private suggestingFor = $state<string | null>(null);
+  // True while the agent is being asked about the selected file.
+  suggesting = $derived(
+    this.suggestingFor !== null && this.suggestingFor === this.selected,
+  );
+  // The kind the agent ranked first for the selected file, or null.
+  suggestedKind = $derived(this.suggestion?.ranked[0]?.kind ?? null);
+
+  // Reads the kept answer for the file at `relPath`, if the agent was asked
+  // about the file as it is now. A file that changed since has no answer.
+  private async loadSuggestion(relPath: string) {
+    try {
+      const kept = await api.suggestCached(relPath);
+      if (this.selected !== relPath) return;
+      this.lastSuggestion = kept;
+    } catch {
+      // A suggestion is a convenience. A file without one is shown as usual.
+    }
+  }
+
+  // Asks the agent which kind of artifact suits the selected file. Only one
+  // question runs at a time.
+  //
+  // The answer is shown where the selected file's views are listed. With
+  // `announce`, a message also names the first kind and its reason, for when
+  // the question was asked from a menu and that list is not on screen.
+  async askSuggestion(announce = false) {
+    const path = this.selected;
+    if (!path || this.selectedIsFolder || this.selectedPipelineId) return;
+    if (this.suggestingFor) return;
+    this.suggestingFor = path;
+    try {
+      const made = await api.suggestViews(path);
+      this.lastSuggestion = made;
+      const first = made.ranked[0];
+      const kind = FILE_KINDS.find((one) => one.kind === first?.kind);
+      if (announce && kind)
+        this.notify(
+          `Suggested for ${path.split('/').pop()}: ${kind.label}. ${first.reason}`,
+        );
+    } catch (error) {
+      this.fail(error);
+    } finally {
+      this.suggestingFor = null;
+    }
+  }
+
   // The id of the selected pipeline. A pipeline is selected in place of a file,
   // and then `selected` holds its id after a prefix.
   selectedPipelineId = $derived(
@@ -375,6 +508,18 @@ class AppState {
       this.tab !== 'source' &&
       this.shownVersion != null &&
       this.detail.manifest.artifactId === this.currentArtifact.id,
+  );
+  // The source view is on screen and a name is selected in it. The panel on
+  // the right then lists where that name is defined and used, in place of the
+  // inspector. The selected name stays while the user follows its references
+  // into other files.
+  symbolShown = $derived(
+    !this.example &&
+      !!this.symbol &&
+      this.tab === 'source' &&
+      !!this.selected &&
+      !this.selectedIsFolder &&
+      !this.selectedPipelineId,
   );
   // The library at the bottom of the sidebar: whether its list is showing, and
   // its height in pixels once the user has dragged its top edge. Until then the
@@ -558,6 +703,8 @@ class AppState {
     this.detail = null;
     this.pickedVersion = null;
     this.sourceLine = null;
+    this.sourceSpan = null;
+    this.clearSymbol();
     this.clearFeedbackContext();
   }
 
@@ -661,11 +808,17 @@ class AppState {
   // Called before the user leaves the place on screen. If that place is a film,
   // the time it has reached is kept with the place, so that Back can continue
   // the film from there.
+  // If it is the source view, the first line in view is kept with the place
+  // in the same way, so that Back shows the file scrolled as the user left
+  // it.
   private leavePlace() {
     const here = this.places[this.placeIndex];
     if (here && this.tab === 'film' && this.filmMoment)
       here.filmTime = this.filmMoment.t;
+    if (here && this.tab === 'source' && here.selected === this.selected)
+      here.top = this.sourceTop;
     this.resumeFilmAt = null;
+    this.resumeSourceAt = null;
   }
 
   // Adds the place on screen after `placeIndex`, unless it is the place already
@@ -676,6 +829,7 @@ class AppState {
       selected: this.selected,
       tab: this.tab,
       line: this.tab === 'source' ? this.sourceLine : null,
+      top: null,
       filmTime: null,
     };
     const here = this.places[this.placeIndex];
@@ -742,6 +896,7 @@ class AppState {
     this.moves++;
     try {
       if (place.tab === 'film') this.resumeFilmAt = place.filmTime;
+      if (place.tab === 'source') this.resumeSourceAt = place.top;
       if (place.selected.startsWith(PIPELINE_PREFIX))
         await this.selectPipeline(place.selected.slice(PIPELINE_PREFIX.length));
       else if (place.selected.endsWith('/')) {
@@ -1273,6 +1428,9 @@ class AppState {
       this.places = [];
       this.placeIndex = -1;
       this.filmTimes.clear();
+      this.sourceLine = null;
+      this.sourceSpan = null;
+      this.clearSymbol();
       await this.loadDir('');
       await this.reloadArtifacts();
       await this.syncWatched();
@@ -1292,6 +1450,9 @@ class AppState {
     this.example = null;
     this.places = [];
     this.placeIndex = -1;
+    this.sourceLine = null;
+    this.sourceSpan = null;
+    this.symbol = null;
     this.recents = await api.workspaceRecent();
   }
 
@@ -1328,15 +1489,195 @@ class AppState {
     }
   }
 
+  // Code navigation in the source view. A place is named by the file's path,
+  // the line counted from 1 and the column counted from 0.
+
+  // Makes the name at a place of a file the selected name: the source viewer
+  // marks its uses, and the panel on the right lists its definitions and
+  // references. Returns what is known about the name, or null when there is
+  // no name at that place. In that case nothing stays selected.
+  async selectSymbol(
+    path: string,
+    line: number,
+    column: number,
+  ): Promise<NavLookup | null> {
+    const mine = ++this.lookups;
+    let lookup: NavLookup | null;
+    try {
+      lookup = await api.navLookup(path, line, column);
+    } catch (error) {
+      this.fail(error);
+      return null;
+    }
+    // The user has clicked somewhere else since this lookup was started.
+    if (mine !== this.lookups) return null;
+    if (!lookup) {
+      this.clearSymbol();
+      return null;
+    }
+    this.setSymbol(path, lookup);
+    return lookup;
+  }
+
+  // Makes `lookup`, which was found in the file at `path`, the selected
+  // name. If that same name at that same place is selected already, its
+  // list of references is kept and not searched for again.
+  private setSymbol(path: string, lookup: NavLookup) {
+    const now = this.symbol;
+    if (
+      now &&
+      now.path === path &&
+      now.lookup.name === lookup.name &&
+      now.lookup.line === lookup.line &&
+      now.lookup.column === lookup.column
+    ) {
+      now.lookup = lookup;
+      return;
+    }
+    if (now?.search === 'running') api.navCancel().catch(() => {});
+    this.symbol = {
+      path,
+      lookup,
+      references: [],
+      search: 'idle',
+      outcome: null,
+    };
+  }
+
+  // Leaves no name selected, and stops a search for references that is
+  // running.
+  clearSymbol() {
+    this.lookups++;
+    if (this.symbol?.search === 'running') api.navCancel().catch(() => {});
+    this.symbol = null;
+  }
+
+  // Searches for the references of the selected name, unless that was done
+  // or is being done. The panel that lists them calls this when it appears,
+  // so that nothing is searched while nobody looks at the list.
+  async searchReferences() {
+    const symbol = this.symbol;
+    if (!symbol || symbol.search !== 'idle') return;
+    symbol.search = 'running';
+    try {
+      await api.navReferences(
+        symbol.path,
+        symbol.lookup.line,
+        symbol.lookup.column,
+        (event) => {
+          // Reports of a search for a name that is no longer selected are
+          // dropped.
+          if (this.symbol !== symbol) return;
+          if (event.type === 'found')
+            symbol.references.push(...event.references);
+          else
+            symbol.outcome = {
+              total: event.total,
+              files: event.files,
+              exact: event.exact,
+              truncated: event.truncated,
+            };
+        },
+      );
+    } catch (error) {
+      if (this.symbol === symbol) this.fail(error);
+    }
+    if (this.symbol === symbol) symbol.search = 'done';
+  }
+
+  // Goes to the definition of the name at a place of a file. `declaration`
+  // asks for the prototype where a name has a prototype and a body, as in C
+  // and C++.
+  //   - If one definition is certain, the source viewer goes there. The
+  //     selected name is left as it is, so that a list of references the
+  //     user is working through stays.
+  //   - If several definitions are equally likely, the name becomes the
+  //     selected name and the panel on the right opens with all of them.
+  //   - If the place is itself the only definition, the same happens, and
+  //     the panel shows where the name is used.
+  //   - If there is no definition in the workspace, a toast says so.
+  async goToDefinition(
+    path: string,
+    line: number,
+    column: number,
+    declaration = false,
+  ) {
+    const mine = ++this.lookups;
+    let lookup: NavLookup | null;
+    try {
+      lookup = await api.navLookup(path, line, column, declaration);
+    } catch (error) {
+      return this.fail(error);
+    }
+    if (mine !== this.lookups || !lookup) return;
+    const target = lookup.definitions[0];
+    const isHere =
+      !!target &&
+      target.path === path &&
+      target.line === lookup.line &&
+      target.column === lookup.column;
+    if (target && lookup.certain && !isHere) return this.openSpan(target);
+    this.setSymbol(path, lookup);
+    this.inspectorOpen = true;
+    if (!target)
+      this.notify(`No definition of ${lookup.name} was found in this folder.`);
+  }
+
+  // Makes the name at a place of a file the selected name and opens the
+  // panel that lists its references.
+  async findReferences(path: string, line: number, column: number) {
+    if (await this.selectSymbol(path, line, column)) this.inspectorOpen = true;
+  }
+
+  // Shows a place in the source viewer: the file at `path`, scrolled to the
+  // line of `span`, with the characters of `span` marked.
+  openSpan(place: NavSpan & { path: string }): Promise<void> {
+    return this.selectFile(place.path, place.line, {
+      line: place.line,
+      column: place.column,
+      endColumn: place.endColumn,
+    });
+  }
+
+  // Called when the window comes to the front. The user may have changed
+  // files in another program meanwhile, so the core is asked to look for
+  // changed files, at most once in five seconds.
+  windowFocused() {
+    if (!this.workspace || Date.now() - this.lastNavRefresh < 5000) return;
+    this.lastNavRefresh = Date.now();
+    api.navRefresh().catch(() => {});
+  }
+
+  // Opens the quick-open dialog. With `symbols` it starts as a search for
+  // definitions by name.
+  openQuickOpen(symbols = false) {
+    this.quickOpenStart = symbols ? '#' : '';
+    this.dialog = 'quickopen';
+  }
+
   // Selects a file, expanding the folders above it so its row is visible.
-  // `line` scrolls the source viewer to that line and switches to it.
-  async selectFile(relPath: string, line?: number) {
+  // `line` scrolls the source viewer to that line and switches to it. `span`
+  // names the characters of that line to mark.
+  async selectFile(relPath: string, line?: number, span?: NavSpan) {
     if (relPath.endsWith('/')) return this.selectFolder(relPath);
-    await this.move(() => this.showFile(relPath, line));
+    await this.move(() => this.showFile(relPath, line, span));
   }
 
   // The work of `selectFile` for a path that is a file.
-  private async showFile(relPath: string, line?: number) {
+  private async showFile(relPath: string, line?: number, span?: NavSpan) {
+    // Going to a line of the file that is already selected changes only what
+    // the source viewer shows. The file is not read and described again.
+    if (
+      line != null &&
+      relPath === this.selected &&
+      this.fileInfo?.relPath === relPath
+    ) {
+      this.sourceLine = line;
+      this.sourceSpan = span ?? null;
+      this.tab = 'source';
+      this.sourceReveal++;
+      return;
+    }
     try {
       this.folderInfo = null;
       for (const dir of ancestorsOf(relPath)) {
@@ -1346,6 +1687,8 @@ class AppState {
       this.example = null;
       this.selected = relPath;
       this.sourceLine = line ?? null;
+      this.sourceSpan = span ?? null;
+      this.sourceReveal++;
       if (line != null) this.tab = 'source';
       // A file that has only a film opens on it, and a file without a film does
       // not stay on the Film tab's empty state when it has a visual.
@@ -1382,6 +1725,7 @@ class AppState {
       this.detail = null;
       this.fileInfo = null;
       this.fileInfo = await api.fileInfo(relPath);
+      void this.loadSuggestion(relPath);
       await this.loadDetail();
       await this.syncWatched();
     } catch (error) {
@@ -1434,8 +1778,11 @@ class AppState {
         if (!siblings || siblings.some((e) => e.relPath === path)) continue;
         await this.closeOpenFile(path);
       }
-      if (this.selected && changes.paths.includes(this.selected))
+      if (this.selected && changes.paths.includes(this.selected)) {
         this.fileInfo = await api.fileInfo(this.selected);
+        this.sourceRefresh++;
+        void this.loadSuggestion(this.selected);
+      }
       // A changed source file may have made an artifact stale, or current
       // again.
       if (

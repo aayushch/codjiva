@@ -1,6 +1,6 @@
 // Small questions about artifacts that several components ask.
 
-import type { ArtifactSummary, Manifest, ViewName } from './ipc';
+import type { ArtifactSummary, FileKind, Manifest, ViewName } from './ipc';
 
 // The prefix of the selection's path when a pipeline is selected in place of a
 // file. A pipeline explains several files, so it has no file of its own to
@@ -51,6 +51,61 @@ export const VIEWS: { name: ViewName; label: string; about: string }[] = [
     about:
       'How the code of this folder is organised and how its parts use each other, level by level, down to single functions.',
   },
+];
+
+// What each view of a file is, in a few words, for a place too small for the
+// sentence in `about`.
+const SHORT: Record<FileKind, string> = {
+  visual: 'A still blueprint of the code as a machine.',
+  film: 'A narrated film of one flow across files.',
+  stepthrough: 'Run the code on your own input, one step at a time.',
+  schema: 'The types, their fields, and what reads and writes them.',
+  lanes: 'Who talks to whom, one message at a time.',
+  structure: 'A data structure in memory, one operation at a time.',
+};
+
+// The six kinds of artifact that can be made of one file, in the order of
+// their tabs. Each has the tab that shows it, the name it is shown under,
+// a few words on what it is (`short`), and a full sentence on what it is for
+// (`about`).
+export const FILE_KINDS: {
+  kind: FileKind;
+  tab: 'visual' | 'film' | 'steps' | ViewName;
+  label: string;
+  short: string;
+  about: string;
+}[] = [
+  {
+    kind: 'visual',
+    tab: 'visual',
+    label: 'Visual',
+    short: SHORT.visual,
+    about:
+      'A still blueprint of this code as a machine: its parts, the data that moves between them, its limits and its modes. Click a part to see what it does and where it is in the code.',
+  },
+  {
+    kind: 'film',
+    tab: 'film',
+    label: 'Film',
+    short: SHORT.film,
+    about:
+      'A film in chapters, with narration, of how one thing moves through this file and the files it works with.',
+  },
+  {
+    kind: 'stepthrough',
+    tab: 'steps',
+    label: 'Step-through',
+    short: SHORT.stepthrough,
+    about:
+      'The states of this code, which you run on an input of your own, one step at a time. It suits parsers, state machines and validators.',
+  },
+  ...VIEWS.filter((view) => view.name !== 'map').map((view) => ({
+    kind: view.name as FileKind,
+    tab: view.name,
+    label: view.label,
+    short: SHORT[view.name as FileKind],
+    about: view.about,
+  })),
 ];
 
 // True for a kind of artifact that is one of the four views.

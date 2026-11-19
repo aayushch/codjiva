@@ -161,10 +161,14 @@ await row('internal').click();
 await row('orders').click();
 await row('handler.go').click();
 await page.locator('.empty .fname', { hasText: 'handler.go' }).waitFor();
+await page.locator('.empty .meta', { hasText: 'lines' }).waitFor();
 const meta = await page.locator('.empty .meta').textContent();
 check(
-  /Go/.test(meta) && /\d+ lines/.test(meta) && /no visuals yet/.test(meta),
-  'the empty state shows language, line count and artifact status',
+  /Go/.test(meta) &&
+    /\d+ lines/.test(meta) &&
+    (await page.locator('.empty .pick').count()) === 6 &&
+    (await page.locator('.empty .pick.made').count()) === 0,
+  'the empty state shows language, line count and the six views to make',
   meta,
 );
 check(
@@ -290,23 +294,26 @@ check(
   (await page.locator('.lib-item').count()) === 1,
   'the visual appears in the library',
 );
-// Every folder above the file is tinted, and stays tinted when it is closed.
+// Every folder above the file has a small dot, also when it is closed. The
+// background of such a row stays clear, because a background means that the
+// row is selected or under the mouse.
 check(
-  (await row('internal').evaluate((el) => el.classList.contains('holds'))) &&
-    (await row('orders').evaluate((el) => el.classList.contains('holds'))) &&
-    (await page.locator('.row.holds').count()) === 2,
-  'the folders above a file with a visual are tinted',
+  (await row('internal').locator('.dot.inside').count()) === 1 &&
+    (await row('orders').locator('.dot.inside').count()) === 1 &&
+    (await page.locator('.row .dot.inside').count()) === 2,
+  'the folders above a file with a visual have a small dot',
 );
 await row('internal').click();
+await page.mouse.move(800, 400);
 check(
-  (await row('internal').evaluate(
-    (el) =>
-      el.classList.contains('holds') &&
-      getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)',
-  )) && (await row('handler.go').count()) === 0,
+  (await row('internal').locator('.dot.inside').count()) === 1 &&
+    (await row('internal').evaluate(
+      (el) => getComputedStyle(el).backgroundColor === 'rgba(0, 0, 0, 0)',
+    )) &&
+    (await row('handler.go').count()) === 0,
   'a closed folder shows that a file inside it has a visual',
 );
-await shot('03d-tree-tint');
+await shot('03d-tree-dots');
 await row('internal').click();
 await row('handler.go').waitFor();
 await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -2124,11 +2131,15 @@ await page.keyboard.press('Escape');
 await row('handler.go').click();
 await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
 await page.locator('.tab.more-views').click();
+const viewLabels = await page
+  .locator('.menu-item .menu-label')
+  .allTextContents();
 check(
-  (await menuItems()).map((text) => text.trim()).join('|') ===
-    'Schema|Lanes|Structure',
-  'the More tab lists the views of a file',
-  (await menuItems()).join('|'),
+  viewLabels.map((text) => text.trim()).join('|') ===
+    'Schema|Lanes|Structure|Which view fits this file?' &&
+    (await page.locator('.menu-item.explained .menu-detail').count()) === 3,
+  'the More tab lists the views of a file, each with what it is for',
+  viewLabels.join('|'),
 );
 await page.locator('.menu-item', { hasText: 'Schema' }).click();
 await page.getByRole('button', { name: 'Make the schema view…' }).click();
@@ -2346,6 +2357,26 @@ check(
   await selectedInView(),
   'choosing a file tab scrolls the tree to the row of that file',
   String(await tree.evaluate((el) => el.scrollTop)),
+);
+// The row is put in the middle of the tree, or as near to the middle as the
+// scroll range allows. `wanted` is the scroll position that puts it there.
+const centred = await tree.evaluate((el) => {
+  const row = el.querySelector('.row.selected');
+  const top =
+    row.getBoundingClientRect().top -
+    el.getBoundingClientRect().top +
+    el.scrollTop;
+  const middle = top - (el.clientHeight - row.offsetHeight) / 2;
+  const wanted = Math.max(
+    0,
+    Math.min(el.scrollHeight - el.clientHeight, middle),
+  );
+  return { wanted, scrollTop: el.scrollTop };
+});
+check(
+  Math.abs(centred.scrollTop - centred.wanted) <= 8,
+  'the row of that file is put in the middle of the tree',
+  JSON.stringify(centred),
 );
 if (!webWasOpen) {
   await row('web').click();
@@ -2908,6 +2939,522 @@ await page.evaluate((before) => {
   if (before) document.documentElement.setAttribute('data-theme', before);
   else document.documentElement.removeAttribute('data-theme');
 }, themeBefore);
+
+// ---- code navigation in the source view
+// Two files are added to the workspace. The first has eighty lines of
+// comment above its code, so that it has to be scrolled to reach the code.
+await page.evaluate(() => {
+  const filler = Array.from({ length: 80 }, (_, i) => `// note ${i + 1}`);
+  window.__mockSetFile(
+    'nav/meter.go',
+    [
+      'package nav',
+      ...filler,
+      'type Meter struct {',
+      '\ttotal int',
+      '}',
+      '',
+      'func (m *Meter) Add(amount int) {',
+      '\tm.total += amount',
+      '}',
+      '',
+      'func Run() int {',
+      '\tmeter := &Meter{}',
+      '\tmeter.Add(2)',
+      '\tmeter.Add(3)',
+      '\treturn Total(meter) // Add and Total',
+      '}',
+      '',
+    ].join('\n'),
+  );
+  window.__mockSetFile(
+    'nav/total.go',
+    [
+      'package nav',
+      ...filler,
+      'func Total(m *Meter) int {',
+      '\treturn m.total',
+      '}',
+      '',
+    ].join('\n'),
+  );
+});
+await page.keyboard.press(`${mod}+KeyP`);
+await page.locator('.dialog.quick .input').fill('nav/meter');
+await page.locator('.quick-row').first().waitFor();
+await page.keyboard.press('Enter');
+await page.locator('.tab', { hasText: 'Source' }).click();
+await page.locator('.source-line').first().waitFor();
+// Scrolls the code into view, as a user would with the wheel.
+await page.evaluate(async () => {
+  document.querySelector('.source').scrollTop = 70 * 20;
+  await new Promise((done) => setTimeout(done, 150));
+});
+// The middle of the `nth` place, counted from 0, of `word` in a line of
+// the source view, in pixels of the window. A place inside a longer word
+// counts too.
+const pointOf = (line, word, nth = 0) =>
+  page.evaluate(
+    ([line, word, nth]) => {
+      const holder = document.querySelector(
+        `.source-line[data-line="${line}"] .source-text`,
+      );
+      let at = -1;
+      for (let i = 0; i <= nth; i++)
+        at = holder.textContent.indexOf(word, at + 1);
+      const walker = document.createTreeWalker(holder, NodeFilter.SHOW_TEXT);
+      let before = 0;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (at < before + node.data.length) {
+          const range = new Range();
+          range.setStart(node, at - before);
+          range.setEnd(node, at - before + word.length);
+          const box = range.getBoundingClientRect();
+          return {
+            x: box.left + box.width / 2,
+            y: box.top + box.height / 2,
+            box: {
+              x: Math.floor(box.left),
+              y: Math.floor(box.top),
+              width: Math.ceil(box.width),
+              height: Math.ceil(box.height),
+            },
+          };
+        }
+        before += node.data.length;
+      }
+      return null;
+    },
+    [line, word, nth],
+  );
+// A click with the Control key held, which is "go to definition" outside
+// macOS. The events are made in the page, because a real Control-click on a
+// Mac opens the context menu instead.
+const followClick = ({ x, y }) =>
+  page.evaluate(
+    ([x, y]) => {
+      const target = document.elementFromPoint(x, y);
+      for (const type of ['mousedown', 'mouseup', 'click'])
+        target.dispatchEvent(
+          new MouseEvent(type, {
+            bubbles: true,
+            clientX: x,
+            clientY: y,
+            button: 0,
+            detail: 1,
+            ctrlKey: true,
+          }),
+        );
+    },
+    [x, y],
+  );
+// How the second call of `Add` looks before any name is selected.
+const secondAdd = await pointOf(93, 'Add');
+const unmarked = await page.screenshot({ clip: secondAdd.box });
+
+// A click on a name selects it.
+const firstAdd = await pointOf(92, 'Add');
+await page.mouse.click(firstAdd.x, firstAdd.y);
+await page.locator('.symbol-panel').waitFor();
+await page.locator('.symbol-panel .ref-row').nth(3).waitFor();
+check(
+  (await page.locator('.symbol-panel h3').textContent()) === 'Add',
+  'a click on a name in the source view selects it and opens its panel',
+);
+check(
+  (
+    await page
+      .locator('.symbol-panel .nav-row .nav-where')
+      .first()
+      .textContent()
+  )
+    .trim()
+    .startsWith('meter.go:86'),
+  'the panel lists where the selected name is defined',
+  await page.locator('.symbol-panel .nav-row .nav-where').first().textContent(),
+);
+const listed = await page
+  .locator('.symbol-panel .ref-row .nav-num')
+  .allTextContents();
+check(
+  listed.join(',') === '86,92,93,94',
+  'the panel lists the lines the selected name is used on',
+  listed.join(','),
+);
+// The mouse is moved away, so that the second call is not under it.
+await page.mouse.move(firstAdd.x, firstAdd.y + 200);
+const marks = await page.evaluate(() => ({
+  supported: typeof Highlight !== 'undefined' && 'highlights' in CSS,
+  uses: CSS.highlights?.get('nav-use')?.size ?? 0,
+  selected: CSS.highlights?.get('nav-selected')?.size ?? 0,
+}));
+const marked = await page.screenshot({ clip: secondAdd.box });
+check(
+  marks.supported && marks.uses === 4 && marks.selected === 1,
+  'every use of the selected name in the file is marked',
+  JSON.stringify(marks),
+);
+check(
+  !unmarked.equals(marked),
+  'a marked use is drawn differently from one that is not marked',
+);
+await shot('11-source-name-selected');
+
+// A word in a comment is not a name.
+const inComment = await pointOf(94, 'Total', 1);
+await page.mouse.click(inComment.x, inComment.y);
+await page.locator('.symbol-panel').waitFor({ state: 'detached' });
+check(
+  (await page.locator('.symbol-panel').count()) === 0,
+  'a click on a word in a comment selects nothing',
+);
+
+// A right-click on a name offers the commands, without "Go to declaration"
+// for a language that has no prototypes.
+await page.mouse.click(firstAdd.x, firstAdd.y, { button: 'right' });
+await page.locator('.menu').waitFor();
+// WebKit selects the word under a right-click as text, and the menu then
+// has "Copy" as well.
+const commands = (await page.locator('.menu button').allTextContents()).filter(
+  (command) => command !== 'Copy',
+);
+check(
+  commands.join('|') === 'Go to definition|Find references',
+  'a right-click on a name offers to go to its definition and to find its references',
+  commands.join('|'),
+);
+await page.locator('.menu button', { hasText: 'Find references' }).click();
+await page.locator('.symbol-panel .ref-row').nth(3).waitFor();
+check(
+  (await page.locator('.symbol-panel h3').textContent()) === 'Add',
+  '"Find references" opens the panel for the name',
+);
+
+// A click with the key held goes to the definition, in another file.
+const leftAtScroll = await page.evaluate(
+  () => document.querySelector('.source').scrollTop,
+);
+await followClick(await pointOf(94, 'Total'));
+await page.locator('.source-line.ref').waitFor();
+await page
+  .locator('.toolbar .crumb', { hasText: 'total.go' })
+  .waitFor({ timeout: 5000 });
+const arrived = await page.evaluate(() => ({
+  line: document
+    .querySelector('.source-line.ref .source-num')
+    .textContent.trim(),
+  target: CSS.highlights?.get('nav-target')?.size ?? 0,
+  panel: document.querySelector('.symbol-panel h3')?.textContent,
+}));
+check(
+  arrived.line === '82' && arrived.target === 1,
+  'a click with the key held goes to the definition and marks the name there',
+  JSON.stringify(arrived),
+);
+check(
+  arrived.panel === 'Add',
+  'going to a definition leaves the selected name and its list as they were',
+  String(arrived.panel),
+);
+await shot('12-source-definition');
+
+// Back shows the first file scrolled as it was left.
+await page.keyboard.press('Alt+ArrowLeft');
+await page.locator('.toolbar .crumb', { hasText: 'meter.go' }).waitFor();
+await page.locator('.source-line[data-line="94"]').waitFor();
+const cameBackTo = await page.evaluate(async () => {
+  await new Promise((done) => setTimeout(done, 150));
+  return document.querySelector('.source').scrollTop;
+});
+check(
+  Math.abs(cameBackTo - leftAtScroll) < 20,
+  'Back returns to the line the user went to the definition from',
+  `${leftAtScroll} then ${cameBackTo}`,
+);
+
+// A click on a reference in the panel shows that place.
+await page.locator('.symbol-panel .ref-row').nth(0).click();
+await page.locator('.source-line.ref[data-line="86"]').waitFor();
+check(
+  await page
+    .locator('.symbol-panel .ref-row')
+    .nth(0)
+    .evaluate((row) => row.classList.contains('on')),
+  'a click on a reference shows its line, and the reference is drawn as chosen',
+);
+
+// A click on the same line again scrolls back to it after the view moved.
+await page.evaluate(() => (document.querySelector('.source').scrollTop = 0));
+await page.locator('.symbol-panel .ref-row').nth(0).click();
+await page.locator('.source-line[data-line="86"]').waitFor();
+check(
+  (await page.evaluate(() => document.querySelector('.source').scrollTop)) > 0,
+  'going to the line that is already marked scrolls to it again',
+);
+
+// Escape selects nothing.
+await page.keyboard.press('Escape');
+await page.locator('.symbol-panel').waitFor({ state: 'detached' });
+check(
+  await page.evaluate(() => !CSS.highlights?.has('nav-use')),
+  'Escape selects nothing and removes the marks',
+);
+
+// A definition is found by its name in the quick-open dialog.
+await page.keyboard.press(`${mod}+KeyT`);
+check(
+  (await page.locator('.dialog.quick .input').inputValue()) === '#',
+  'the key for going to a definition opens the dialog with "#"',
+);
+await page.locator('.dialog.quick .input').fill('#tota');
+await page.locator('.quick-row', { hasText: 'Total' }).waitFor();
+await page.keyboard.press('Enter');
+await page.locator('.toolbar .crumb', { hasText: 'total.go' }).waitFor();
+await page.locator('.source-line.ref').waitFor();
+check(
+  (await page.locator('.source-line.ref .source-num').textContent()).trim() ===
+    '82',
+  'choosing a definition in the dialog shows it in the source view',
+);
+
+// Two more files. `Reset` is defined in both of them, and `meter` is built
+// from the type `Meter` of the file added above.
+await page.evaluate(() => {
+  window.__mockSetFile(
+    'nav/gauge.go',
+    [
+      'package nav',
+      '',
+      'func Reset() {}',
+      '',
+      'func Read() int {',
+      '\tmeter := &Meter{}',
+      '\tReset()',
+      '\treturn meter.total',
+      '}',
+      '',
+    ].join('\n'),
+  );
+  window.__mockSetFile(
+    'nav/reset.go',
+    ['package nav', '', 'func Reset() {}', ''].join('\n'),
+  );
+});
+await page.keyboard.press(`${mod}+KeyP`);
+await page.locator('.dialog.quick .input').fill('nav/gauge');
+await page.locator('.quick-row').first().waitFor();
+await page.keyboard.press('Enter');
+await page.locator('.source-line[data-line="7"]').waitFor();
+const resetCall = await pointOf(7, 'Reset');
+await page.mouse.click(resetCall.x, resetCall.y);
+await page.locator('.symbol-panel .nav-others').waitFor();
+const shownRows = () =>
+  page.locator('.symbol-panel .nav-row:not(.ref-row):visible').count();
+check(
+  (await shownRows()) === 1 &&
+    (await page.locator('.nav-others summary').textContent()).trim() ===
+      'Others with this name · 1',
+  'definitions that only share the name are kept behind one line',
+  `${await shownRows()} rows`,
+);
+await page.locator('.nav-others summary').click();
+check(
+  (await page.locator('.nav-others .nav-where').textContent())
+    .trim()
+    .startsWith('reset.go:3'),
+  'opening that line lists the other definitions',
+);
+const builtName = await pointOf(6, 'meter');
+await page.mouse.click(builtName.x, builtName.y);
+await page.locator('.symbol-panel .kicker', { hasText: 'Type' }).waitFor();
+check(
+  (await page.locator('.symbol-panel .kicker', { hasText: 'Type' }).innerText())
+    .toLowerCase()
+    .includes('type · meter') &&
+    (
+      await page
+        .locator('.symbol-panel .nav-row .nav-where')
+        .first()
+        .innerText()
+    )
+      .trim()
+      .startsWith('meter.go:82'),
+  'the panel offers the definition of the type the code gives a name',
+);
+await shot('12-source-name-type');
+
+// ---- a file chosen outside the tree is put in the middle of the tree
+// A folder of eighty files is added, so that the tree is much longer than
+// its visible part and the fortieth of them can be put in the middle.
+await page.evaluate(() => {
+  for (let i = 1; i <= 80; i++)
+    window.__mockSetFile(
+      `pad/pad-${String(i).padStart(2, '0')}.go`,
+      'package pad\n',
+    );
+  // The stand-in backend lists the root folder again when it is told that
+  // a file there changed. That is how the new folder gets its row.
+  window.__mockEditFile('go.mod');
+});
+await row('pad').waitFor();
+await page.keyboard.press(`${mod}+KeyP`);
+await page.locator('.dialog.quick .input').fill('pad/pad-40');
+await page.locator('.quick-row').first().waitFor();
+await page.keyboard.press('Enter');
+await page.locator('.row.selected', { hasText: 'pad-40.go' }).waitFor();
+await page.waitForTimeout(150);
+const offCentre = await page.locator('.tree').evaluate((el) => {
+  const view = el.getBoundingClientRect();
+  const row = el.querySelector('.row.selected').getBoundingClientRect();
+  return Math.abs(row.top + row.height / 2 - (view.top + view.height / 2));
+});
+check(
+  offCentre <= 16,
+  'a file chosen outside the tree is put in the middle of the tree',
+  `${offCentre}px from the middle`,
+);
+await shot('13-tree-selected-in-the-middle');
+
+// ---- asking the agent which view fits a file
+// api.ts has no artifact, so its Visual tab shows the card with the six
+// views and the button that asks. The stand-in agent puts the lanes view
+// first for a `.ts` file.
+await page.keyboard.press(`${mod}+KeyP`);
+await page.locator('.dialog.quick .input').fill('web/src/api');
+await page.locator('.quick-row').first().waitFor();
+await page.keyboard.press('Enter');
+await page.locator('.file-tab.on', { hasText: 'api.ts' }).waitFor();
+await page.locator('.tab', { hasText: 'Visual' }).click();
+await page.locator('.empty .meta', { hasText: 'lines' }).waitFor();
+// The size of the card and of each of the six small cards, as text.
+const cardSizes = () =>
+  page.evaluate(() =>
+    ['.file-card', ...Array(6).keys()]
+      .map((one) =>
+        typeof one === 'string'
+          ? document.querySelector(one)
+          : document.querySelectorAll('.pick')[one],
+      )
+      .map((el) => {
+        const box = el.getBoundingClientRect();
+        return `${Math.round(box.width)}x${Math.round(box.height)}`;
+      })
+      .join(' '),
+  );
+const sizesBefore = await cardSizes();
+check(
+  (await page.locator('.pick').count()) === 6 &&
+    new Set(sizesBefore.split(' ').slice(1)).size === 1 &&
+    (await page.locator('.pick.suggested').count()) === 0,
+  'the card of a file offers the six views as small cards of one size',
+  sizesBefore,
+);
+// No small card touches the next one.
+const apart = await page.evaluate(() => {
+  const boxes = Array.from(document.querySelectorAll('.pick'), (el) =>
+    el.getBoundingClientRect(),
+  );
+  return boxes.every((a, i) =>
+    boxes.every(
+      (b, j) =>
+        i === j ||
+        a.right + 6 <= b.left ||
+        b.right + 6 <= a.left ||
+        a.bottom + 6 <= b.top ||
+        b.bottom + 6 <= a.top,
+    ),
+  );
+});
+check(apart, 'there is space between any two of the small cards');
+await page.getByRole('button', { name: 'Which view fits this file?' }).click();
+const sizesWhileAsking = await cardSizes();
+await page.locator('.pick.suggested').waitFor();
+const suggestedPick = page.locator('.pick.suggested');
+check(
+  (await page.locator('.pick.suggested').count()) === 1 &&
+    (await suggestedPick.locator('.pick-name').innerText()).startsWith(
+      'Lanes',
+    ) &&
+    (await suggestedPick.locator('.pick-tag').innerText()) === 'suggested' &&
+    (await page.locator('.pick-note').innerText()).startsWith(
+      'Suggested: Lanes.',
+    ),
+  'the view the agent puts first is marked as suggested, with its reason',
+  await page.locator('.pick-note').innerText(),
+);
+const sizesAfter = await cardSizes();
+check(
+  sizesWhileAsking === sizesBefore && sizesAfter === sizesBefore,
+  'the card keeps its size while the agent is asked and after it answered',
+  `${sizesBefore} | ${sizesWhileAsking} | ${sizesAfter}`,
+);
+check(
+  (await page.locator('.tab.more-views.suggested').count()) === 1 &&
+    (await page.locator('.tab.suggested').count()) === 1,
+  'the tab of the suggested view is marked',
+);
+// The note shows the reason for the view the pointer is on.
+await page.locator('.pick', { hasText: 'Schema' }).hover();
+check(
+  (await page.locator('.pick-note').innerText()).startsWith(
+    'Schema, as Mock Agent sees it.',
+  ) && (await cardSizes()) === sizesBefore,
+  'pointing at a view shows the reason the agent gave for it',
+  await page.locator('.pick-note').innerText(),
+);
+await shot('14-suggested-view');
+await page.mouse.move(40, 500);
+await page.locator('.tab.more-views').click();
+const lanesItem = page.locator('.menu-item', { hasText: 'Who talks to whom' });
+check(
+  (await lanesItem.locator('.menu-mark').innerText()) === 'suggested' &&
+    (await page.locator('.menu-mark').count()) === 1 &&
+    (await page
+      .locator('.menu-item', { hasText: 'Ask again which view fits' })
+      .count()) === 1,
+  'the menu of the More tab marks the suggested view',
+);
+await shot('14-suggested-view-menu');
+await page.keyboard.press('Escape');
+// A click on a small card opens the dialog that makes that view.
+// The question about `.gitignore` comes first when it has not been answered
+// for the workspace that is open at this point.
+await suggestedPick.click();
+const lanesDialog = page.locator('.dialog', {
+  hasText: 'Make the lanes view of api.ts',
+});
+const ignoreQuestion = page.getByRole('dialog').getByText('to .gitignore?');
+await lanesDialog.or(ignoreQuestion).first().waitFor();
+if (await ignoreQuestion.count())
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+await lanesDialog.waitFor();
+check(true, 'a click on a small card opens the dialog that makes that view');
+await page
+  .locator('.dialog')
+  .getByRole('button', { name: 'Cancel', exact: true })
+  .click();
+await page.locator('.dialog').waitFor({ state: 'detached' });
+// The answer is kept for the file: it is on the card again after another
+// file was shown, without asking again.
+await page.locator('.file-tab', { hasText: 'gauge.go' }).click();
+await page.locator('.file-tab.on', { hasText: 'gauge.go' }).waitFor();
+await page.locator('.tab', { hasText: 'Visual' }).click();
+await page.locator('.empty .meta', { hasText: 'lines' }).waitFor();
+const otherFile = await page.locator('.pick.suggested').count();
+const sizesOtherFile = await cardSizes();
+await page.locator('.file-tab', { hasText: 'api.ts' }).click();
+await page.locator('.file-tab.on', { hasText: 'api.ts' }).waitFor();
+await page.locator('.tab', { hasText: 'Visual' }).click();
+await page.locator('.pick.suggested').waitFor();
+check(
+  otherFile === 0 &&
+    sizesOtherFile === sizesBefore &&
+    (await page.locator('.pick.suggested .pick-name').innerText()).startsWith(
+      'Lanes',
+    ),
+  'the answer is shown again for its file and for no other file',
+  `${otherFile} suggested for the other file, sizes ${sizesOtherFile}`,
+);
 
 check(errors.length === 0, 'the page logged no errors', errors.join(' | '));
 await browser.close();

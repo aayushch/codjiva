@@ -30,6 +30,7 @@ changing a file.
   "args": ["-p", "--output-format", "stream-json", "--append-system-prompt-file", "{systemPromptPath}"],
   "modelArgs": ["--model", "{model}"],
   "defaultModel": "sonnet",
+  "quickModel": "haiku",
   "effortArgs": ["--effort", "{effort}"],
   "resumeArgs": ["--resume", "{sessionId}"],
   "budgetArgs": ["--max-budget-usd", "{maxBudgetUsd}"],
@@ -51,6 +52,7 @@ changing a file.
 | `program` | The program's name, found on your `PATH`, or its full path. Settings can also hold a path per agent. |
 | `args` | The arguments of every run. |
 | `modelArgs`, `effortArgs`, `budgetArgs` | Added only when Settings gives a model, an effort level or a spending limit. `defaultModel` is the model used when Settings names none. |
+| `quickModel` | A small, fast model of the program, for the short question of which view fits a file. Leave it out when the program has none. The question then uses the same model as a job. |
 | `resumeArgs` | Added when a turn continues an earlier session, as fix rounds and feedback do. |
 | `resumeCommand` | The complete arguments for such a turn, for a program whose way of continuing does not fit after `args` (Codex: `exec resume <id> …`). |
 | `stdin` | What is written to the program's standard input. Leave it out to keep standard input closed. |

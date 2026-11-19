@@ -149,6 +149,9 @@ pub struct AgentInfo {
     /// The model jobs use when Settings names none, for agents that have one.
     #[serde(default)]
     pub default_model: Option<String>,
+    /// A small, fast model for a short question, for agents that name one.
+    #[serde(default)]
+    pub quick_model: Option<String>,
     /// What the user should know about how far this agent can be confined.
     /// Empty when the agent's own permission rules confine it to the version
     /// folder.
@@ -202,6 +205,7 @@ impl CliBackend {
             supports_resume: definition.supports_resume,
             verified: definition.verified,
             default_model: definition.default_model.clone(),
+            quick_model: definition.quick_model.clone(),
             limits: definition.limits.clone(),
         };
         match &program {

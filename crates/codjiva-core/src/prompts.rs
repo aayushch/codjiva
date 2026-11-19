@@ -44,6 +44,8 @@ const USER_COMPOSE: &str = prompt_file!("user-compose.md");
 const USER_STEPTHROUGH: &str = prompt_file!("user-stepthrough.md");
 const USER_FIX_REPORT: &str = prompt_file!("user-fix-report.md");
 const USER_FIX_FEEDBACK: &str = prompt_file!("user-fix-feedback.md");
+const SUGGEST: &str = prompt_file!("suggest.md");
+const USER_SUGGEST: &str = prompt_file!("user-suggest.md");
 
 /// The values a prompt's placeholders are filled with.
 pub type Values = BTreeMap<&'static str, String>;
@@ -127,6 +129,17 @@ pub fn system_prompt(guide: Guide, values: &Values) -> String {
         render(job, values),
         api
     )
+}
+
+/// The system prompt for the question of which kind of artifact suits a file.
+/// It stands alone: the agent draws nothing, so it gets neither the core
+/// guide nor the runtime's API.
+pub fn system_suggest() -> &'static str {
+    SUGGEST
+}
+
+pub fn user_suggest(values: &Values) -> String {
+    render(USER_SUGGEST, values)
 }
 
 pub fn user_visualise(values: &Values) -> String {

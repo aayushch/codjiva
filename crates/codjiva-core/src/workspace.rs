@@ -5,6 +5,10 @@
 //! ignore rules, and describes single files for the editor area. Paths that
 //! cross the app boundary are always relative to the workspace root and use `/`
 //! as the separator on every platform.
+//!
+//! A workspace also owns the index that code navigation looks definitions up
+//! in (see the `codjiva-nav` crate). The index is brought up to date each time
+//! the files of the workspace have been listed.
 
 use crate::error::{AppError, Result};
 use crate::lang;
@@ -100,6 +104,16 @@ pub struct Workspace {
     root: PathBuf,
     name: String,
     index: Arc<FileIndex>,
+    /// What every code file of the workspace defines, for code navigation.
+    nav: Arc<codjiva_nav::Index>,
+}
+
+impl Drop for Workspace {
+    /// A workspace that is closed while its navigation index is still being
+    /// filled stops that work.
+    fn drop(&mut self) {
+        self.nav.close();
+    }
 }
 
 /// Converts a path inside the workspace to the `/`-separated form used across
@@ -171,6 +185,7 @@ impl Workspace {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| root.to_string_lossy().into_owned());
         Ok(Workspace {
+            nav: codjiva_nav::Index::new(&root),
             root,
             name,
             index: Arc::new(FileIndex::default()),
@@ -183,6 +198,11 @@ impl Workspace {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// The index code navigation looks definitions up in.
+    pub fn nav(&self) -> &Arc<codjiva_nav::Index> {
+        &self.nav
     }
 
     /// The folder that holds everything Codjiva generates for this workspace.
@@ -363,11 +383,16 @@ impl Workspace {
     /// Starts listing every file of the workspace on a background thread, for
     /// quick-open. Does nothing when a listing is already running. Call it
     /// again after files were added or removed to refresh the list.
+    ///
+    /// When the listing is done, the same thread brings the navigation index
+    /// up to date with it, which reads every code file that changed since the
+    /// last time. `index_complete` does not wait for that.
     pub fn start_indexing(&self) {
         if self.index.walking.swap(true, Ordering::SeqCst) {
             return;
         }
         let index = Arc::clone(&self.index);
+        let nav = Arc::clone(&self.nav);
         let root = self.root.clone();
         std::thread::spawn(move || {
             let mut files = Vec::new();
@@ -382,12 +407,14 @@ impl Workspace {
                 }
             }
             files.sort_unstable();
+            let listed = files.clone();
             *index
                 .files
                 .write()
                 .expect("the file index lock is not poisoned") = files;
             index.complete.store(true, Ordering::SeqCst);
             index.walking.store(false, Ordering::SeqCst);
+            nav.refresh(listed);
         });
     }
 
@@ -654,6 +681,38 @@ mod tests {
                 > fuzzy_score("src/job.ws", &['o', 'b', 'w'])
         );
         assert!(ws.search_files("zzzz", 10).is_empty());
+    }
+
+    #[test]
+    fn the_navigation_index_is_filled_after_the_files_are_listed() {
+        let (_dir, ws) = workspace_with(&[
+            (
+                "meter/meter.go",
+                "package meter\n\nfunc Read() int { return 1 }\n",
+            ),
+            ("main.go", "package main\n\nfunc main() { meter.Read() }\n"),
+        ]);
+        wait_for_index(&ws);
+        let began = Instant::now();
+        while !ws.nav().is_ready() {
+            assert!(
+                began.elapsed() < Duration::from_secs(10),
+                "the navigation index was not filled"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        // `Read` in `meter.Read()` starts at column 20 of line 3.
+        let found = codjiva_nav::lookup(ws.nav(), "main.go", 3, 20, false)
+            .expect("there is a name at that place");
+        assert_eq!(found.name, "Read");
+        assert!(found.certain);
+        assert_eq!(
+            (
+                found.definitions[0].path.as_str(),
+                found.definitions[0].line
+            ),
+            ("meter/meter.go", 3)
+        );
     }
 
     #[test]
