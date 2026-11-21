@@ -43,8 +43,8 @@
     },
     visual: {
       src: 'demo/visual.html',
-      title: 'A Codjiva visual of the same Go file',
-      note: 'A still visual of the same file · hover and click the machines, open the numbered markers, drag to pan, scroll to zoom',
+      title: 'A Codjiva blueprint of the same Go file',
+      note: 'A still blueprint of the same file · hover and click the machines, open the numbered markers, drag to pan, scroll to zoom',
       keys: false,
     },
     pipeline: {

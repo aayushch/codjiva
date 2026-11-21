@@ -14,7 +14,7 @@
   }
 
   const SECTIONS = [
-    ['agent', 'Agent', 'Which coding agent draws your visuals and films.'],
+    ['agent', 'Agent', 'Which coding agent draws your blueprints and films.'],
     [
       'keys',
       'API keys',
@@ -178,6 +178,27 @@
               </div>
             </div>
           {/if}
+          {#if app.activeAgent?.plainArgs?.length}
+            <label class="check"
+              ><input
+                type="checkbox"
+                checked={s.agentCustomizations}
+                onchange={(e) =>
+                  set('agentCustomizations', e.currentTarget.checked)}
+              />
+              <span
+                >Let {app.activeAgent.name} load my own setup
+                <div class="why">
+                  With this off, Codjiva starts {app.activeAgent.name} with
+                  <code>{app.activeAgent.plainArgs.join(' ')}</code>, which
+                  keeps out {app.activeAgent.plainNote ||
+                    'the setup you made for it'}, so that it does not change
+                  what a job draws. Turn this on to start it without
+                  <code>{app.activeAgent.plainArgs.join(' ')}</code>.
+                </div></span
+              ></label
+            >
+          {/if}
           <button class="btn small" onclick={() => app.loadAgents(true)}
             >Look for agents again</button
           >
@@ -195,8 +216,8 @@
             </div>
             <div class="why">
               How long the model thinks before it draws. Higher effort takes
-              longer and costs more. Automatic uses low effort for a visual and
-              medium for a film.
+              longer and costs more. Automatic uses low effort for a blueprint
+              and medium for a film.
             </div>
           </div>
           <div class="field">
@@ -242,7 +263,8 @@
             />
             <div class="why">
               How many times a result that fails its checks is sent back to the
-              agent before you are asked.
+              agent before you are asked. A round that only repairs a result
+              that could not be built or drawn is not counted, once per job.
             </div>
           </div>
         {:else if section === 'films'}
@@ -400,9 +422,9 @@
                 >{/each}
             </div>
             <div class="why">
-              The colours of the window, and of the visuals and films shown in
-              it. A visual or a film made by an earlier version of the app stays
-              dark until it is made again. An exported film is dark.
+              The colours of the window, and of the blueprints and films shown
+              in it. A blueprint or a film made by an earlier version of the app
+              stays dark until it is made again. An exported film is dark.
             </div>
           </div>
         {:else if section === 'updates'}

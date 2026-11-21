@@ -280,8 +280,8 @@
         <JobEstimate request={planned} />
       </div>
       {#if app.visualArtifact}<div class="why">
-          The film starts from the visual this file already has, so the two show
-          the same plant.
+          The film starts from the blueprint this file already has, so the two
+          show the same plant.
         </div>{/if}
 
       <div class="foot">

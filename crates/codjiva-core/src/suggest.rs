@@ -13,7 +13,9 @@
 //!
 //! The agent draws nothing in this turn. It gets the same permissions as in
 //! a job, and the folder it may write to is an empty folder that is deleted
-//! afterwards.
+//! afterwards. The agent is asked to give its answer as its reply. Some
+//! agents write it to a file in that folder all the same, so the answer is
+//! read from there when the reply holds none (see [`answer_in_files`]).
 
 use crate::agents::{AgentEvent, Backend, Turn};
 use crate::error::{AppError, Result};
@@ -183,9 +185,33 @@ fn parse(text: &str) -> Option<Vec<Ranked>> {
     (!ranked.is_empty()).then_some(ranked)
 }
 
+/// Reads the answer from the files the agent wrote, for an agent that put its
+/// answer in a file and not in its reply.
+///
+/// `dir` is the folder the agent was allowed to write to. Every file in it
+/// whose name ends in `.json` is tried, in the order of their names, and the
+/// first one [`parse`] can read is used. Folders inside `dir` are not looked
+/// into. Returns `None` when no file holds an answer.
+fn answer_in_files(dir: &std::path::Path) -> Option<Vec<Ranked>> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file() && path.extension().is_some_and(|e| e == "json")
+        })
+        .collect();
+    files.sort();
+    files
+        .iter()
+        .filter_map(|file| std::fs::read_to_string(file).ok())
+        .find_map(|text| parse(&text))
+}
+
 /// Asks the agent `backend` which kind suits the file at `rel`, keeps the
 /// answer and returns it. `model` is the model to ask, or `None` for the
-/// agent's own choice.
+/// agent's own choice. `customizations` says whether the agent may load the
+/// user's own setup for it (see `Turn::customizations`).
 ///
 /// The call takes as long as the agent needs to start and to answer, which
 /// is a few seconds for most. Triggering `cancel` ends it early with an
@@ -194,6 +220,7 @@ pub async fn ask(
     ws: &Workspace,
     backend: &dyn Backend,
     model: Option<String>,
+    customizations: bool,
     rel: &str,
     cancel: &CancellationToken,
 ) -> Result<Suggestion> {
@@ -207,8 +234,9 @@ pub async fn ask(
         .ok_or_else(|| failed("Could not read that file."))?;
 
     // The files of the turn are in a folder of their own, next to the
-    // folders of jobs. `out` is the folder the agent may write to. Nothing
-    // is expected in it.
+    // folders of jobs. `out` is the folder the agent may write to. The
+    // answer is expected in the agent's reply, and is read from a file in
+    // `out` only when the reply holds none.
     let job_dir = ws
         .dot_dir()
         .join("jobs")
@@ -233,6 +261,7 @@ pub async fn ask(
         model,
         effort: Some("low".to_string()),
         max_budget_usd: None,
+        customizations,
         log_path: job_dir.join("agent.log.jsonl"),
     };
 
@@ -268,7 +297,10 @@ pub async fn ask(
         Ok(outcome) if outcome.cancelled => {
             Err(AppError::new("cancelled", "The question was cancelled."))
         }
-        Ok(outcome) => match (outcome.error, parse(&said)) {
+        Ok(outcome) => match (
+            outcome.error,
+            parse(&said).or_else(|| answer_in_files(&turn.artifact_dir)),
+        ) {
             (_, Some(ranked)) => Ok((ranked, outcome.model)),
             (Some(error), None) => Err(failed(&error)),
             (None, None) => {
@@ -304,10 +336,12 @@ mod tests {
     use async_trait::async_trait;
     use std::fs;
 
-    /// An agent that writes `says` as its answer and remembers the turn it
-    /// was given.
+    /// An agent that writes `says` as its reply and remembers the turn it
+    /// was given. When `writes` is set, it also writes a file with that
+    /// name and content into the folder the turn allows it to write to.
     struct Scripted {
         says: String,
+        writes: Option<(String, String)>,
         turns: Mutex<Vec<Turn>>,
     }
 
@@ -315,7 +349,15 @@ mod tests {
         fn saying(says: &str) -> Scripted {
             Scripted {
                 says: says.to_string(),
+                writes: None,
                 turns: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn writing(says: &str, name: &str, content: &str) -> Scripted {
+            Scripted {
+                writes: Some((name.to_string(), content.to_string())),
+                ..Scripted::saying(says)
             }
         }
     }
@@ -336,6 +378,8 @@ mod tests {
                 default_model: None,
                 quick_model: Some("small".into()),
                 limits: String::new(),
+                plain_args: Vec::new(),
+                plain_note: String::new(),
             }
         }
 
@@ -346,6 +390,9 @@ mod tests {
             on_event: &(dyn Fn(AgentEvent) + Send + Sync),
         ) -> Result<TurnOutcome> {
             self.turns.lock().unwrap().push(turn.clone());
+            if let Some((name, content)) = &self.writes {
+                fs::write(turn.artifact_dir.join(name), content).unwrap();
+            }
             on_event(AgentEvent::Text(self.says.clone()));
             Ok(TurnOutcome::default())
         }
@@ -447,7 +494,7 @@ mod tests {
         );
         let cancel = CancellationToken::new();
         let model = agent.info().quick_model;
-        let made = ask(&ws, &agent, model, "pkg/queue.go", &cancel)
+        let made = ask(&ws, &agent, model, false, "pkg/queue.go", &cancel)
             .await
             .unwrap();
         assert_eq!(kinds(&made.ranked), ["structure", "visual"]);
@@ -475,7 +522,7 @@ mod tests {
         let (_dir, ws) = workspace();
         let agent = Scripted::saying("A structure view, I would say.");
         let cancel = CancellationToken::new();
-        let error = ask(&ws, &agent, None, "pkg/queue.go", &cancel)
+        let error = ask(&ws, &agent, None, false, "pkg/queue.go", &cancel)
             .await
             .unwrap_err();
         assert_eq!(error.code, "suggest_failed");
@@ -484,6 +531,51 @@ mod tests {
         // wrote.
         let turns = agent.turns.lock().unwrap();
         assert!(turns[0].job_dir.join("user.md").is_file());
+    }
+
+    #[tokio::test]
+    async fn an_answer_written_to_a_file_is_read_when_the_reply_holds_none() {
+        const IN_FILE: &str = "{\"ranked\": [{\"kind\": \"structure\", \
+                               \"reason\": \"Queue keeps items.\"}, \
+                               {\"kind\": \"visual\", \"reason\": \"Push \
+                               is short.\"}]}";
+        let (_dir, ws) = workspace();
+        let cancel = CancellationToken::new();
+
+        // The reply only says that a file was written.
+        let agent = Scripted::writing(
+            "Done. The ranking is in ranked.json.",
+            "ranked.json",
+            IN_FILE,
+        );
+        let made = ask(&ws, &agent, None, false, "pkg/queue.go", &cancel)
+            .await
+            .unwrap();
+        assert_eq!(kinds(&made.ranked), ["structure", "visual"]);
+        assert_eq!(cached(&ws, "pkg/queue.go"), Some(made));
+        assert!(!agent.turns.lock().unwrap()[0].job_dir.exists());
+
+        // A reply that holds an answer is used, and the file is not.
+        let agent = Scripted::writing(
+            "{\"ranked\": [{\"kind\": \"lanes\", \"reason\": \"a\"}]}",
+            "ranked.json",
+            IN_FILE,
+        );
+        let made = ask(&ws, &agent, None, false, "pkg/queue.go", &cancel)
+            .await
+            .unwrap();
+        assert_eq!(kinds(&made.ranked), ["lanes"]);
+
+        // A file that holds no ranking is not an answer.
+        let agent = Scripted::writing(
+            "Done.",
+            "notes.json",
+            "{\"kinds\": [\"structure\"]}",
+        );
+        let error = ask(&ws, &agent, None, false, "pkg/queue.go", &cancel)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "suggest_failed");
     }
 
     /// Asks the Claude Code program installed on this computer about a file
@@ -517,10 +609,16 @@ mod tests {
         let model = agent.info().quick_model;
         let cancel = CancellationToken::new();
         let began = std::time::Instant::now();
-        let made =
-            ask(&ws, &agent, model, "internal/orders/handler.go", &cancel)
-                .await
-                .unwrap();
+        let made = ask(
+            &ws,
+            &agent,
+            model,
+            false,
+            "internal/orders/handler.go",
+            &cancel,
+        )
+        .await
+        .unwrap();
         println!("answered in {:?} by {:?}", began.elapsed(), made.model);
         for one in &made.ranked {
             println!("  {}: {}", one.kind, one.reason);

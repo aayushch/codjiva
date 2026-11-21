@@ -128,6 +128,21 @@ const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 // The tree row whose name is exactly `name`.
 const row = (name) =>
   page.locator('.row').filter({ has: page.getByText(name, { exact: true }) });
+// The command of an open menu whose label starts with `label`. The sentence
+// that explains a command is in the same element, so the label is matched by
+// itself.
+const menuCommand = (label) =>
+  page.locator('.menu-item').filter({
+    has: page.locator('.menu-label', {
+      hasText: new RegExp('^\\s*' + label),
+    }),
+  });
+// Shows one kind of artifact of the selected file, as a user does: opens the
+// menu of the toolbar's "Visuals" button and chooses the kind called `label`.
+const showKind = async (label) => {
+  await page.locator('.tab.kinds').click();
+  await menuCommand(label).click();
+};
 
 await page.goto(base);
 
@@ -580,8 +595,10 @@ check(
     .evaluate((el) => getComputedStyle(el).colorScheme === 'light'),
   'the frame of an artifact has the colour scheme of its page, which keeps it see-through',
 );
-// The toolbar is as wide as the editor area and the inspector together, and the
-// tabs stay where they are when the inspector goes away.
+// The toolbar is as wide as the editor area and the inspector together, and
+// the controls at its right end stay where they are when the inspector goes
+// away. The Source button is measured. The "Visuals" button beside it is as
+// wide as its label, which is the name of the kind on screen.
 const placeOf = (selector) =>
   page.locator(selector).evaluate((el) => {
     const box = el.getBoundingClientRect();
@@ -591,7 +608,7 @@ const placeOf = (selector) =>
       Math.round(box.bottom),
     ];
   });
-const tabsWithInspector = await placeOf('.toolbar .tabs');
+const tabsWithInspector = await placeOf('.toolbar .source-tab');
 const barWithInspector = await placeOf('.toolbar');
 const inspectorTop = await page
   .locator('.inspector')
@@ -602,16 +619,16 @@ check(
   'the inspector is below the toolbar, which reaches the right edge of the window',
   JSON.stringify({ inspectorTop, barWithInspector }),
 );
-await page.locator('.tab', { hasText: 'Film' }).click();
+await showKind('Film');
 await page.locator('.empty').waitFor();
 check(
   (await page.locator('.inspector').count()) === 0 &&
-    JSON.stringify(await placeOf('.toolbar .tabs')) ===
+    JSON.stringify(await placeOf('.toolbar .source-tab')) ===
       JSON.stringify(tabsWithInspector),
   'the tabs do not move when the inspector closes',
-  JSON.stringify([tabsWithInspector, await placeOf('.toolbar .tabs')]),
+  JSON.stringify([tabsWithInspector, await placeOf('.toolbar .source-tab')]),
 );
-await page.locator('.tab', { hasText: 'Visual' }).click();
+await showKind('Blueprint');
 await page.locator('.inspector').waitFor();
 
 // ---- the visual: select a part, follow a code reference, switch a layer
@@ -733,7 +750,7 @@ check(
     '33',
   "the reference of a rationale opens the source at the reason's line",
 );
-await page.locator('.tab', { hasText: 'Visual' }).click();
+await showKind('Blueprint');
 await visual.locator('.v-submit').waitFor({ timeout: 15000 });
 const gateAgain = await visual.locator('.v-submit').boundingBox();
 await page.mouse.click(
@@ -752,7 +769,7 @@ check(
     '20',
   'a code reference opens the source at its line',
 );
-await page.locator('.tab', { hasText: 'Visual' }).click();
+await showKind('Blueprint');
 await page.locator('.inspector').waitFor();
 
 // ---- regenerate adds a version; the instructions are remembered
@@ -920,7 +937,7 @@ check(
 
 // ---- Animate: companions, instructions and length, then the outline, then the
 // film
-await page.locator('.tab', { hasText: 'Film' }).click();
+await showKind('Film');
 await page.getByRole('button', { name: 'Animate with companions…' }).click();
 await page.getByRole('dialog').getByText('Animate handler.go').waitFor();
 await page.locator('.companions .check').first().waitFor();
@@ -1148,10 +1165,10 @@ check(
 await shot('09b-animate-job');
 // The user reads the source while the film is being made. The finished film
 // replaces the source view without a click.
-await page.locator('.tab', { hasText: 'Source' }).click();
+await page.locator('.tab.source-tab').click();
 await page.locator('.player:not(.waiting)').waitFor({ timeout: 60000 });
 check(
-  (await page.locator('.tab.on', { hasText: 'Film' }).count()) === 1 &&
+  (await page.locator('.tab.kinds.on', { hasText: 'Film' }).count()) === 1 &&
     (await page.locator('.dock .outcome').count()) === 1 &&
     (await page
       .locator('.dock')
@@ -1163,10 +1180,17 @@ check(
   /4 chapters/.test(await page.locator('.inspector').textContent()),
   'the film is shown with its chapters in the inspector',
 );
+await page.locator('.tab.kinds').click();
+const madeMarks = [
+  await menuCommand('Blueprint').locator('.menu-mark').innerText(),
+  await menuCommand('Film').locator('.menu-mark').innerText(),
+];
+await page.keyboard.press('Escape');
 check(
-  (await page.locator('.tab', { hasText: 'Film' }).locator('.has').count()) ===
-    1 && (await page.locator('.lib-item').count()) === 2,
-  'the file now has a film next to its visual',
+  madeMarks.join() === 'made,made' &&
+    (await page.locator('.lib-item').count()) === 2,
+  'the file now has a film next to its blueprint',
+  madeMarks.join(),
 );
 await page.getByRole('button', { name: 'Close', exact: true }).click();
 await page.locator('.chapter-row').nth(2).click();
@@ -1263,7 +1287,7 @@ await page.evaluate(() => {
     window.__mockSetFile(name, text + '\n');
 });
 await page.locator('.inspector .companion .ref').first().click();
-await page.locator('.tab.on', { hasText: 'Source' }).waitFor();
+await page.locator('.tab.source-tab.on').waitFor();
 await page.locator('.source-line').first().waitFor();
 // Scrolls the source view to its end and measures where things are.
 const longSource = await page.evaluate(async () => {
@@ -1332,7 +1356,7 @@ await page
   .catch(() => {});
 check(
   /handler\.go/.test(await page.locator('.toolbar .crumb').textContent()) &&
-    (await page.locator('.tab.on', { hasText: 'Film' }).count()) === 1,
+    (await page.locator('.tab.kinds.on', { hasText: 'Film' }).count()) === 1,
   'Back returns to the film the link was clicked in',
 );
 check(
@@ -1342,7 +1366,7 @@ check(
 );
 check(await forwardButton.isEnabled(), 'Forward is enabled after going back');
 await forwardButton.click();
-await page.locator('.tab.on', { hasText: 'Source' }).waitFor();
+await page.locator('.tab.source-tab.on').waitFor();
 check(
   (await page.locator('.toolbar .crumb').textContent()) === companionCrumb,
   'Forward goes to the companion file again',
@@ -1352,12 +1376,12 @@ check(
 await page.keyboard.press('Alt+ArrowLeft');
 await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
 check(
-  (await page.locator('.tab.on', { hasText: 'Film' }).count()) === 1,
+  (await page.locator('.tab.kinds.on', { hasText: 'Film' }).count()) === 1,
   'the keyboard goes back as well',
 );
 // Going somewhere new from the middle of the list drops the places after it.
-await page.locator('.tab', { hasText: 'Visual' }).click();
-await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
+await showKind('Blueprint');
+await page.locator('.inspector', { hasText: 'This blueprint' }).waitFor();
 check(
   await forwardButton.isDisabled(),
   'a new place replaces the ones Forward led to',
@@ -1368,9 +1392,9 @@ await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
 // ---- a film continues where it was left when its tab is opened again
 {
   const filmWasAt = await seconds();
-  await page.locator('.tab', { hasText: 'Source' }).click();
+  await page.locator('.tab.source-tab').click();
   await page.locator('.source-line').first().waitFor();
-  await page.locator('.tab', { hasText: 'Film' }).click();
+  await showKind('Film');
   await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
   await page
     .waitForFunction(
@@ -1415,11 +1439,11 @@ await page.locator('.player:not(.waiting)').waitFor({ timeout: 20000 });
   );
   await page.keyboard.press('Alt+ArrowLeft');
   await page
-    .locator('.tab.on', { hasText: 'Source' })
+    .locator('.tab.source-tab.on')
     .waitFor({ timeout: 5000 })
     .catch(() => {});
   check(
-    (await page.locator('.tab.on', { hasText: 'Source' }).count()) === 1,
+    (await page.locator('.tab.source-tab.on').count()) === 1,
     'the key for Back works after a click inside the film',
   );
   await page.keyboard.press('Alt+ArrowRight');
@@ -1611,9 +1635,9 @@ check(
   'a film made from an outline the user edited is shown as a new version',
 );
 await page.getByRole('button', { name: 'Close', exact: true }).click();
-await page.locator('.tab', { hasText: 'Visual' }).click();
-await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
-check(true, 'the Visual tab still shows the visual of the same file');
+await showKind('Blueprint');
+await page.locator('.inspector', { hasText: 'This blueprint' }).waitFor();
+check(true, 'Blueprint still shows the blueprint of the same file');
 
 // ---- a whole folder: the size estimate and the warning, then a visual of the
 // folder
@@ -1644,12 +1668,12 @@ check(
 check(
   (await page.locator('.toolbar .tab').allTextContents())
     .map((text) => text.trim())
-    .join() === 'Visual,Map' &&
+    .join() === 'Blueprint,Map' &&
     (await page.locator('.toolbar .crumb').textContent()).replace(
       /\s+/g,
       '',
     ) === 'internal/orders/',
-  'a folder has the Visual tab and the Map tab',
+  'a folder has the Blueprint tab and the Map tab',
 );
 await shot('10-folder');
 await page.getByRole('button', { name: 'Visualise this folder…' }).click();
@@ -1674,7 +1698,7 @@ check(
 await page
   .locator('.dock .log', { hasText: 'Done. The visual passed every check.' })
   .waitFor({ timeout: 45000 });
-await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
+await page.locator('.inspector', { hasText: 'This blueprint' }).waitFor();
 check(
   (await row('orders').locator('.badge.dot').count()) === 1 &&
     (await page.locator('.lib-item').count()) === 3,
@@ -1682,7 +1706,7 @@ check(
 );
 await page.getByRole('button', { name: 'Close', exact: true }).click();
 await row('handler.go').click();
-await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
+await page.locator('.inspector', { hasText: 'This blueprint' }).waitFor();
 
 // ---- a pipeline: two artifacts joined where their code meets
 await row('store.go').click();
@@ -1823,14 +1847,14 @@ check(
 await page.getByRole('button', { name: 'Close', exact: true }).click();
 await shot('11b-pipeline');
 await page.locator('.inspector .part-row').first().click();
-await page.locator('.inspector', { hasText: 'This visual' }).waitFor();
+await page.locator('.inspector', { hasText: 'This blueprint' }).waitFor();
 check(
   (await page.locator('.row.selected .name').textContent()) === 'handler.go',
   "clicking a part opens that part's own artifact",
 );
 
 // ---- source tab
-await page.locator('.tab', { hasText: 'Source' }).click();
+await page.locator('.tab.source-tab').click();
 await page.locator('.source-line').first().waitFor();
 check(
   (await page.locator('.source-line').first().textContent()).includes(
@@ -1886,19 +1910,19 @@ check(
   (await tabNames()).join(),
 );
 // Each tab remembers its own view. handler.go was left on Source. store.go is
-// switched to Visual here.
-await page.locator('.tab', { hasText: 'Visual' }).click();
+// switched to Blueprint here.
+await showKind('Blueprint');
 await fileTab('handler.go').click();
 await page.locator('.row.selected', { hasText: 'handler.go' }).waitFor();
 await page.locator('.source-line').first().waitFor();
-const handlerView = await page.locator('.tab.on').textContent();
+const handlerOnSource = await page.locator('.tab.source-tab.on').count();
 await fileTab('store.go').click();
 await page.locator('.row.selected', { hasText: 'store.go' }).waitFor();
 check(
-  /Source/.test(handlerView) &&
-    /Visual/.test(await page.locator('.tab.on').textContent()),
+  handlerOnSource === 1 &&
+    (await page.locator('.tab.kinds.on', { hasText: 'Blueprint' }).count()) ===
+      1,
   'a tab comes back in the view it was left in',
-  handlerView + ' | ' + (await page.locator('.tab.on').textContent()),
 );
 // A new tab is put directly after the tab the user came from.
 await fileTab('handler.go').click();
@@ -2047,7 +2071,7 @@ await page.keyboard.press('Escape');
 // ---- a step-through: a visual the user can run on an input
 await row('limiter.go').click();
 await page.locator('.file-tab.on', { hasText: 'limiter.go' }).waitFor();
-await page.locator('.tab', { hasText: 'Step-through' }).click();
+await showKind('Step-through');
 await page.getByRole('button', { name: 'Step through…' }).click();
 await page.locator('.dialog', { hasText: 'Step through limiter.go' }).waitFor();
 await shot('14-stepthrough-dialog');
@@ -2158,8 +2182,8 @@ check(
   );
   await shot('14c-stepthrough-tall');
   // Leaving the step-through and coming back loads its page again.
-  await page.locator('.tab', { hasText: 'Source' }).click();
-  await page.locator('.tab', { hasText: 'Step-through' }).click();
+  await page.locator('.tab.source-tab').click();
+  await showKind('Step-through');
   await steps.locator('#cj-count').waitFor({ timeout: 20000 });
   await page.waitForFunction(
     () =>
@@ -2184,21 +2208,55 @@ check(
 await page.keyboard.press('Escape');
 
 // ---- the views, which Codjiva draws from data
-// A file's schema, lanes and structure views share the tab called More.
+// The menu of the "Visuals" button lists the six kinds of a file. The
+// sentence on what a kind is for is shown while the pointer is on its command.
 await row('handler.go').click();
 await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
-await page.locator('.tab.more-views').click();
-const viewLabels = await page
+await page.locator('.tab.kinds').click();
+const kindLabels = await page
   .locator('.menu-item .menu-label')
-  .allTextContents();
+  .evaluateAll((labels) =>
+    labels.map((label) => label.firstChild.textContent.trim()),
+  );
+const shownDetails = () => page.locator('.menu-detail.shown');
+const detailsAtFirst = await shownDetails().count();
+await menuCommand('Lanes').hover();
+const lanesDetail = await shownDetails().allInnerTexts();
+// The box of the sentence must be beside the menu, inside the window.
+const detailPlace = await page.evaluate(() => {
+  const menu = document.querySelector('.menu').getBoundingClientRect();
+  const box = document
+    .querySelector('.menu-detail.shown')
+    .getBoundingClientRect();
+  return { besideMenu: box.right <= menu.left, inWindow: box.left >= 0 };
+});
+await shot('14-kind-menu');
+await page.mouse.move(40, 500);
+const detailsAfter = await shownDetails().count();
 check(
-  viewLabels.map((text) => text.trim()).join('|') ===
-    'Schema|Lanes|Structure|Which view fits this file?' &&
-    (await page.locator('.menu-item.explained .menu-detail').count()) === 3,
-  'the More tab lists the views of a file, each with what it is for',
-  viewLabels.join('|'),
+  kindLabels.join('|') ===
+    'Blueprint|Film|Step-through|Schema|Lanes|Structure|Which view fits this file?',
+  'the Visuals button lists the six kinds of a file',
+  kindLabels.join('|'),
 );
-await page.locator('.menu-item', { hasText: 'Schema' }).click();
+check(
+  detailsAtFirst === 0 &&
+    lanesDetail.length === 1 &&
+    lanesDetail[0].startsWith('Who talks to whom') &&
+    detailPlace.besideMenu &&
+    detailPlace.inWindow &&
+    detailsAfter === 0,
+  'the menu explains a kind only while the pointer is on it',
+  JSON.stringify({ detailsAtFirst, lanesDetail, detailPlace, detailsAfter }),
+);
+// The arrow keys show the sentence of the command they move to.
+await page.keyboard.press('ArrowDown');
+check(
+  (await shownDetails().allInnerTexts()).join().startsWith('A film in'),
+  'an arrow key shows what the command it moves to is for',
+  (await shownDetails().allInnerTexts()).join(),
+);
+await menuCommand('Schema').click();
 await page.getByRole('button', { name: 'Make the schema view…' }).click();
 await page
   .locator('.dialog', { hasText: 'Make the schema view of handler.go' })
@@ -2216,13 +2274,11 @@ await schema.locator('.v-Order').first().waitFor({ timeout: 20000 });
 check(
   viewRequest.kind === 'view' &&
     viewRequest.view === 'schema' &&
-    (await page.locator('.tab.more-views.on').textContent()).includes(
-      'Schema',
-    ) &&
+    (await page.locator('.tab.kinds.on').textContent()).includes('Schema') &&
     /schema view · v1/.test(
       (await page.locator('.lib-item.on').textContent()).replace(/\s+/g, ' '),
     ),
-  'a view job makes the schema view, which is shown under the More tab',
+  'a view job makes the schema view, and the Visuals button has its name',
   JSON.stringify(viewRequest),
 );
 await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -2263,7 +2319,7 @@ await page
   .locator('.inspector .field-use button', { hasText: 'price' })
   .first()
   .click();
-await page.locator('.tab.on', { hasText: 'Source' }).waitFor();
+await page.locator('.tab.source-tab.on').waitFor();
 // The in-memory backend's copy of the file is shorter than the real file the
 // view was made of, so the line itself cannot be looked for here.
 check(
@@ -2273,8 +2329,7 @@ check(
 );
 
 // A lanes view is played one message at a time, like a step-through.
-await page.locator('.tab.more-views').click();
-await page.locator('.menu-item', { hasText: 'Lanes' }).click();
+await showKind('Lanes');
 await page.getByRole('button', { name: 'Make the lanes view…' }).click();
 await page
   .locator('.dialog')
@@ -2324,7 +2379,7 @@ const mapLinks = await page.locator('.inspector button.ref').allTextContents();
 check(
   mapLinks.some((text) => text.includes('Open internal/orders/handler.go')) &&
     mapLinks.some((text) => text.includes('Show its schema view')) &&
-    mapLinks.some((text) => text.includes('Show its visual')),
+    mapLinks.some((text) => text.includes('Show its blueprint')),
   'a file on the map links to the file and to everything that was made of it',
   mapLinks.join(' | '),
 );
@@ -2334,13 +2389,13 @@ await page
   .click();
 await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
 check(
-  (await page.locator('.tab.more-views.on').textContent()).includes('Schema'),
+  (await page.locator('.tab.kinds.on').textContent()).includes('Schema'),
   'a link on the map opens the schema view of that file',
 );
 
 // The checks that follow were written with the Source view showing, which a
 // file opened next keeps.
-await page.locator('.tab', { hasText: 'Source' }).click();
+await page.locator('.tab.source-tab').click();
 await page.locator('.source-line').first().waitFor();
 
 // ---- quick open
@@ -2652,6 +2707,21 @@ check(
     .isEnabled(),
   'a provider with a key can be chosen as the agent',
 );
+// The mock agent can be started without the user's own setup for it, so the
+// Agent section offers the switch that leaves those arguments out.
+const ownSetup = page.locator('label.check', { hasText: 'load my own setup' });
+check(
+  /--plain/.test(await ownSetup.textContent()),
+  "the Agent section names the arguments that keep out the user's own setup",
+);
+await ownSetup.locator('input').check();
+await page.waitForTimeout(200);
+check(
+  (await page.evaluate(() => window.__mockSettings().agentCustomizations)) ===
+    true,
+  "the agent can be allowed to load the user's own setup",
+);
+await ownSetup.locator('input').uncheck();
 await section('API keys').click();
 await provider('api-anthropic').locator('summary').click();
 await provider('api-anthropic')
@@ -2856,7 +2926,7 @@ await page.locator('.canvas iframe.dark-stage').waitFor({ timeout: 5000 });
 check(true, 'back in the dark theme the film is dark again, without reloading');
 
 // ---- example visual
-await page.locator('.tab', { hasText: 'Visual' }).click();
+await page.locator('.tab', { hasText: 'Blueprint' }).click();
 await page.locator('.zoomctl').waitFor();
 await page.waitForTimeout(800);
 await page.getByRole('button', { name: 'Zoom in' }).click();
@@ -2937,7 +3007,7 @@ await page.keyboard.press(`${mod}+p`);
 await page.getByPlaceholder('Go to file…').fill('index.h');
 await page.locator('.quick-row').first().waitFor();
 await page.keyboard.press('Enter');
-await page.locator('.tab', { hasText: 'Source' }).click();
+await page.locator('.tab.source-tab').click();
 await page.locator('.source .tk-keyword').first().waitFor();
 // The text of every piece of each kind in the file.
 const coloured = await page.evaluate(() =>
@@ -3040,7 +3110,7 @@ await page.keyboard.press(`${mod}+KeyP`);
 await page.locator('.dialog.quick .input').fill('nav/meter');
 await page.locator('.quick-row').first().waitFor();
 await page.keyboard.press('Enter');
-await page.locator('.tab', { hasText: 'Source' }).click();
+await page.locator('.tab.source-tab').click();
 await page.locator('.source-line').first().waitFor();
 // Scrolls the code into view, as a user would with the wheel.
 await page.evaluate(async () => {
@@ -3373,7 +3443,7 @@ check(
 await shot('13-tree-selected-in-the-middle');
 
 // ---- asking the agent which view fits a file
-// api.ts has no artifact, so its Visual tab shows the card with the six
+// api.ts has no artifact, so the editor area shows the card with the six
 // views and the button that asks. The stand-in agent puts the lanes view
 // first for a `.ts` file.
 await page.keyboard.press(`${mod}+KeyP`);
@@ -3381,7 +3451,7 @@ await page.locator('.dialog.quick .input').fill('web/src/api');
 await page.locator('.quick-row').first().waitFor();
 await page.keyboard.press('Enter');
 await page.locator('.file-tab.on', { hasText: 'api.ts' }).waitFor();
-await page.locator('.tab', { hasText: 'Visual' }).click();
+await showKind('Blueprint');
 await page.locator('.empty .meta', { hasText: 'lines' }).waitFor();
 // The size of the card and of each of the six small cards, as text.
 const cardSizes = () =>
@@ -3446,9 +3516,8 @@ check(
   `${sizesBefore} | ${sizesWhileAsking} | ${sizesAfter}`,
 );
 check(
-  (await page.locator('.tab.more-views.suggested').count()) === 1 &&
-    (await page.locator('.tab.suggested').count()) === 1,
-  'the tab of the suggested view is marked',
+  (await page.locator('.tab.kinds.suggested').count()) === 1,
+  'the Visuals button is marked once the agent has suggested a kind',
 );
 // The note shows the reason for the view the pointer is on.
 await page.locator('.pick', { hasText: 'Schema' }).hover();
@@ -3461,15 +3530,19 @@ check(
 );
 await shot('14-suggested-view');
 await page.mouse.move(40, 500);
-await page.locator('.tab.more-views').click();
-const lanesItem = page.locator('.menu-item', { hasText: 'Who talks to whom' });
+await page.locator('.tab.kinds').click();
+const lanesItem = menuCommand('Lanes');
+await lanesItem.hover();
 check(
   (await lanesItem.locator('.menu-mark').innerText()) === 'suggested' &&
     (await page.locator('.menu-mark').count()) === 1 &&
+    (await page.locator('.menu-detail.shown').innerText()).startsWith(
+      'Suggested for this file.',
+    ) &&
     (await page
       .locator('.menu-item', { hasText: 'Ask again which view fits' })
       .count()) === 1,
-  'the menu of the More tab marks the suggested view',
+  'the menu of the Visuals button marks the suggested kind and gives the reason',
 );
 await shot('14-suggested-view-menu');
 await page.keyboard.press('Escape');
@@ -3495,13 +3568,13 @@ await page.locator('.dialog').waitFor({ state: 'detached' });
 // file was shown, without asking again.
 await page.locator('.file-tab', { hasText: 'gauge.go' }).click();
 await page.locator('.file-tab.on', { hasText: 'gauge.go' }).waitFor();
-await page.locator('.tab', { hasText: 'Visual' }).click();
+await showKind('Blueprint');
 await page.locator('.empty .meta', { hasText: 'lines' }).waitFor();
 const otherFile = await page.locator('.pick.suggested').count();
 const sizesOtherFile = await cardSizes();
 await page.locator('.file-tab', { hasText: 'api.ts' }).click();
 await page.locator('.file-tab.on', { hasText: 'api.ts' }).waitFor();
-await page.locator('.tab', { hasText: 'Visual' }).click();
+await showKind('Blueprint');
 await page.locator('.pick.suggested').waitFor();
 check(
   otherFile === 0 &&
@@ -3511,6 +3584,28 @@ check(
     ),
   'the answer is shown again for its file and for no other file',
   `${otherFile} suggested for the other file, sizes ${sizesOtherFile}`,
+);
+
+// ---- opening a folder again shows the tabs it had
+// The file tabs of a folder, and which of them was on screen, are remembered
+// for the folder. The "Open folder" button of the title bar opens the same
+// folder again here, because the in-memory backend always picks that folder.
+// Opening a folder empties the list of places the user has been, so the Back
+// button is disabled once the folder has been opened again.
+const tabsBeforeReopening = (await tabNames()).join();
+const shownBeforeReopening = await page
+  .locator('.file-tab.on .name')
+  .textContent();
+await page.locator('[aria-label="Open folder"]').click();
+await page.locator('.toolbar [aria-label="Back"][disabled]').waitFor();
+await page.locator('.file-tab.on', { hasText: shownBeforeReopening }).waitFor();
+check(
+  tabsBeforeReopening.includes(',') &&
+    (await tabNames()).join() === tabsBeforeReopening &&
+    (await page.locator('.row.selected .name').textContent()) ===
+      shownBeforeReopening,
+  'opening a folder again shows the file tabs it had, with the same tab on screen',
+  `${tabsBeforeReopening} -> ${(await tabNames()).join()}`,
 );
 
 check(errors.length === 0, 'the page logged no errors', errors.join(' | '));

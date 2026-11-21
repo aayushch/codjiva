@@ -22,6 +22,57 @@ const makePart = (svg, html, extra) =>
 
 const strokeFor = (hot) => (hot ? 'var(--main)' : 'var(--ink)');
 
+// Some part functions write their own labels. The agent that wrote the plant
+// never typed the class name of such a label, so it cannot find the label by
+// searching its files for that name. Each of these labels has a `data-cj-of`
+// attribute that holds the name of the part function that wrote it, for
+// example `gaugeBar`.
+//
+// When the self-test reports a problem with such a label, it looks up the
+// part function's name in this table and adds the sentence to the issue. The
+// sentence says where the part function puts the label and which arguments
+// of the call move it. `{i}` is replaced by the number at the end of the
+// label's class name. That number is the index of the tick, mark, row, lamp
+// or name the label belongs to.
+const PART_LABEL_HELP = {
+  state:
+    'CJ.state centres the name, and the second line `opts.sub` under it, in ' +
+    'the box of the state. Move the state with `x` and `y`, widen it with ' +
+    '`w`, or shorten the text.',
+  edge:
+    'CJ.edge writes `opts.label` at the middle of the longest segment of ' +
+    'the path. Set `opts.at` to `[x, y]`, the top-left corner of the label, ' +
+    'to put it somewhere else.',
+  registers:
+    'CJ.registers writes row {i} of the table. The name starts at `x + 12` ' +
+    'and the value ends at `x + w - 12`. Rows are 26 px apart, starting at ' +
+    '`y + 9`. Move the table with `x` and `y`.',
+  press:
+    'CJ.press writes `label` on the head of the press, in a 76 px wide box ' +
+    'that starts at `x - 38` and `yTop + 66`. Move the press with `x` and ' +
+    '`yTop`.',
+  tallyBoard:
+    'CJ.tallyBoard writes the count of row {i} at `x + 68` and ' +
+    '`y + 22 + 64 * {i}`. Move the board with `x` and `y`.',
+  modeLamps:
+    'CJ.modeLamps writes label {i} at `x + 34` and `y + 8 + 29 * {i}`. Move ' +
+    'the panel with `x` and `y`.',
+  gaugeBar:
+    'CJ.gaugeBar writes the label of tick {i}, `ticks[{i}].label`, above ' +
+    'the bar, with its top at `y - 34`. Its left edge is at ' +
+    '`x + ticks[{i}].at * w + ticks[{i}].dx`. Without a `dx` the label is ' +
+    'centred on the tick. Change `ticks[{i}].dx` to move the label ' +
+    'sideways, or move the bar with `x` and `y`.',
+  tank:
+    'CJ.tank writes the label of mark {i}, `marks[{i}].label`, to the right ' +
+    'of the vessel. Its left edge is at `x + w + 10`, and it is 12 px above ' +
+    'the height of the mark. Move the tank with `x` and `y`, or shorten the ' +
+    'label.',
+  packer:
+    'CJ.packer writes label {i} inside row {i}, at `x + 6` and ' +
+    '`y + 2 + 28 * {i}`. Move the rows with `x` and `y`.',
+};
+
 /*@api
 ## Drawing parts
 
@@ -812,7 +863,7 @@ CJ.state = (cls, x, y, w, h, label, opts) => {
   let html =
     '<div class="pl ' +
     cls +
-    '-l" style="left:' +
+    '-l" data-cj-of="state" style="left:' +
     x +
     'px;top:' +
     nameTop +
@@ -824,6 +875,7 @@ CJ.state = (cls, x, y, w, h, label, opts) => {
   if (o.sub)
     html += CJ.label(o.sub, x, nameTop + 22, {
       cls: cls + '-s',
+      of: 'state',
       w,
       size: 14,
       lineHeight: 18,
@@ -916,6 +968,7 @@ CJ.edge = (cls, d, opts) => {
     }
     html = CJ.label(o.label, at[0], at[1], {
       cls: cls + '-l',
+      of: 'edge',
       size: 14,
       color: fallback ? 'var(--main)' : undefined,
     });
@@ -1059,12 +1112,16 @@ CJ.registers = (cls, x, y, w, names) => {
         (x + w - 8) +
         '" style="stroke:var(--faint);stroke-width:1.5"/>';
     html +=
-      CJ.label(name, x + 12, top + 4, { cls: cls + '-n' + i, size: 14 }) +
+      CJ.label(name, x + 12, top + 4, {
+        cls: cls + '-n' + i,
+        of: 'registers',
+        size: 14,
+      }) +
       '<div class="pl ' +
       cls +
       '-v' +
       i +
-      '" style="left:' +
+      '" data-cj-of="registers" style="left:' +
       Math.round(x + w / 2) +
       'px;top:' +
       (top + 4) +
@@ -1113,6 +1170,10 @@ CJ.plate = (text, x, y, cls) =>
   CJ.esc(text) +
   '</div>';
 
+// `opts.of` is for the part functions in this file and is not part of the
+// documented API. A part function that writes a label of its own passes its
+// own name, such as `'gaugeBar'`, and the label gets that name as its
+// `data-cj-of` attribute (see PART_LABEL_HELP).
 CJ.label = (text, x, y, opts) => {
   const o = opts || {};
   let style = 'left:' + x + 'px;top:' + y + 'px';
@@ -1126,7 +1187,9 @@ CJ.label = (text, x, y, opts) => {
   return (
     '<div class="pl' +
     (o.cls ? ' ' + o.cls : '') +
-    '" style="' +
+    '"' +
+    (o.of ? ' data-cj-of="' + o.of + '"' : '') +
+    ' style="' +
     style +
     '">' +
     body +
@@ -1204,6 +1267,7 @@ CJ.press = (cls, x, yTop, label) => {
     '" width="76" height="34" rx="4" style="fill:var(--panel);stroke:var(--main);stroke-width:3"/></g>';
   const html = CJ.label(label, x - 38, headY + 2, {
     cls: cls + '-l',
+    of: 'press',
     w: 76,
     size: 15,
     lineHeight: 18,
@@ -1282,7 +1346,10 @@ CJ.tallyBoard = (cls, x, y, rows) => {
       ')">' +
       CJ.packet('tally', cls + '-t' + k) +
       '</g>';
-    html += CJ.label('×0', x + 68, y + 22 + k * 64, { cls: cls + '-n' + k });
+    html += CJ.label('×0', x + 68, y + 22 + k * 64, {
+      cls: cls + '-n' + k,
+      of: 'tallyBoard',
+    });
   }
   const svg =
     '<g class="' +
@@ -1346,7 +1413,10 @@ CJ.modeLamps = (cls, x, y, labels, w) => {
       '" cy="' +
       (y + 18 + i * 29) +
       '" r="8" style="fill:var(--ground);stroke:var(--main);stroke-width:2.5"/>';
-    html += CJ.label(text, x + 34, y + 8 + i * 29, { cls: cls + '-l' + i });
+    html += CJ.label(text, x + 34, y + 8 + i * 29, {
+      cls: cls + '-l' + i,
+      of: 'modeLamps',
+    });
   });
   return makePart(svg, html);
 };
@@ -1413,6 +1483,7 @@ CJ.gaugeBar = (cls, x, y, w, ticks) => {
         tick.dx == null ? -Math.round(CJ.textWidth(tick.label) / 2) : tick.dx;
       html += CJ.label(tick.label, Math.round(tx + dx), y - 34, {
         cls: cls + '-l' + i,
+        of: 'gaugeBar',
       });
     }
   });
@@ -1509,6 +1580,7 @@ CJ.tank = (cls, x, y, w, h, marks, opts) => {
     if (m.label)
       html += CJ.label(m.label, x + w + 10, Math.round(markY(i)) - 12, {
         cls: cls + '-l' + i,
+        of: 'tank',
       });
   });
   return makePart(svg, html, { markY });
@@ -1578,7 +1650,11 @@ CJ.packer = (cls, x, y, w, labels) => {
       '" width="' +
       w +
       '" height="22" rx="4" style="fill:none;stroke:var(--faint);stroke-width:1.5"/>';
-    html += CJ.label(text, x + 6, ry + 2, { cls: cls + '-l' + i, size: 14 });
+    html += CJ.label(text, x + 6, ry + 2, {
+      cls: cls + '-l' + i,
+      of: 'packer',
+      size: 14,
+    });
   });
   return makePart(svg, html);
 };

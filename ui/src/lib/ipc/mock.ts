@@ -34,6 +34,7 @@ import type {
   ViewSuggestion,
   ValidateRequest,
   ValidationReport,
+  WorkspaceSession,
 } from './types';
 
 const GO_HANDLER = `package orders
@@ -120,6 +121,7 @@ const DEFAULT_SETTINGS: Settings = {
   apiBaseUrls: {},
   agentPaths: {},
   maxFixIterations: 3,
+  agentCustomizations: false,
   filmLength: 'standard',
   soundOnByDefault: false,
   basePlaybackSpeed: 0.6,
@@ -476,6 +478,10 @@ let store: StoreStatus = {
   askAboutGitignore: true,
 };
 let opened = false;
+// The path of the open workspace, and what was open in each workspace when it
+// was last used, by that path. Both last until the page is loaded again.
+let openedRoot = '';
+const sessions = new Map<string, WorkspaceSession>();
 const fsListeners = new Set<(changes: Changes) => void>();
 // How to stop each running mock job, by job id.
 const cancelledJobs = new Map<string, () => void>();
@@ -579,6 +585,7 @@ export const mockApi: Api = {
   },
   async workspaceOpen(path) {
     opened = true;
+    openedRoot = path;
     return {
       root: path,
       name: path.split('/').filter(Boolean).pop() ?? path,
@@ -587,6 +594,12 @@ export const mockApi: Api = {
   },
   async workspaceClose() {
     opened = false;
+  },
+  async workspaceSessionGet() {
+    return sessions.get(openedRoot) ?? { openFiles: [], selected: null };
+  },
+  async workspaceSessionSet(session) {
+    sessions.set(openedRoot, session);
   },
   async workspaceRecent() {
     return [
@@ -792,6 +805,8 @@ export const mockApi: Api = {
       note: 'A stand-in for an agent, for trying the interface in a browser.',
       supportsResume: true,
       verified: true,
+      plainArgs: ['--plain'],
+      plainNote: 'your own instruction files and plugins',
     };
     const providers: AgentInfo[] = PROVIDERS.map(providerStatus).map((p) => ({
       id: p.id,

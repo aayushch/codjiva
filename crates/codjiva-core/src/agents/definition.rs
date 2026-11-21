@@ -59,6 +59,18 @@ pub struct AgentDefinition {
     /// Added when a spending limit is set in Settings.
     #[serde(default)]
     pub budget_args: Vec<String>,
+    /// Arguments that start the program without the user's own setup: the
+    /// instruction files, skills, plugins, hooks and similar additions the
+    /// user has configured for the program. They are added to every turn
+    /// unless the setting `agent_customizations` is on. Empty for a program
+    /// that has no such arguments, or whose arguments are not known here.
+    #[serde(default)]
+    pub plain_args: Vec<String>,
+    /// What `plain_args` keeps out of a job, as the end of the sentence
+    /// "Codjiva starts this agent without ...". Settings shows it next to the
+    /// switch for `agent_customizations`.
+    #[serde(default)]
+    pub plain_note: String,
     /// What to write to the program's standard input, or `None` to leave it
     /// closed.
     #[serde(default)]
@@ -106,6 +118,10 @@ pub struct AgentDefinition {
 ///     high.
 ///   - `{sessionId}`: the session to continue.
 ///   - `{maxBudgetUsd}`: the spending limit.
+///
+/// The value `plain` is not a placeholder. It is set, to any text, for a turn
+/// that must start the program without the user's own setup, and it decides
+/// whether `AgentDefinition::plain_args` are added.
 #[derive(Debug, Clone, Default)]
 pub struct Placeholders {
     pub values: BTreeMap<&'static str, String>,
@@ -144,7 +160,8 @@ pub struct SpawnSpec {
 impl AgentDefinition {
     /// Resolves the definition for one turn. The optional argument groups are
     /// included only when the turn has a model, an effort level, a session to
-    /// resume, or a budget.
+    /// resume, or a budget. `plain_args` are included when the value `plain`
+    /// is set.
     pub fn spawn_spec(&self, values: &Placeholders) -> SpawnSpec {
         let has =
             |name: &str| values.values.get(name).is_some_and(|v| !v.is_empty());
@@ -168,6 +185,7 @@ impl AgentDefinition {
             (&self.effort_args, "effort"),
             (resume_args, "sessionId"),
             (&self.budget_args, "maxBudgetUsd"),
+            (&self.plain_args, "plain"),
         ] {
             if values.values.get(needs).is_some_and(|v| !v.is_empty()) {
                 args.extend(group.iter().map(|a| values.expand(a)));
@@ -344,6 +362,74 @@ mod tests {
     }
 
     #[test]
+    fn claude_code_is_started_in_safe_mode_unless_customizations_are_allowed() {
+        let (definitions, _) = load_definitions(Path::new("/nonexistent"));
+        let claude =
+            definitions.iter().find(|d| d.id == "claude-code").unwrap();
+        let mut v = values();
+        v.set("userPromptPath", "/ws/.codjiva/jobs/j1/user-1.md");
+        let customized = claude.spawn_spec(&v);
+        assert!(
+            !customized.args.contains(&"--safe-mode".to_string()),
+            "{:?}",
+            customized.args
+        );
+        v.set("plain", "yes");
+        let plain = claude.spawn_spec(&v);
+        assert_eq!(plain.args.last().map(String::as_str), Some("--safe-mode"));
+        // The flag is one the installed program must list in its help.
+        assert!(claude.check_flags.contains(&"--safe-mode".to_string()));
+    }
+
+    #[test]
+    fn the_plain_arguments_of_codex_gemini_and_pi_are_added_only_when_asked() {
+        let (definitions, _) = load_definitions(Path::new("/nonexistent"));
+        let expected: [(&str, &[&str]); 3] = [
+            (
+                "codex",
+                &[
+                    "-c",
+                    "project_doc_max_bytes=0",
+                    "--disable",
+                    "hooks",
+                    "--disable",
+                    "plugins",
+                ],
+            ),
+            ("gemini-cli", &["--extensions", "none"]),
+            ("pi", &["--no-context-files"]),
+        ];
+        for (id, plain) in expected {
+            let definition = definitions.iter().find(|d| d.id == id).unwrap();
+            let mut v = values();
+            v.set("userPromptPath", "/ws/.codjiva/jobs/j1/user-1.md");
+            let customized = definition.spawn_spec(&v).args;
+            // Without the value `plain`, none of the arguments is there.
+            for argument in plain.iter().filter(|a| a.starts_with("--")) {
+                assert!(
+                    !customized.contains(&argument.to_string()),
+                    "{id}: {customized:?}"
+                );
+            }
+            // With it, they are the last arguments, for a first turn and for
+            // a turn that continues a session.
+            v.set("plain", "yes");
+            assert!(definition.spawn_spec(&v).args.ends_with(
+                &plain.iter().map(|a| a.to_string()).collect::<Vec<_>>()
+            ));
+            v.set("sessionId", "thread-9");
+            let resumed = definition.spawn_spec(&v).args;
+            assert!(
+                resumed.ends_with(
+                    &plain.iter().map(|a| a.to_string()).collect::<Vec<_>>()
+                ),
+                "{id}: {resumed:?}"
+            );
+            assert!(!definition.plain_note.is_empty(), "{id}");
+        }
+    }
+
+    #[test]
     fn codex_continues_a_session_with_its_own_command_form() {
         let (definitions, _) = load_definitions(Path::new("/nonexistent"));
         let codex = definitions.iter().find(|d| d.id == "codex").unwrap();
@@ -358,6 +444,21 @@ mod tests {
         assert_eq!(resumed.args[..4], ["exec", "resume", "thread-9", "--json"]);
         assert_eq!(resumed.args.iter().filter(|a| *a == "thread-9").count(), 1);
         assert!(resumed.args.windows(2).any(|w| w == ["--model", "gpt-x"]));
+        // `codex exec` takes the sandbox as `--sandbox`. `codex exec resume`
+        // has no such option, so there the sandbox is set with a
+        // configuration override. Neither form accepts `--ask-for-approval`.
+        assert!(first
+            .args
+            .windows(2)
+            .any(|w| w == ["--sandbox", "workspace-write"]));
+        assert!(!resumed.args.contains(&"--sandbox".to_string()));
+        assert!(resumed
+            .args
+            .windows(2)
+            .any(|w| w == ["-c", "sandbox_mode=\"workspace-write\""]));
+        for spec in [&first, &resumed] {
+            assert!(!spec.args.contains(&"--ask-for-approval".to_string()));
+        }
 
         let cursor =
             definitions.iter().find(|d| d.id == "cursor-agent").unwrap();

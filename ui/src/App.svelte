@@ -357,7 +357,7 @@
       {:else}
         <VisualFrame
           src={api.artifactUrl('reference/visual') + '?embed=1'}
-          title="Example visual"
+          title="Example blueprint"
         />
       {/if}
     {:else if !app.workspace}

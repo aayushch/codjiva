@@ -37,6 +37,9 @@ export const tauriApi: Api = {
   workspaceOpen: (path) => invoke('workspace_open', { path }),
   workspaceClose: () => invoke('workspace_close'),
   workspaceRecent: () => invoke('workspace_recent'),
+  workspaceSessionGet: () => invoke('workspace_session_get'),
+  workspaceSessionSet: (session) =>
+    invoke('workspace_session_set', { session }),
   treeChildren: (relPath) => invoke('tree_children', { relPath }),
   fileInfo: (relPath) => invoke('file_info', { relPath }),
   fileRead: (relPath) => invoke('file_read', { relPath }),

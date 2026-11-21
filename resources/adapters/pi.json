@@ -30,12 +30,17 @@
     "--session",
     "{sessionId}"
   ],
+  "plainArgs": [
+    "--no-context-files"
+  ],
+  "plainNote": "the AGENTS.md and CLAUDE.md files of the project and of your own Pi settings",
   "cwd": "{workspaceRoot}",
   "parser": "pi-json",
   "env": {},
   "checkFlags": [
     "--mode",
     "--tools",
+    "--no-context-files",
     "--append-system-prompt",
     "--session"
   ],

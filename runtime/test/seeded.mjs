@@ -11,6 +11,7 @@ import {
   openArtifact,
   runSelfTest,
   referenceFilm,
+  referenceVisual,
 } from './lib.mjs';
 
 // Replaces `from` with `to` in one file of a copied source folder. Fails if
@@ -63,6 +64,82 @@ const selfTestCases = [
       ),
   },
   {
+    // The label 'rejected · duplicate · blocked' is 30 characters of 18 px
+    // text at world point (148, 900), so it is 324 px wide and 20.7 px tall.
+    // The planted label starts at (200, 904) and is 151.2 px wide. The two
+    // reach 151.2 px into each other across and 16.7 px down.
+    name: 'an overlapping label is given in world pixels, with how far the two overlap',
+    plant: (dir) =>
+      edit(
+        dir,
+        'plant.js',
+        "CJ.label('shed (counted)', 855, 900)",
+        "CJ.label('shed (counted)', 200, 904)",
+      ),
+    expect: (issues) =>
+      issues.some((i) => {
+        if (i.check !== 'text-overlap' || !i.a || !i.b) return false;
+        const moved = [i.a, i.b].find((e) => e.text === 'shed (counted)');
+        return (
+          moved &&
+          moved.world &&
+          moved.world[0] === 200 &&
+          moved.world[1] === 904 &&
+          moved.box[0] !== 200 &&
+          JSON.stringify(i.overlap) === '[152,17]'
+        );
+      }),
+  },
+  {
+    // The tick label of the gauge bar `c('gauge')` is written by CJ.gaugeBar
+    // at world point (1321, 706). Its class name is not in plant.js, so the
+    // issue must say which call draws it and which argument moves it.
+    name: 'a label that a part wrote is reported with the call that draws it',
+    plant: (dir) =>
+      edit(
+        dir,
+        'plant.js',
+        "CJ.label('len(batch)', 1200, 764)",
+        "CJ.label('len(batch)', 1330, 710)",
+      ),
+    expect: (issues) =>
+      issues.some((i) => {
+        if (i.check !== 'text-overlap' || !i.a || !i.b) return false;
+        const tick = [i.a, i.b].find((e) => /-gauge-l0$/.test(e.selector));
+        return (
+          tick &&
+          tick.drawnBy === "CJ.gaugeBar(c('gauge'), ...)" &&
+          tick.move.includes('ticks[0].dx') &&
+          tick.world[0] === 1321 &&
+          tick.world[1] === 706
+        );
+      }),
+  },
+  {
+    // Marker 1 of the reference visual is moved onto the label 'Store',
+    // which is at world point (1480, 952).
+    name: 'a marker of a visual is reported with its entry in visual.json',
+    source: referenceVisual,
+    plant: (dir) =>
+      edit(
+        dir,
+        'visual.json',
+        '{ "x": 200, "y": 680, "n": 1,',
+        '{ "x": 1500, "y": 962, "n": 1,',
+      ),
+    expect: (issues) =>
+      issues.some((i) => {
+        if (i.check !== 'text-overlap' || !i.a || !i.b) return false;
+        const marker = [i.a, i.b].find((e) => /cj-marker/.test(e.selector));
+        return (
+          marker &&
+          marker.drawnBy === 'visual.json, markers[0]' &&
+          marker.world[0] === 1485 &&
+          marker.world[1] === 947
+        );
+      }),
+  },
+  {
     name: 'a label crossing a machine edge is reported as text-overlap against that machine',
     plant: (dir) =>
       edit(
@@ -71,12 +148,15 @@ const selfTestCases = [
         "CJ.label('Store', 1480, 952)",
         "CJ.label('Store', 1480, 630)",
       ),
+    // The machine is drawn with CJ.machine(c('flush'), 1460, 480, 170, 160),
+    // and its world box must be exactly those four numbers.
     expect: (issues) =>
       issues.some(
         (i) =>
           i.check === 'text-overlap' &&
           i.a.text === 'Store' &&
-          /-flush$/.test(i.b.selector),
+          /-flush$/.test(i.b.selector) &&
+          JSON.stringify(i.b.world) === '[1460,480,170,160]',
       ),
   },
   {
@@ -225,7 +305,7 @@ const selfTestCases = [
 
 for (const [index, test] of selfTestCases.entries()) {
   try {
-    const dir = copySources(referenceFilm, 'case' + index);
+    const dir = copySources(test.source || referenceFilm, 'case' + index);
     test.plant(dir);
     const issues = await issuesOf(dir, 'case' + index);
     if (test.expect(issues)) pass(test.name);
@@ -238,9 +318,13 @@ for (const [index, test] of selfTestCases.entries()) {
               i.check,
               i.scene,
               i.a && i.a.selector,
+              i.a && i.a.world,
+              i.b && i.b.selector,
+              i.b && i.b.world,
+              i.overlap,
               i.message,
             ]),
-          ).slice(0, 600),
+          ).slice(0, 900),
       );
   } catch (e) {
     fail(test.name, String(e.stderr || e.message || e).slice(0, 600));

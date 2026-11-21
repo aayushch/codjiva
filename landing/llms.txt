@@ -8,7 +8,7 @@ Codjiva contains no AI model. It runs a coding agent installed on the computer (
 
 1. Visualise: a still, explorable blueprint of one file or one folder. Click a part to see its role and the line of code it stands for. Numbered markers open short explanations. Layers switch data flow, control, error paths and labels on and off.
 2. Animate: a narrated film of one to five minutes. It follows one unit of work (an order, a request, a log line) through the file and the companion files the user ticks. Chapters show the normal path, the limits, and what happens when a limit is hit. Playback runs from 0.75x to 4x.
-3. Compose: joins the visuals of several files into one pipeline, at the call or message where one file hands work to the next, as a still picture or as a film that crosses the join.
+3. Compose: joins the blueprints of several files into one pipeline, at the call or message where one file hands work to the next, as a still picture or as a film that crosses the join.
 
 ## How a job works
 
@@ -23,11 +23,11 @@ Codjiva contains no AI model. It runs a coding agent installed on the computer (
 - Artifacts are plain HTML files under `<workspace>/.codjiva/`. An exported film opens offline in any browser, with its own player.
 - Companion files for a film are suggested from imports, tests and usages. An ignore list (patterns like `.gitignore` lines, for example `vendor/`) keeps third-party code out of the suggestions.
 - API keys are stored in the operating system's credential store, never in a file.
-- Tested end to end with Claude Code and Cursor Agent. The other agents and the API-key providers are implemented but not yet confirmed against the real services.
+- Tested end to end with Claude Code, Cursor Agent and Codex CLI. The other agents and the API-key providers are implemented but not yet confirmed against the real services.
 - The window is laid out like an IDE: a file explorer and a library of artifacts on the left, an inspector on the right and a job panel at the bottom. Each panel can be resized, closed and reopened by dragging its edge, and the layout is remembered. Back and Forward move through the files, tabs and pipelines the user looked at, and a film continues where it was left.
-- A file that has a visual or a film has a dot in the explorer, and the folders above it are tinted.
-- Where the code shows why it is built the way it is, a part of a visual or a bubble of a film carries a rationale: the reason, whether the code states it or the agent inferred it, and the line that shows it. A rationale is shown only when the viewer asks for it.
-- The window, the visuals and the films follow a light or a dark theme.
+- A file that has a blueprint or a film has a dot in the explorer, and the folders above it are tinted.
+- Where the code shows why it is built the way it is, a part of a blueprint or a bubble of a film carries a rationale: the reason, whether the code states it or the agent inferred it, and the line that shows it. A rationale is shown only when the viewer asks for it.
+- The window, the blueprints and the films follow a light or a dark theme.
 - The app updates itself from the project's GitHub releases: it reads the latest release's `latest.json`, offers a newer version, verifies the download's signature and installs it. The automatic check can be switched off in Settings.
 - Built with Tauri 2, Rust and Svelte 5.
 

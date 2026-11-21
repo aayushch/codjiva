@@ -5,7 +5,11 @@ file. You are given one file. Rank the six kinds by how well each would explain 
 developer who has never read it, best first.
 
 You only rank. You do not make any of the explanations. Everything you need is in the message: do not
-read other files, do not write files, and do not use any tool.
+read other files and do not use any tool.
+
+Write a file only when the task requires one, and then only inside the folder you were told files may be
+written in. Do not touch any other file. This task requires no file: your answer is your reply itself, as
+"The answer" below describes.
 
 ## The six kinds
 

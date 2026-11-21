@@ -21,38 +21,58 @@ fn number_of(value: &Value, key: &str) -> Option<u64> {
     value.get(key).and_then(Value::as_u64)
 }
 
-/// Shortens a shell command or a similar long string for the job log.
+/// The most characters of a shell command, a search pattern or a search
+/// query that the job log shows. A path is never cut.
+const COMMAND_LIMIT: usize = 1000;
+
+/// Writes a shell command, a search pattern or a search query on one line for
+/// the job log. Line breaks and runs of spaces become one space. Text longer
+/// than [`COMMAND_LIMIT`] characters is cut there and ends with "…".
+///
+/// The job panel wraps long lines, so the limit only keeps a command that
+/// carries a whole file, such as a script written with a here-document, from
+/// filling the log.
 fn shorten(text: &str) -> String {
     let one_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if one_line.chars().count() <= 90 {
+    if one_line.chars().count() <= COMMAND_LIMIT {
         return one_line;
     }
-    format!("{}…", one_line.chars().take(90).collect::<String>())
+    format!(
+        "{}…",
+        one_line.chars().take(COMMAND_LIMIT).collect::<String>()
+    )
 }
+
+/// The names the programs give the argument that holds the path of the file a
+/// tool call works on.
+const PATH_ARGUMENTS: [&str; 5] = [
+    "path",
+    "file_path",
+    "filePath",
+    "absolute_path",
+    "target_file",
+];
 
 /// Describes a tool call for the job log from its arguments: the file, pattern
 /// or command it works on. The programs name these arguments differently, so
 /// the usual names are tried in order.
+///
+/// A path is returned whole. The caller removes the workspace folder from its
+/// start afterwards, which only works on a path that still has its end. A
+/// pattern, query or command is written on one line by [`shorten`].
 fn summarise(args: Option<&Value>) -> String {
     let Some(args) = args else {
         return String::new();
     };
-    for key in [
-        "path",
-        "file_path",
-        "filePath",
-        "absolute_path",
-        "target_file",
-        "pattern",
-        "query",
-        "glob",
-        "command",
-    ] {
-        if let Some(found) = text_of(args, key).filter(|s| !s.is_empty()) {
-            return shorten(found);
-        }
+    let named = |key: &str| text_of(args, key).filter(|s| !s.is_empty());
+    if let Some(path) = PATH_ARGUMENTS.iter().find_map(|key| named(key)) {
+        return path.to_string();
     }
-    String::new()
+    ["pattern", "query", "glob", "command"]
+        .iter()
+        .find_map(|key| named(key))
+        .map(shorten)
+        .unwrap_or_default()
 }
 
 /// The path a tool call writes to, when the tool is one that writes files.
@@ -65,16 +85,10 @@ fn written_path(tool: &str, args: Option<&Value>) -> Option<String> {
         return None;
     }
     let args = args?;
-    [
-        "path",
-        "file_path",
-        "filePath",
-        "absolute_path",
-        "target_file",
-    ]
-    .iter()
-    .find_map(|key| text_of(args, key))
-    .map(str::to_string)
+    PATH_ARGUMENTS
+        .iter()
+        .find_map(|key| text_of(args, key))
+        .map(str::to_string)
 }
 
 /// A tool's name with a capital first letter, as the job log shows tools:
@@ -567,6 +581,7 @@ impl LineParser for PiParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn parse(
         mut parser: impl LineParser,
@@ -842,6 +857,52 @@ mod tests {
                 AgentEvent::Finished { error: None },
             ]
         );
+    }
+
+    #[test]
+    fn a_long_path_is_shown_whole_and_only_a_very_long_command_is_cut() {
+        // A path of 150 characters, as an agent gives it: absolute, deep
+        // inside the workspace.
+        let path = format!("/ws/{}/handler.go", "internal/orders".repeat(9));
+        assert!(path.chars().count() > 140);
+        let events = tool_events("write", Some(&json!({ "path": path })));
+        assert_eq!(
+            events,
+            vec![
+                AgentEvent::FileWritten(path.clone()),
+                AgentEvent::ToolUse {
+                    name: "Write".into(),
+                    summary: path.clone(),
+                },
+            ]
+        );
+
+        // A command of several lines is written on one line and not cut.
+        let command = format!(
+            "nl -ba {path}\n  nl -ba {}",
+            "internal/store/store.go".repeat(8)
+        );
+        let (events, _) = parse(
+            CodexParser::default(),
+            &[&json!({
+                "type": "item.started",
+                "item": { "type": "command_execution", "command": command }
+            })
+            .to_string()],
+        );
+        let AgentEvent::ToolUse { summary, .. } = &events[0] else {
+            panic!("{events:?}")
+        };
+        assert_eq!(
+            summary,
+            &command.split_whitespace().collect::<Vec<_>>().join(" ")
+        );
+
+        // A command longer than the limit is cut at the limit.
+        let long = "x".repeat(COMMAND_LIMIT + 50);
+        let cut = shorten(&long);
+        assert_eq!(cut.chars().count(), COMMAND_LIMIT + 1);
+        assert!(cut.ends_with('…'));
     }
 
     #[test]

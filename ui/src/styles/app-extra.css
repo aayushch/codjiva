@@ -1233,6 +1233,15 @@ html.dragging-handle iframe {
 .lib-item .m.ports {
   color: var(--shell-tick);
 }
+/* The last line of a library item: when the artifact was generated. It
+   stays on one line, and a time too long for a narrow sidebar is cut off. */
+.lib-item .lib-when {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .side-head .lib-compose {
   height: 24px;
   padding: 0 10px;
@@ -1324,9 +1333,21 @@ html.dragging-handle iframe {
   background: var(--main);
   vertical-align: middle;
 }
-/* The tab of the kind that the agent put first for the selected file. */
+/* The "Visuals" button of the toolbar, once the agent has said which kind of
+   artifact suits the selected file. */
 .tabs .tab.suggested {
   box-shadow: inset 0 -2px 0 var(--accent);
+}
+/* The button of the toolbar that shows the source of the file. It holds an
+   icon and no text, and is as tall as the tabs beside it. */
+.tabs .tab.source-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+}
+.tabs .tab.source-tab .ico {
+  stroke: currentColor;
+  fill: none;
 }
 .dock.with-outline {
   grid-template-columns: 320px 1fr minmax(280px, 34%);
@@ -1891,13 +1912,7 @@ iframe {
   font: inherit;
   text-align: left;
   white-space: nowrap;
-}
-/* A command with a sentence of explanation under its label. */
-.menu-item.explained {
-  height: auto;
-  max-width: 340px;
-  padding: 7px 10px;
-  white-space: normal;
+  position: relative;
 }
 .menu-label {
   display: flex;
@@ -1910,12 +1925,34 @@ iframe {
   font-size: 11px;
   color: var(--main);
 }
+/* The sentence that explains a command. It is hidden until the menu gives it
+   the class `shown`, and is then drawn in a box on the left of the menu,
+   level with its command. The class `detail-after` on the menu puts the box
+   on the right of the menu. The box is 260 px wide and 10 px from its
+   command, which `DETAIL_ROOM` in ContextMenu.svelte allows for. */
 .menu-detail {
-  display: block;
-  margin-top: 2px;
+  display: none;
+  position: absolute;
+  top: -5px;
+  right: calc(100% + 10px);
+  width: 260px;
+  padding: 8px 10px;
+  background: var(--shell-bar);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 12px 30px var(--drop);
   font-size: 11.5px;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--shell-text-2);
+  white-space: pre-line;
+  pointer-events: none;
+}
+.menu-detail.shown {
+  display: block;
+}
+.menu.detail-after .menu-detail {
+  right: auto;
+  left: calc(100% + 10px);
 }
 .menu-item:hover:not(:disabled),
 .menu-item:focus-visible {

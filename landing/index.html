@@ -111,7 +111,7 @@
 	<div class="demo-head">
 		<div class="tabs" role="tablist" aria-label="Examples">
 			<button type="button" class="tab" role="tab" aria-selected="true" data-demo="film">Film</button>
-			<button type="button" class="tab" role="tab" aria-selected="false" data-demo="visual">Visual</button>
+			<button type="button" class="tab" role="tab" aria-selected="false" data-demo="visual">Blueprint</button>
 			<button type="button" class="tab" role="tab" aria-selected="false" data-demo="pipeline">Pipeline</button>
 		</div>
 		<span class="note" id="demo-note">A film follows one order through the file · 4 chapters · 1 min 23 s</span>
@@ -159,7 +159,7 @@
 		<div class="mode">
 			<span class="n">03 · COMPOSE</span>
 			<h3>Several files joined into one pipeline</h3>
-			<p>Tick two or more visuals. Codjiva proposes where one hands work to the next.</p>
+			<p>Tick two or more blueprints. Codjiva proposes where one hands work to the next.</p>
 			<ul>
 				<li>Joins are found from the calls and names the files share</li>
 				<li>A still picture, or a film that crosses the join</li>
@@ -190,14 +190,14 @@
 <section class="section wrap" id="app">
 	<span class="eyebrow">The app</span>
 	<h2>The window is laid out like an IDE.</h2>
-	<p class="lead">The explorer, the tabs and the panels are where an IDE has them. The middle shows the visual or the film of the selected file, and its source on a tab of its own.</p>
+	<p class="lead">The explorer, the tabs and the panels are where an IDE has them. The middle shows the blueprint or the film of the selected file, and its source at the click of a button.</p>
 	<div class="facts">
 		<div class="fact"><b>Three panels you can move</b><span>The explorer on the left, the inspector on the right and the job panel at the bottom. Drag an edge to resize a panel, drag it to the side of the window to close it, and pull it back out when you want it. The layout is remembered.</span></div>
 		<div class="fact"><b>Back and Forward</b><span>Follow a link from a film to the line of code it is about, then go back. The film continues at the second you left it.</span></div>
-		<div class="fact"><b>See where the pictures are</b><span>A file with a visual or a film has a dot in the explorer, and every folder above it is tinted, so a closed folder still shows the way. The library lists everything that was made.</span></div>
+		<div class="fact"><b>See where the pictures are</b><span>A file with a blueprint or a film has a dot in the explorer, and every folder above it is tinted, so a closed folder still shows the way. The library lists everything that was made.</span></div>
 		<div class="fact"><b>Watch the agent work</b><span>The job panel shows each step, every file the agent reads, what the write guard found and what the job cost. When the film is ready, it opens by itself.</span></div>
 		<div class="fact"><b>Versions and actions in the toolbar</b><span>The toolbar holds the version list and the actions on it: make it again, export it as one HTML file, open it in the browser, show its files.</span></div>
-		<div class="fact"><b>Light and dark</b><span>The window follows your system, or your own choice, and the visuals and films are drawn in the same theme.</span></div>
+		<div class="fact"><b>Light and dark</b><span>The window follows your system, or your own choice, and the blueprints and films are drawn in the same theme.</span></div>
 	</div>
 </section>
 
@@ -214,8 +214,8 @@
 	</div>
 	<div class="two">
 		<figure class="shot">
-			<img src="images/app-visual.png" width="1440" height="900" loading="lazy" alt="A still visual in the Codjiva window. The Submit machine is selected, and the panel on the right shows its role, a link to its line of code, and the modes and limits of the file.">
-			<figcaption>A visual. Click a machine to see its role and jump to the line of code.</figcaption>
+			<img src="images/app-visual.png" width="1440" height="900" loading="lazy" alt="A still blueprint in the Codjiva window. The Submit machine is selected, and the panel on the right shows its role, a link to its line of code, and the modes and limits of the file.">
+			<figcaption>A blueprint. Click a machine to see its role and jump to the line of code.</figcaption>
 		</figure>
 		<figure class="shot">
 			<img src="images/settings-ignore.png" width="1600" height="960" loading="lazy" alt="The Settings dialog, in sections. The Companion files section holds a list of patterns for files and folders that are never suggested.">
@@ -234,8 +234,8 @@
 		<tbody>
 			<tr><td>Claude Code</td><td><code>claude</code></td><td><span class="pill ok">tested</span></td><td>Confined to <code>.codjiva/</code> by its own permission rules.</td></tr>
 			<tr><td>Cursor Agent</td><td><code>cursor-agent</code></td><td><span class="pill ok">tested</span></td><td>Works. It cannot be confined as tightly, so the write guard is what protects your files.</td></tr>
-			<tr><td>Codex CLI</td><td><code>codex</code></td><td><span class="pill">not yet confirmed</span></td><td rowspan="4">Supported through definition files that have not been run against the real programs yet. Settings marks them so.</td></tr>
-			<tr><td>Gemini CLI</td><td><code>gemini</code></td><td><span class="pill">not yet confirmed</span></td></tr>
+			<tr><td>Codex CLI</td><td><code>codex</code></td><td><span class="pill ok">tested</span></td><td>Works. Its sandbox lets it change any file in the folder you opened, so the write guard is what protects your files.</td></tr>
+			<tr><td>Gemini CLI</td><td><code>gemini</code></td><td><span class="pill">not yet confirmed</span></td><td rowspan="3">Supported through definition files that have not been run against the real programs yet. Settings marks them so.</td></tr>
 			<tr><td>Antigravity</td><td><code>agy</code></td><td><span class="pill">not yet confirmed</span></td></tr>
 			<tr><td>Pi</td><td><code>pi</code></td><td><span class="pill">not yet confirmed</span></td></tr>
 			<tr><td>API key</td><td>Anthropic, OpenAI, Google Gemini, or any server that speaks the OpenAI chat format</td><td><span class="pill">not yet confirmed</span></td><td>No agent program needed. Built and tested against a stand-in server, not yet against the live services.</td></tr>

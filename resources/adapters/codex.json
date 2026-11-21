@@ -14,8 +14,6 @@
     "--json",
     "--sandbox",
     "workspace-write",
-    "--ask-for-approval",
-    "never",
     "--skip-git-repo-check",
     "Read the file {systemPromptPath} completely. It holds your instructions. Then read the file {userPromptPath} and carry out the task it describes. Write files only inside {artifactDirAbs}."
   ],
@@ -24,10 +22,8 @@
     "resume",
     "{sessionId}",
     "--json",
-    "--sandbox",
-    "workspace-write",
-    "--ask-for-approval",
-    "never",
+    "-c",
+    "sandbox_mode=\"workspace-write\"",
     "--skip-git-repo-check",
     "Read the file {systemPromptPath} completely. It holds your instructions. Then read the file {userPromptPath} and carry out the task it describes. Write files only inside {artifactDirAbs}."
   ],
@@ -35,16 +31,27 @@
     "--model",
     "{model}"
   ],
+  "plainArgs": [
+    "-c",
+    "project_doc_max_bytes=0",
+    "--disable",
+    "hooks",
+    "--disable",
+    "plugins"
+  ],
+  "plainNote": "the AGENTS.md files of the project, your hooks and your plugins",
   "cwd": "{workspaceRoot}",
   "parser": "codex-jsonl",
   "env": {},
   "checkFlags": [
     "--json",
     "--sandbox",
-    "--skip-git-repo-check"
+    "--skip-git-repo-check",
+    "--config",
+    "--disable"
   ],
   "supportsResume": true,
-  "verified": false,
+  "verified": true,
   "limits": "Codex runs in its workspace-write sandbox: it can edit files and run commands inside the workspace, and nothing outside it. Codjiva checks the workspace after every run and discards the result if a file outside its own folder was changed.",
   "installHint": "Install the Codex CLI from https://developers.openai.com/codex/cli, then run `codex login`.",
   "loginHint": "Run `codex login` in a terminal."

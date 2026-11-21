@@ -115,6 +115,10 @@ pub struct Turn {
     /// `high`. `None` leaves it to the agent.
     pub effort: Option<String>,
     pub max_budget_usd: Option<f64>,
+    /// True when the agent may load the user's own setup for it: instruction
+    /// files such as CLAUDE.md, skills, plugins and hooks. With false, a
+    /// command-line agent is started with the `plain_args` of its definition.
+    pub customizations: bool,
     /// Where the agent's raw output is appended, for debugging.
     pub log_path: PathBuf,
 }
@@ -157,6 +161,13 @@ pub struct AgentInfo {
     /// folder.
     #[serde(default)]
     pub limits: String,
+    /// The arguments that start this agent without the user's own setup, and
+    /// what they keep out of a job. Both are empty for an agent that has no
+    /// such arguments. See `AgentDefinition::plain_args`.
+    #[serde(default)]
+    pub plain_args: Vec<String>,
+    #[serde(default)]
+    pub plain_note: String,
 }
 
 #[async_trait]
@@ -207,6 +218,8 @@ impl CliBackend {
             default_model: definition.default_model.clone(),
             quick_model: definition.quick_model.clone(),
             limits: definition.limits.clone(),
+            plain_args: definition.plain_args.clone(),
+            plain_note: definition.plain_note.clone(),
         };
         match &program {
             None => {
@@ -316,6 +329,9 @@ impl Backend for CliBackend {
         }
         if let Some(budget) = turn.max_budget_usd {
             values.set("maxBudgetUsd", budget.to_string());
+        }
+        if !turn.customizations {
+            values.set("plain", "yes");
         }
         let spec = self.definition.spawn_spec(&values);
         let mut parser = parser_named(&self.definition.parser)?;
@@ -483,6 +499,7 @@ mod tests {
             model: None,
             effort: None,
             max_budget_usd: None,
+            customizations: false,
             log_path: dir.join("agent.log.jsonl"),
         }
     }
@@ -589,6 +606,43 @@ echo '{"type":"result","subtype":"success","is_error":false,"total_cost_usd":0.5
                 .count(),
             3
         );
+    }
+
+    #[tokio::test]
+    async fn the_plain_arguments_are_left_out_when_customizations_are_allowed()
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let mut definition = fake_agent(dir.path(), SCRIPT);
+        definition.plain_args = vec!["--plain".into()];
+        let backend = CliBackend::detect(definition, env(), None);
+        assert_eq!(backend.info().plain_args, vec!["--plain".to_string()]);
+        // What the fake program says it was started with.
+        let said = |customizations: bool| {
+            let backend = &backend;
+            let mut t = turn(dir.path());
+            t.customizations = customizations;
+            async move {
+                let events = Mutex::new(Vec::new());
+                backend
+                    .run(&t, &CancellationToken::new(), &|e| {
+                        events.lock().unwrap().push(e)
+                    })
+                    .await
+                    .unwrap();
+                let events = events.into_inner().unwrap();
+                events
+                    .iter()
+                    .find_map(|e| match e {
+                        AgentEvent::Text(t) => Some(t.clone()),
+                        _ => None,
+                    })
+                    .unwrap()
+            }
+        };
+        let plain = said(false).await;
+        assert!(plain.ends_with(" --plain"), "{plain}");
+        let customized = said(true).await;
+        assert!(!customized.contains("--plain"), "{customized}");
     }
 
     #[tokio::test]

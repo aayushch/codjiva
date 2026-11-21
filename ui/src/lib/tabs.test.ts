@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   absolutePath,
   labelsOf,
+  tabsOfSession,
   withOpened,
   withoutClosed,
   type OpenFile,
@@ -13,6 +14,43 @@ const tab = (path: string, view: OpenFile['view'] = 'visual'): OpenFile => ({
   line: null,
 });
 const paths = (files: OpenFile[]) => files.map((file) => file.path);
+
+describe('tabsOfSession', () => {
+  it('returns the remembered tabs in their order, with view and line', () => {
+    expect(
+      tabsOfSession([
+        { path: 'internal/orders/handler.go', view: 'source', line: 42 },
+        { path: 'internal/', view: 'map', line: null },
+        { path: 'pipeline:orders', view: 'visual', line: null },
+      ]),
+    ).toEqual([
+      { path: 'internal/orders/handler.go', view: 'source', line: 42 },
+      { path: 'internal/', view: 'map', line: null },
+      { path: 'pipeline:orders', view: 'visual', line: null },
+    ]);
+  });
+
+  it('leaves out a tab whose view the interface does not have', () => {
+    expect(
+      paths(
+        tabsOfSession([
+          { path: 'a.go', view: 'film', line: null },
+          { path: 'b.go', view: 'hologram', line: null },
+          { path: 'c.go', view: 'lanes', line: null },
+        ]),
+      ),
+    ).toEqual(['a.go', 'c.go']);
+  });
+
+  it('keeps the first of two tabs with the same path', () => {
+    expect(
+      tabsOfSession([
+        { path: 'a.go', view: 'visual', line: null },
+        { path: 'a.go', view: 'source', line: 7 },
+      ]),
+    ).toEqual([{ path: 'a.go', view: 'visual', line: null }]);
+  });
+});
 
 describe('withOpened', () => {
   const files = [tab('a.go'), tab('b.go'), tab('c.go')];

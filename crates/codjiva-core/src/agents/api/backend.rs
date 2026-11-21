@@ -425,6 +425,7 @@ mod tests {
             model: None,
             effort: None,
             max_budget_usd: None,
+            customizations: false,
             log_path: root.join("log"),
         };
         let received = Arc::new(Mutex::new(Vec::new()));
@@ -447,6 +448,8 @@ mod tests {
             default_model: None,
             quick_model: None,
             limits: String::new(),
+            plain_args: Vec::new(),
+            plain_note: String::new(),
         };
         Setup {
             _dir: dir,

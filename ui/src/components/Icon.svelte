@@ -26,7 +26,8 @@
     | 'back'
     | 'forward'
     | 'copy'
-    | 'check';
+    | 'check'
+    | 'code';
 
   let { name, size = 14 }: { name: Name; size?: number } = $props();
 
@@ -70,6 +71,8 @@
     // Two sheets, one behind the other: make a copy.
     copy: 'M5.5 5.5h8v8h-8z M10.5 5.5v-3h-8v8h3',
     check: 'M3 8.5l3.5 3.5 6.5-7.5',
+    // Two angle brackets with a slash between them: source code.
+    code: 'M5 4.5 1.5 8 5 11.5 M11 4.5 14.5 8 11 11.5 M9.3 3 6.7 13',
   };
 </script>
 

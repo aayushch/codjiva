@@ -7,10 +7,23 @@ You are changing an existing artifact in `{{artifactDir}}`. Its files are alread
 
 1. **Change only what the report or the user points at.** If one label overlaps another, move or shorten that
    label. Do not change other elements, other chapters or shared styles unless told "everywhere" or "all".
-2. **A report issue names the elements.** `a` and `b` give each element's `selector`, its `text` and its `box`
-   as `[x, y, width, height]` in stage pixels at that moment. Boxes are measured after the camera is applied, so
-   compare them with each other, not with your world coordinates. To find the element, search your files for
-   the name in the selector without the prefix: `.budget-plate3` is `c('plate3')`.
+2. **A report issue names the elements.** `a` and `b` each describe one element: its `selector`, its `text`
+   and two boxes, both written as `[x, y, width, height]`.
+   - `world` is the element's box in world pixels. These are the coordinates you write: the positions in
+     `plant.js` and in the scene files, and the `x` and `y` of a marker or a bubble. Use `world` to decide
+     where to move an element and by how much.
+   - `box` is the same element in stage pixels, as the camera shows it at that moment. The camera scales and
+     shifts the world, so the numbers in `box` are not the numbers in your files. Never copy a number from
+     `box` into your files. An element outside the world, such as the title, has only `box`.
+   - `overlap` is `[across, down]`: how far two overlapping labels reach into each other, in world pixels.
+     Moving one of them sideways by more than `across`, or up or down by more than `down`, separates them.
+   - To find an element, search your files for the name in its selector without the prefix:
+     `.budget-plate3` is `c('plate3')`. If that name is not in your files, because you built it in a loop or
+     gave the element no class (its selector then looks like `div.pl:nth-child(7)`), search for the
+     element's `text`.
+   - An element with `drawnBy` is not in your files under its own name. `drawnBy` names the call or the entry
+     that draws it, and `move` says which arguments of that call place it. Find that call and change those
+     arguments.
 3. **Do not change the story** to fix a report: not the chapter order, not what is shown. If an issue can only
    be fixed that way, do not fix it; write the reason in `progress.json → note` and stop.
 4. **Look at the neighbourhood after the fix.** Moving one label must not crowd another. Recompute the boxes of

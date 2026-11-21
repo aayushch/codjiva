@@ -580,6 +580,7 @@ pub async fn job_start(
         effort: jobs::effort_for(settings.effort, request.kind),
         max_budget_usd: settings.max_budget_usd,
         max_fix_iterations: settings.max_fix_iterations,
+        agent_customizations: settings.agent_customizations,
     };
     let finished_id = job_id.clone();
     let began = Instant::now();
@@ -640,6 +641,7 @@ pub async fn suggest_views(
         &workspace,
         backend.as_ref(),
         model,
+        settings.agent_customizations,
         &rel_path,
         &CancellationToken::new(),
     )

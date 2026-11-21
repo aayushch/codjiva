@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { kindWord, portCount } from '$lib/artifacts';
+  import { kindWord, lastMade, newestFirst, portCount } from '$lib/artifacts';
   import { app, LIBRARY_MIN, TREE_MIN } from '$lib/state/app.svelte';
   import Icon from './Icon.svelte';
   import Poster from './Poster.svelte';
@@ -7,6 +7,9 @@
 
   // The list of everything Codjiva has made in this workspace, at the bottom of
   // the sidebar.
+  //
+  // Order. The artifact that was generated last is listed first. The last
+  // line of every item says when that was.
   //
   // Size. The library starts as tall as its list, up to two fifths of the
   // sidebar, and a longer list scrolls under the heading. Dragging the top edge
@@ -26,6 +29,25 @@
   }
   const formatDuration = (seconds: number) =>
     `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
+
+  const listed = $derived(newestFirst(app.artifacts));
+
+  // When an artifact was last generated, as the short text of its last line,
+  // such as "5 Mar, 16:30". The year is added for a time in another year.
+  // Returns an empty string for an artifact without a readable time.
+  function whenMade(artifact: (typeof app.artifacts)[number]): string {
+    const made = lastMade(artifact);
+    if (!made) return '';
+    const date = new Date(made);
+    return date.toLocaleString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year:
+        date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
 
   // A second click on the delete button confirms it. This holds the artifact
   // waiting for that.
@@ -78,7 +100,8 @@
     </div>
     {#if app.libraryOpen}
       <div class="lib-list">
-        {#each app.artifacts as artifact (artifact.id)}
+        {#each listed as artifact (artifact.id)}
+          {@const made = whenMade(artifact)}
           <div
             class="lib-item"
             class:on={app.currentArtifact?.id === artifact.id}
@@ -114,6 +137,15 @@
                 >
                   ports · {portCount(artifact)}
                 </div>
+              {/if}
+              {#if made}
+                <time
+                  class="m lib-when"
+                  datetime={new Date(lastMade(artifact)).toISOString()}
+                  title="Generated {new Date(
+                    lastMade(artifact),
+                  ).toLocaleString()}">{made}</time
+                >
               {/if}
             </div>
             {#if canTick(artifact)}

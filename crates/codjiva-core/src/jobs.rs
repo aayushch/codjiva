@@ -65,6 +65,11 @@ const PROGRESS_POLL: Duration = Duration::from_millis(400);
 /// problems than this is fixed in several rounds.
 const REPORT_LIMIT: usize = 40;
 
+/// How many fix rounds of one job are not counted towards the limit in
+/// `JobContext::max_fix_iterations`. See [`only_build_or_exception_errors`]
+/// for which rounds these are.
+const UNCOUNTED_ROUNDS: u32 = 1;
+
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize,
 )]
@@ -313,8 +318,14 @@ pub struct JobContext {
     /// it to the agent.
     pub effort: Option<Effort>,
     pub max_budget_usd: Option<f64>,
-    /// How many times a failed check is sent back to the agent.
+    /// How many times a failed check is sent back to the agent. One more round
+    /// is made when a report has only build problems or exceptions (see
+    /// [`only_build_or_exception_errors`]).
     pub max_fix_iterations: u32,
+    /// True when the agent may load the user's own setup for it, such as
+    /// CLAUDE.md files, skills, plugins and hooks. See
+    /// `Turn::customizations`.
+    pub agent_customizations: bool,
 }
 
 /// A job id that is unique within this run of the app and sorts by start time.
@@ -983,6 +994,31 @@ async fn build_and_check(
     })
 }
 
+/// True when `report` has at least one error and every error is either a build
+/// problem or an `exception` issue of the self-test.
+///
+/// The fix round that follows such a report is not counted towards the limit
+/// of fix rounds, up to [`UNCOUNTED_ROUNDS`] times per job. The reason is what
+/// such a report leaves out. A page that could not be built has no self-test.
+/// A page that threw an exception while it was drawn was not measured, so the
+/// report does not list its overlapping labels. Those layout problems only
+/// appear in the next report, and the agent needs the full number of rounds to
+/// fix them.
+fn only_build_or_exception_errors(report: &Value) -> bool {
+    let errors = |list: &Value| -> Vec<Value> {
+        list.as_array()
+            .into_iter()
+            .flatten()
+            .filter(|entry| entry["severity"] == "error")
+            .cloned()
+            .collect()
+    };
+    let build = errors(&report["build"]);
+    let issues = errors(&report["issues"]);
+    !(build.is_empty() && issues.is_empty())
+        && issues.iter().all(|issue| issue["check"] == "exception")
+}
+
 /// Writes the errors of a report as the text a fix prompt carries: one line per
 /// problem, with the file and line for build problems and the elements and hint
 /// for self-test issues.
@@ -1015,7 +1051,9 @@ fn report_for_agent(report: &Value) -> String {
         // The fields an agent needs to find and fix the elements, without the
         // counters.
         let mut slim = serde_json::Map::new();
-        for key in ["check", "scene", "t", "message", "a", "b", "hint"] {
+        for key in [
+            "check", "scene", "t", "message", "a", "b", "overlap", "hint",
+        ] {
             if let Some(value) = issue.get(key).filter(|v| !v.is_null()) {
                 slim.insert(key.to_string(), value.clone());
             }
@@ -2050,7 +2088,10 @@ async fn run_inner(
         .and_then(|base| base.agent.session_id.clone());
     let mut continues_earlier_session = session.is_some();
     let mut model_used: Option<String> = None;
+    // `iteration` is the number of fix rounds made so far. `uncounted` is how
+    // many of them are not counted towards `ctx.max_fix_iterations`.
     let mut iteration = 0u32;
+    let mut uncounted = 0u32;
     let before = guard::snapshot(ws);
     let store_before = guard::snapshot_store(ws);
     // A feedback job does not read the code again, so its version keeps the
@@ -2062,165 +2103,181 @@ async fn run_inner(
     };
     let hashes_at_start = source_hashes(ws, &named, &[], None);
 
-    let outcome =
-        loop {
-            // ---- agent
-            let user_prompt_path =
-                paths.job_dir.join(format!("user-{}.md", iteration + 1));
-            util::write_atomic(&user_prompt_path, &user_prompt)?;
-            let turn = Turn {
-                workspace_root: ws.root().to_path_buf(),
-                dot_dir: ws.dot_dir(),
-                artifact_dir: paths.version_dir.clone(),
-                job_dir: paths.job_dir.clone(),
-                system_prompt_path: system_prompt_path.clone(),
-                user_prompt_path,
-                user_prompt: user_prompt.clone(),
-                resume_session: if agent.supports_resume {
-                    session.clone()
-                } else {
-                    None
-                },
-                model: ctx.model.clone(),
-                effort: ctx.effort.map(|e| e.as_str().to_string()),
-                max_budget_usd: ctx.max_budget_usd,
-                log_path: paths.version_dir.join("agent.log.jsonl"),
-            };
-            let phase = match (iteration, request.kind) {
-                (0, JobKind::Feedback) => "revising",
-                (0, _) => "reading",
-                _ => "fixing",
-            };
-            (ctx.emit)(JobEvent::Phase {
-                phase: phase.into(),
-                detail: None,
-                chapter: None,
-                of: None,
-            });
-            // The progress file still holds the previous turn's last phase,
-            // which must not be reported again as if it were new.
-            let _ =
-                std::fs::remove_file(paths.version_dir.join("progress.json"));
-            let stop_watching = CancellationToken::new();
-            let watcher = tokio::spawn(watch_progress(
-                paths.version_dir.clone(),
-                Arc::clone(&ctx.emit),
-                stop_watching.clone(),
-            ));
-            let on_event = {
-                let reporter = Arc::clone(&reporter);
-                move |event: AgentEvent| reporter.handle(event)
-            };
-            let turn_result =
-                ctx.backend.run(&turn, &ctx.cancel, &on_event).await;
-            stop_watching.cancel();
-            let _ = watcher.await;
-
-            if ctx.cancel.is_cancelled()
-                || turn_result.as_ref().is_ok_and(|outcome| outcome.cancelled)
-            {
-                discard();
-                return Ok(None);
-            }
-            // The conversation that made the earlier version may no longer
-            // exist, for example after the agent cleared its history. The turn
-            // is then run once more as a new conversation.
-            let failed = turn_result
-                .as_ref()
-                .map_or(true, |outcome| outcome.error.is_some());
-            if failed && continues_earlier_session {
-                continues_earlier_session = false;
-                session = None;
-                (ctx.emit)(JobEvent::Log {
-                    level: LogLevel::Warn,
-                    text: "The earlier conversation could not be continued, \
-                           so the agent starts a new one."
-                        .into(),
-                });
-                continue;
-            }
-            continues_earlier_session = false;
-            let turn_outcome = match turn_result {
-                Ok(outcome) => outcome,
-                Err(error) => {
-                    discard();
-                    return Err(error);
-                }
-            };
-            session = turn_outcome.session_id.or(session);
-            model_used = turn_outcome.model.or(model_used);
-            if let Some(message) = turn_outcome.error {
-                discard();
-                return Err(AppError::new("agent_failed", message));
-            }
-
-            // ---- guard
-            let in_saved_versions = guard::store_violations(ws, &store_before);
-            let mut touched = guard::violations(ws, &before);
-            touched.extend(in_saved_versions.iter().cloned());
-            (ctx.emit)(JobEvent::Guard {
-                violations: touched,
-            });
-            if !in_saved_versions.is_empty() {
-                discard();
-                let names: Vec<&str> =
-                    in_saved_versions.iter().map(|v| v.path.as_str()).collect();
-                return Err(AppError::new(
-                    "write_guard",
-                    format!(
-                        "The agent changed files it must not touch: {}. The \
-                         result was discarded.",
-                        names.join(", ")
-                    ),
-                ));
-            }
-
-            // ---- build and validate
-            let touched_parts = restore_parts(ws, &plan, &paths.version_dir);
-            if !touched_parts.is_empty() {
-                (ctx.emit)(JobEvent::Log {
-                    level: LogLevel::Warn,
-                    text: format!(
-                        "The agent changed the copy of {}. A part is shown as \
-                         it was made, so the copy was put back.",
-                        touched_parts.join(", ")
-                    ),
-                });
-            }
-            let check =
-                match build_and_check(ctx, &plan, version, &paths.version_dir)
-                    .await
-                {
-                    Ok(check) => check,
-                    Err(error) => {
-                        discard();
-                        return Err(error);
-                    }
-                };
-            if ctx.cancel.is_cancelled() {
-                discard();
-                return Ok(None);
-            }
-            (ctx.emit)(JobEvent::Validation {
-                report: check.report.clone(),
-                iteration,
-            });
-            if check.errors == 0 || iteration >= ctx.max_fix_iterations {
-                break check;
-            }
-
-            // ---- fix
-            iteration += 1;
-            util::write_json(
-                &paths.job_dir.join(format!("report-{iteration}.json")),
-                &check.report,
-            )?;
-            let mut fix_values = values.clone();
-            fix_values.insert("round", iteration.to_string());
-            fix_values.insert("maxRounds", ctx.max_fix_iterations.to_string());
-            fix_values.insert("report", report_for_agent(&check.report));
-            user_prompt = prompts::user_fix_report(&fix_values);
+    let outcome = loop {
+        // ---- agent
+        let user_prompt_path =
+            paths.job_dir.join(format!("user-{}.md", iteration + 1));
+        util::write_atomic(&user_prompt_path, &user_prompt)?;
+        let turn = Turn {
+            workspace_root: ws.root().to_path_buf(),
+            dot_dir: ws.dot_dir(),
+            artifact_dir: paths.version_dir.clone(),
+            job_dir: paths.job_dir.clone(),
+            system_prompt_path: system_prompt_path.clone(),
+            user_prompt_path,
+            user_prompt: user_prompt.clone(),
+            resume_session: if agent.supports_resume {
+                session.clone()
+            } else {
+                None
+            },
+            model: ctx.model.clone(),
+            effort: ctx.effort.map(|e| e.as_str().to_string()),
+            max_budget_usd: ctx.max_budget_usd,
+            customizations: ctx.agent_customizations,
+            log_path: paths.version_dir.join("agent.log.jsonl"),
         };
+        let phase = match (iteration, request.kind) {
+            (0, JobKind::Feedback) => "revising",
+            (0, _) => "reading",
+            _ => "fixing",
+        };
+        (ctx.emit)(JobEvent::Phase {
+            phase: phase.into(),
+            detail: None,
+            chapter: None,
+            of: None,
+        });
+        // The progress file still holds the previous turn's last phase,
+        // which must not be reported again as if it were new.
+        let _ = std::fs::remove_file(paths.version_dir.join("progress.json"));
+        let stop_watching = CancellationToken::new();
+        let watcher = tokio::spawn(watch_progress(
+            paths.version_dir.clone(),
+            Arc::clone(&ctx.emit),
+            stop_watching.clone(),
+        ));
+        let on_event = {
+            let reporter = Arc::clone(&reporter);
+            move |event: AgentEvent| reporter.handle(event)
+        };
+        let turn_result = ctx.backend.run(&turn, &ctx.cancel, &on_event).await;
+        stop_watching.cancel();
+        let _ = watcher.await;
+
+        if ctx.cancel.is_cancelled()
+            || turn_result.as_ref().is_ok_and(|outcome| outcome.cancelled)
+        {
+            discard();
+            return Ok(None);
+        }
+        // The conversation that made the earlier version may no longer
+        // exist, for example after the agent cleared its history. The turn
+        // is then run once more as a new conversation.
+        let failed = turn_result
+            .as_ref()
+            .map_or(true, |outcome| outcome.error.is_some());
+        if failed && continues_earlier_session {
+            continues_earlier_session = false;
+            session = None;
+            (ctx.emit)(JobEvent::Log {
+                level: LogLevel::Warn,
+                text: "The earlier conversation could not be continued, \
+                           so the agent starts a new one."
+                    .into(),
+            });
+            continue;
+        }
+        continues_earlier_session = false;
+        let turn_outcome = match turn_result {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                discard();
+                return Err(error);
+            }
+        };
+        session = turn_outcome.session_id.or(session);
+        model_used = turn_outcome.model.or(model_used);
+        if let Some(message) = turn_outcome.error {
+            discard();
+            return Err(AppError::new("agent_failed", message));
+        }
+
+        // ---- guard
+        let in_saved_versions = guard::store_violations(ws, &store_before);
+        let mut touched = guard::violations(ws, &before);
+        touched.extend(in_saved_versions.iter().cloned());
+        (ctx.emit)(JobEvent::Guard {
+            violations: touched,
+        });
+        if !in_saved_versions.is_empty() {
+            discard();
+            let names: Vec<&str> =
+                in_saved_versions.iter().map(|v| v.path.as_str()).collect();
+            return Err(AppError::new(
+                "write_guard",
+                format!(
+                    "The agent changed files it must not touch: {}. The \
+                         result was discarded.",
+                    names.join(", ")
+                ),
+            ));
+        }
+
+        // ---- build and validate
+        let touched_parts = restore_parts(ws, &plan, &paths.version_dir);
+        if !touched_parts.is_empty() {
+            (ctx.emit)(JobEvent::Log {
+                level: LogLevel::Warn,
+                text: format!(
+                    "The agent changed the copy of {}. A part is shown as \
+                         it was made, so the copy was put back.",
+                    touched_parts.join(", ")
+                ),
+            });
+        }
+        let check = match build_and_check(
+            ctx,
+            &plan,
+            version,
+            &paths.version_dir,
+        )
+        .await
+        {
+            Ok(check) => check,
+            Err(error) => {
+                discard();
+                return Err(error);
+            }
+        };
+        if ctx.cancel.is_cancelled() {
+            discard();
+            return Ok(None);
+        }
+        (ctx.emit)(JobEvent::Validation {
+            report: check.report.clone(),
+            iteration,
+        });
+        if check.errors == 0 {
+            break check;
+        }
+        // With a limit of 0 the user asked for no fix rounds at all, so
+        // no round is added then.
+        let is_uncounted = ctx.max_fix_iterations > 0
+            && uncounted < UNCOUNTED_ROUNDS
+            && only_build_or_exception_errors(&check.report);
+        if !is_uncounted && iteration - uncounted >= ctx.max_fix_iterations {
+            break check;
+        }
+        if is_uncounted {
+            uncounted += 1;
+        }
+
+        // ---- fix
+        iteration += 1;
+        util::write_json(
+            &paths.job_dir.join(format!("report-{iteration}.json")),
+            &check.report,
+        )?;
+        let mut fix_values = values.clone();
+        fix_values.insert("round", iteration.to_string());
+        fix_values.insert(
+            "maxRounds",
+            (ctx.max_fix_iterations + uncounted).to_string(),
+        );
+        fix_values.insert("report", report_for_agent(&check.report));
+        user_prompt = prompts::user_fix_report(&fix_values);
+    };
 
     // ---- commit
     if !outcome.built {
@@ -2566,6 +2623,7 @@ mod tests {
             effort: None,
             max_budget_usd: None,
             max_fix_iterations: max_fix,
+            agent_customizations: false,
         };
         let request = JobRequest {
             kind: JobKind::Visualise,
@@ -2775,6 +2833,8 @@ mod tests {
             default_model: None,
             quick_model: None,
             limits: String::new(),
+            plain_args: Vec::new(),
+            plain_note: String::new(),
         };
         let provider = Arc::new(
             OpenAi::new(
@@ -2800,6 +2860,7 @@ mod tests {
             effort: None,
             max_budget_usd: None,
             max_fix_iterations: 3,
+            agent_customizations: false,
         };
         let request = JobRequest {
             kind: JobKind::Visualise,
@@ -2992,6 +3053,164 @@ mod tests {
         );
     }
 
+    /// The report of a page that threw while it was drawn. The self-test could
+    /// not measure the page, so the report has no layout issue.
+    fn exception_report() -> Value {
+        json!({
+            "ok": false,
+            "issues": [{
+                "check": "exception",
+                "severity": "error",
+                "message": "q is not a function",
+                "hint": "Fix the error so the artifact can be drawn."
+            }]
+        })
+    }
+
+    /// The `iteration` of every `Validation` event, in order.
+    fn validated_rounds(events: &[JobEvent]) -> Vec<u32> {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                JobEvent::Validation { iteration, .. } => Some(*iteration),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_round_that_only_repairs_an_exception_is_not_counted_towards_the_limit(
+    ) {
+        // The limit is one round. The first report has only an exception, so
+        // the round after it is not counted, and the layout error of the second
+        // report still gets its one round.
+        let s = setup(GOOD, GOOD);
+        let events = run_job(
+            &s,
+            vec![exception_report(), failing_report(), ok_report()],
+            1,
+        )
+        .await;
+        assert!(
+            matches!(
+                events.last(),
+                Some(JobEvent::Result { passed: true, .. })
+            ),
+            "{:?}",
+            events.last()
+        );
+        assert_eq!(validated_rounds(&events), vec![0, 1, 2]);
+        let jobs = std::fs::read_dir(s.ws.dot_dir().join("jobs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let first = std::fs::read_to_string(jobs.join("user-2.md")).unwrap();
+        let second = std::fs::read_to_string(jobs.join("user-3.md")).unwrap();
+        assert!(first.contains("round 1 of 2"), "{first}");
+        assert!(second.contains("round 2 of 2"), "{second}");
+        let manifest =
+            artifacts::detail(&s.ws, &artifacts::list(&s.ws)[0].id, None)
+                .unwrap()
+                .manifest;
+        assert_eq!(manifest.validation.iterations, 2);
+    }
+
+    #[tokio::test]
+    async fn only_one_round_of_a_job_is_not_counted_and_none_when_the_limit_is_zero(
+    ) {
+        // Every report has only an exception. With a limit of one round the
+        // job makes the round that is not counted and the one counted round.
+        let s = setup(GOOD, GOOD);
+        let events = run_job(&s, vec![exception_report()], 1).await;
+        assert_eq!(validated_rounds(&events), vec![0, 1, 2]);
+        assert!(
+            matches!(
+                events.last(),
+                Some(JobEvent::Result { passed: false, .. })
+            ),
+            "{:?}",
+            events.last()
+        );
+
+        // A limit of zero means no fix round at all.
+        let s = setup(GOOD, GOOD);
+        let events = run_job(&s, vec![exception_report()], 0).await;
+        assert_eq!(validated_rounds(&events), vec![0]);
+    }
+
+    #[test]
+    fn a_report_counts_as_build_or_exception_only_when_it_has_no_other_error() {
+        let build_error = json!({
+            "check": "schema", "severity": "error", "file": "model.json",
+            "line": null, "message": "bad id"
+        });
+        let exception = exception_report()["issues"][0].clone();
+        let overlap = failing_report()["issues"][0].clone();
+        let warning = json!({ "check": "packet-size", "severity": "warning" });
+
+        assert!(only_build_or_exception_errors(
+            &json!({ "build": [build_error], "issues": [] })
+        ));
+        assert!(only_build_or_exception_errors(
+            &json!({ "build": [build_error], "issues": [exception, warning] })
+        ));
+        assert!(!only_build_or_exception_errors(
+            &json!({ "build": [build_error], "issues": [exception, overlap] })
+        ));
+        assert!(!only_build_or_exception_errors(
+            &json!({ "build": [], "issues": [overlap] })
+        ));
+        assert!(
+            !only_build_or_exception_errors(
+                &json!({ "build": [], "issues": [warning] })
+            ),
+            "a report without errors needs no fix round"
+        );
+    }
+
+    #[test]
+    fn the_fix_prompt_carries_the_world_boxes_the_overlap_and_the_source() {
+        let report = json!({
+            "build": [],
+            "issues": [{
+                "check": "text-overlap",
+                "severity": "error",
+                "scene": "v",
+                "t": 0,
+                "a": {
+                    "selector": ".v-gauge-l0",
+                    "text": "maxBatch 64",
+                    "box": [1250.2, 720.1, 100.9, 17.6],
+                    "world": [1301, 706, 118.8, 20.7],
+                    "drawnBy": "CJ.gaugeBar(c('gauge'), ...)",
+                    "move": "Change `ticks[0].dx`."
+                },
+                "b": {
+                    "selector": "div.pl:nth-child(9)",
+                    "text": "len(batch)",
+                    "box": [1164, 724.4, 91.8, 17.6],
+                    "world": [1200, 711, 108, 20.7]
+                },
+                "overlap": [7, 16],
+                "hint": "These two labels overlap.",
+                "count": 3
+            }]
+        });
+        let text = report_for_agent(&report);
+        for part in [
+            "\"world\":[1301,706,118.8,20.7]",
+            "\"world\":[1200,711,108,20.7]",
+            "\"overlap\":[7,16]",
+            "\"drawnBy\":\"CJ.gaugeBar(c('gauge'), ...)\"",
+            "\"move\":\"Change `ticks[0].dx`.\"",
+        ] {
+            assert!(text.contains(part), "{part} is missing from: {text}");
+        }
+        assert!(!text.contains("\"count\""), "{text}");
+    }
+
     #[tokio::test]
     async fn a_build_error_goes_to_a_fix_round_and_an_unbuildable_result_fails_cleanly(
     ) {
@@ -3112,6 +3331,7 @@ mod tests {
             effort: None,
             max_budget_usd: None,
             max_fix_iterations: 3,
+            agent_customizations: false,
         };
         run(ctx, request, new_job_id()).await;
         let out = events.lock().unwrap().clone();
@@ -4314,6 +4534,8 @@ mod tests {
                 default_model: None,
                 quick_model: None,
                 limits: String::new(),
+                plain_args: Vec::new(),
+                plain_note: String::new(),
             }
         }
 
@@ -4444,6 +4666,8 @@ mod tests {
                 default_model: None,
                 quick_model: None,
                 limits: String::new(),
+                plain_args: Vec::new(),
+                plain_note: String::new(),
             }
         }
 
@@ -4659,6 +4883,7 @@ mod tests {
             effort: None,
             max_budget_usd: None,
             max_fix_iterations: 3,
+            agent_customizations: false,
         };
         let request = JobRequest {
             kind: JobKind::Visualise,

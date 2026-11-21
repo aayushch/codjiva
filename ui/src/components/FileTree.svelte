@@ -269,7 +269,7 @@
           aria-expanded={row.entry.kind === 'dir' ? row.expanded : undefined}
           tabindex="-1"
           title={inside
-            ? `${row.entry.relPath} · ${inside} inside ${inside === 1 ? 'has' : 'have'} a visual or a film`
+            ? `${row.entry.relPath} · ${inside} inside ${inside === 1 ? 'has' : 'have'} a blueprint or a film`
             : row.entry.relPath}
           onclick={() => activate(index)}
           onkeydown={() => {}}
@@ -301,8 +301,8 @@
               class="badge dot"
               class:hollow={badges.get(row.entry.relPath)}
               title={badges.get(row.entry.relPath)
-                ? 'Has a visual that is stale'
-                : 'Has a visual'}
+                ? 'Has a blueprint that is stale'
+                : 'Has a blueprint'}
             ></span>
           {:else if inside > 0}
             <span class="dot inside"></span>

@@ -208,7 +208,7 @@
           <div class="hint warn">This folder holds no code files.</div>
         {:else if folder.tooLarge}
           <div class="warn-box">
-            <b>This folder is too large to draw as one visual.</b> An agent
+            <b>This folder is too large to draw as one blueprint.</b> An agent
             cannot read {folder.files.length} files, {tokens(
               folder.estimatedTokens,
             )}, at once. Choose a folder inside it, or visualise single files.
@@ -236,8 +236,8 @@
           {#if view}
             {view.about}
           {:else}
-            A folder's visual shows how its files work together, not the inside
-            of each one.
+            A folder's blueprint shows how its files work together, not the
+            inside of each one.
           {/if}
         </div>
       {:else}

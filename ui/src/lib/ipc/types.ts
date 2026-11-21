@@ -22,6 +22,18 @@ export type WorkspaceInfo = { root: string; name: string; store: StoreStatus };
 
 export type RecentWorkspace = { path: string; name: string; openedAt: string };
 
+// One file tab of a workspace, as it is remembered between two openings of
+// the folder. `path` is what the tab stands for, `view` is the view of it
+// that was showing, such as `visual` or `source`, and `line` is the line the
+// source view was at, or null.
+export type SessionTab = { path: string; view: string; line: number | null };
+// What was open in a workspace when the user last used it: the file tabs from
+// left to right, and the `path` of the tab that was on screen.
+export type WorkspaceSession = {
+  openFiles: SessionTab[];
+  selected: string | null;
+};
+
 export type TreeEntry = {
   name: string;
   relPath: string;
@@ -64,6 +76,10 @@ export type Settings = {
   apiBaseUrls: Record<string, string>;
   agentPaths: Record<string, string>;
   maxFixIterations: number;
+  // Whether a command-line agent may load the user's own setup for it, such as
+  // CLAUDE.md files, skills, plugins and hooks. With false, an agent that has
+  // `plainArgs` is started with them.
+  agentCustomizations: boolean;
   filmLength: 'short' | 'standard' | 'deep';
   soundOnByDefault: boolean;
   basePlaybackSpeed: number;
@@ -120,6 +136,12 @@ export type AgentInfo = {
   // for an agent that its own permission rules confine to the folder it writes
   // into.
   limits?: string;
+  // The arguments that start this agent without the user's own setup for it,
+  // and what they keep out of a job, as the end of the sentence "Codjiva
+  // starts this agent without ...". Both are empty or missing for an agent
+  // that has no such arguments.
+  plainArgs?: string[];
+  plainNote?: string;
 };
 
 // An API provider and what it still needs before it can run a job.
@@ -448,11 +470,26 @@ export type Violation = {
 export type RevertResult = { path: string; reverted: boolean; note: string };
 
 // One element named by a self-test issue: where it is and what it says.
+//
+// `box` is the element's box in stage pixels, as the viewer sees it. `world` is
+// the same box in world pixels, the coordinates the agent wrote in its files.
+// An element outside the drawn world, such as the title, has no `world`.
+//
+// `drawnBy` and `move` are set for an element the agent cannot find in its
+// files by the name in `selector`: a label that a part function of the runtime
+// wrote, or a marker of a visual. `drawnBy` names the call or the entry that
+// draws the element, and `move` says which arguments of that call place it.
 export type IssueElement = {
   selector: string;
   text: string;
   box: [number, number, number, number];
+  world?: [number, number, number, number];
+  drawnBy?: string;
+  move?: string;
 };
+// `overlap` is set on a `text-overlap` issue between two labels of the drawn
+// world. It is how far the two labels reach into each other, as
+// `[across, down]` in world pixels.
 export type Issue = {
   check: string;
   severity: 'error' | 'warning';
@@ -462,6 +499,7 @@ export type Issue = {
   hint?: string;
   a?: IssueElement;
   b?: IssueElement;
+  overlap?: [number, number];
   count?: number;
 };
 export type BuildProblem = {
@@ -722,6 +760,10 @@ export interface Api {
   workspaceOpen(path: string): Promise<WorkspaceInfo>;
   workspaceClose(): Promise<void>;
   workspaceRecent(): Promise<RecentWorkspace[]>;
+  // The file tabs that were open in the open workspace when it was last
+  // used, and keeping the ones that are open now for the next time.
+  workspaceSessionGet(): Promise<WorkspaceSession>;
+  workspaceSessionSet(session: WorkspaceSession): Promise<void>;
   treeChildren(relPath: string): Promise<TreeEntry[]>;
   fileInfo(relPath: string): Promise<FileInfo>;
   fileRead(relPath: string): Promise<FileContent>;

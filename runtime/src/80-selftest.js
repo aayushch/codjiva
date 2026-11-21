@@ -146,11 +146,125 @@ const selfTest = async (env, opts) => {
       ')'
     );
   };
-  const describe = (el, prefix) => ({
-    selector: selectorOf(el, prefix),
-    text: (el.textContent || '').trim().slice(0, 60),
-    box: boxOf(el),
-  });
+
+  // World pixels are the coordinates an agent writes: the positions in
+  // plant.js and in the scene files, and the `x` and `y` of a marker or a
+  // bubble. Everything written in world pixels is drawn inside the `.world`
+  // element. The camera scales and moves that element inside the stage, so
+  // one world pixel is not one stage pixel, and world point (0, 0) is not
+  // stage point (0, 0).
+  //
+  // Returns where the `.world` element that contains `el` is on the stage at
+  // this moment. `left` and `top` are the stage position of world point
+  // (0, 0). `scale` is how many stage pixels one world pixel covers. Returns
+  // null when `el` is not inside a `.world` element, as the title is not.
+  const worldFrameOf = (el) => {
+    const world = el.closest('.world');
+    if (!world || !world.offsetWidth) return null;
+    const r = world.getBoundingClientRect();
+    const scale = r.width / world.offsetWidth / stageScale;
+    if (!(scale > 0)) return null;
+    return {
+      left: (r.left - stageRect.left) / stageScale,
+      top: (r.top - stageRect.top) / stageScale,
+      scale,
+    };
+  };
+
+  // An element's box in world pixels: [x, y, width, height], rounded to one
+  // decimal. For a part drawn at whole world pixels these are the numbers the
+  // agent wrote. Returns null when the element is not inside a `.world`
+  // element.
+  const worldBoxOf = (el) => {
+    const frame = worldFrameOf(el);
+    if (!frame) return null;
+    const r = el.getBoundingClientRect();
+    const f = (v) => Math.round(v * 10) / 10;
+    return [
+      f(((r.left - stageRect.left) / stageScale - frame.left) / frame.scale),
+      f(((r.top - stageRect.top) / stageScale - frame.top) / frame.scale),
+      f(r.width / stageScale / frame.scale),
+      f(r.height / stageScale / frame.scale),
+    ];
+  };
+
+  // Says where an element comes from when the agent cannot find it by the
+  // name in its selector. Returns `{ drawnBy, move }`, or null for an element
+  // the agent wrote itself.
+  //
+  //   - `drawnBy` is the call or the entry in the agent's files that draws
+  //     the element.
+  //   - `move` says which arguments of that call, or which fields of that
+  //     entry, decide where the element is.
+  //
+  // There are two kinds of such elements.
+  //
+  // A label that a part function wrote has a `data-cj-of` attribute with the
+  // function's name. Its class is the class the agent gave the part, followed
+  // by a letter and sometimes an index: the label of tick 0 of the gauge bar
+  // `c('gauge')` has the class `<prefix>-gauge-l0`.
+  //
+  // A marker of a visual has the class `cj-marker`. The markers are in the
+  // order of the `markers` list of visual.json. The markers with the class
+  // `cj-why` come after those and are not in visual.json: the runtime adds
+  // one for each node that has a rationale.
+  const sourceOf = (el, prefix) => {
+    const part = el.getAttribute('data-cj-of');
+    if (part && PART_LABEL_HELP[part]) {
+      const own = (el.getAttribute('class') || '')
+        .split(/\s+/)
+        .find((c) => c.indexOf(prefix + '-') === 0);
+      const named = /^(.+)-[a-z]+(\d*)$/.exec(
+        own ? own.slice(prefix.length + 1) : '',
+      );
+      if (!named) return null;
+      return {
+        drawnBy: 'CJ.' + part + "(c('" + named[1] + "'), ...)",
+        move: PART_LABEL_HELP[part].split('{i}').join(named[2] || '0'),
+      };
+    }
+    if (el.classList.contains('cj-why'))
+      return {
+        drawnBy: 'the rationale of a node in visual.json',
+        move:
+          'The runtime puts this "?" marker on a corner of the first ' +
+          'element the node selects. It cannot be moved by itself. Move the ' +
+          'other element of this issue.',
+      };
+    if (el.classList.contains('cj-marker') && el.parentElement) {
+      const index = Array.from(
+        el.parentElement.querySelectorAll(':scope > .cj-marker'),
+      ).indexOf(el);
+      return {
+        drawnBy: 'visual.json, markers[' + index + ']',
+        move:
+          'The `x` and `y` of this marker in visual.json are the centre of ' +
+          'its circle, in world pixels. The circle is 30 px wide.',
+      };
+    }
+    return null;
+  };
+
+  // Describes an element for an issue. `measured` is the element whose box is
+  // reported, when that is not `el` itself: a machine is named by its group
+  // and measured by its outline.
+  //
+  //   - `selector` and `text` name the element.
+  //   - `box` is its box in stage pixels, which is what the viewer sees.
+  //   - `world` is the same box in world pixels, which is what the agent
+  //     wrote. It is left out for an element outside the `.world` element.
+  //   - `drawnBy` and `move` are added for an element the agent cannot find
+  //     by its selector (see `sourceOf`).
+  const describe = (el, prefix, measured) => {
+    const out = {
+      selector: selectorOf(el, prefix),
+      text: (el.textContent || '').trim().slice(0, 60),
+      box: boxOf(measured || el),
+    };
+    const world = worldBoxOf(measured || el);
+    if (world) out.world = world;
+    return Object.assign(out, sourceOf(el, prefix));
+  };
 
   // The box of the words inside an element, in stage pixels, measured from the
   // text itself.
@@ -339,7 +453,7 @@ const selfTest = async (env, opts) => {
         if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
         const o = overlap(a.box, b.box);
         if (o[0] > 2 && o[1] > 2) {
-          report({
+          const issue = {
             check: 'text-overlap',
             severity: 'error',
             scene: sceneId,
@@ -347,7 +461,20 @@ const selfTest = async (env, opts) => {
             a: describe(a.el, prefix),
             b: describe(b.el, prefix),
             hint: 'These two labels overlap. Move or shorten one of them. Fix only these two elements.',
-          });
+          };
+          // How far the two labels reach into each other, as [across, down]
+          // in world pixels, rounded up. Moving one of them by more than the
+          // first number sideways, or by more than the second number up or
+          // down, separates them. It is given only when both labels are
+          // inside the `.world` element, because only then can the agent
+          // move them by a number of world pixels.
+          const frame = a.inWorld && b.inWorld && worldFrameOf(a.el);
+          if (frame)
+            issue.overlap = [
+              Math.ceil(o[0] / frame.scale),
+              Math.ceil(o[1] / frame.scale),
+            ];
+          report(issue);
         }
       }
     }
@@ -379,7 +506,7 @@ const selfTest = async (env, opts) => {
             scene: sceneId,
             t,
             a: describe(label.el, prefix),
-            b: describe(machine.el, prefix),
+            b: describe(machine.el, prefix, housingBody(machine.el)),
             hint:
               'This label crosses the edge of a ' +
               machine.el.getAttribute('data-cj') +

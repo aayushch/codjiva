@@ -81,6 +81,8 @@ impl Backend for ReplayBackend {
             default_model: None,
             quick_model: None,
             limits: String::new(),
+            plain_args: Vec::new(),
+            plain_note: String::new(),
         }
     }
 
@@ -167,6 +169,7 @@ mod tests {
             model: None,
             effort: None,
             max_budget_usd: None,
+            customizations: false,
             log_path: dir.join("log"),
         }
     }

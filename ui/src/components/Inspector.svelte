@@ -549,8 +549,11 @@
 
     <div class="kicker">Checks</div>
     <p class="muted">
-      {artifact.kind} · {errorCount ? `${errorCount} problem(s)` : 'passed'} · {problems.length -
-        errorCount} warning(s) · {formatBytes(detail.bytes)}
+      {kindWord(artifact)} · {errorCount
+        ? `${errorCount} problem(s)`
+        : 'passed'} · {problems.length - errorCount} warning(s) · {formatBytes(
+        detail.bytes,
+      )}
     </p>
     {#each problems.slice(0, 12) as problem}
       <p class="problem" class:error={problem.severity === 'error'}>

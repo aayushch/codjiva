@@ -6,15 +6,38 @@
 // `app.selected` holds while it is on screen: a file's path, a folder's path
 // with a slash at its end, or a pipeline's id after `PIPELINE_PREFIX`.
 
-import { PIPELINE_PREFIX } from './artifacts';
+import { isView, PIPELINE_PREFIX } from './artifacts';
+import type { SessionTab } from './ipc';
 import type { ViewTab } from './state/app.svelte';
 
 // One file tab. Besides the path it keeps how the user last looked at the
 // thing, so that coming back to the tab shows the same view.
-//   - `view` is which of Visual, Film and Source was showing.
+//   - `view` is which of Blueprint, Film and Source was showing.
 //   - `line` is the line the source view was at, or null when the source view
 //     was not showing or was not at a particular line.
 export type OpenFile = { path: string; view: ViewTab; line: number | null };
+
+// The file tabs of a workspace as they were remembered when the workspace
+// was last used, in the form the interface keeps them.
+//
+// What was remembered comes from a file on disk, so it is not trusted. A tab
+// is left out when its `view` is not a view the interface has, and when a tab
+// with the same path came before it.
+export function tabsOfSession(remembered: SessionTab[]): OpenFile[] {
+  const files: OpenFile[] = [];
+  for (const tab of remembered) {
+    const view = tab.view;
+    const known =
+      view === 'visual' ||
+      view === 'film' ||
+      view === 'steps' ||
+      view === 'source' ||
+      isView(view);
+    if (!known || files.some((file) => file.path === tab.path)) continue;
+    files.push({ path: tab.path, view, line: tab.line ?? null });
+  }
+  return files;
+}
 
 // Returns `files` with `entry` in it.
 //

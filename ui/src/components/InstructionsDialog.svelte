@@ -119,7 +119,7 @@
         {:else if steps}
           {ask.regenerate ? 'Regenerate the step-through of' : 'Step through'}
         {:else}
-          {ask.regenerate ? 'Regenerate the visual of' : 'Visualise'}
+          {ask.regenerate ? 'Regenerate the blueprint of' : 'Visualise'}
         {/if}
         {fileName}
       </h2>
@@ -138,11 +138,11 @@
           instructions if the last one missed the point.
         {:else if folder}
           The agent reads every code file in this folder and draws how they work
-          together. Say what the visual should show, or leave this empty and let
-          the agent choose.
+          together. Say what the blueprint should show, or leave this empty and
+          let the agent choose.
         {:else}
-          The agent reads this file and draws how it works. Say what the visual
-          should show, or leave this empty and let the agent choose.
+          The agent reads this file and draws how it works. Say what the
+          blueprint should show, or leave this empty and let the agent choose.
         {/if}
       </p>
       {#if folder}

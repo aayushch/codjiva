@@ -40,6 +40,7 @@ import {
 } from '$lib/jobs';
 import {
   absolutePath,
+  tabsOfSession,
   withOpened,
   withoutClosed,
   type OpenFile,
@@ -62,9 +63,9 @@ export type Toast = { id: number; kind: 'info' | 'error'; text: string };
 
 // One line of a context menu: a command with its label, or a dividing line
 // between two groups of commands. A disabled command is shown greyed out and
-// does nothing. `detail` is a sentence shown under the label, for a command
-// that needs explaining. `mark` is a short word shown at the right end of the
-// label, such as "made".
+// does nothing. `detail` is a sentence that explains the command. The menu
+// shows it beside the command while the pointer is on the command. `mark` is
+// a short word shown at the right end of the label, such as "made".
 export type MenuItem =
   | {
       label: string;
@@ -74,8 +75,10 @@ export type MenuItem =
       mark?: string;
     }
   | 'separator';
-// The context menu on screen: its commands, and the point of the window, in
-// pixels from the top-left corner, where the user asked for it.
+// The menu on screen: its commands, and the point of the window, in pixels
+// from the top-left corner, where its top-left corner belongs. For a context
+// menu that is the point where the user right-clicked. For the menu of a
+// button it is the point under the button's left end.
 export type Menu = { x: number; y: number; items: MenuItem[] };
 
 // Limits for the panels the user can resize, in pixels.
@@ -165,7 +168,7 @@ const PLACES_KEPT = 100;
 export const FILM_SECONDS = { short: 60, standard: 180, deep: 300 } as const;
 
 // The view that shows an artifact of the given kind. A pipeline is shown on
-// the Visual tab.
+// the Blueprint tab.
 const tabOf = (kind: ArtifactSummary['kind'] | undefined): ViewTab =>
   kind === 'film'
     ? 'film'
@@ -497,8 +500,8 @@ class AppState {
   sidebarOpen = $state(true);
   inspectorOpen = $state(true);
   inspectorWidth = $state(INSPECTOR_WIDTH);
-  // An artifact of the selected file is on screen: the open tab is Visual or
-  // Film, the file has an artifact of that kind, and its details are loaded.
+  // An artifact of the selected file is on screen: the open tab is Blueprint
+  // or Film, the file has an artifact of that kind, and its details are loaded.
   // The inspector describes that artifact, so it can only show while this is
   // true.
   artifactShown = $derived(
@@ -625,7 +628,63 @@ class AppState {
       if (this.moves === 0) {
         this.recordPlace();
         this.noteOpenFile();
+        this.saveSession();
       }
+    }
+  }
+
+  // Keeps the file tabs of the open workspace, and which of them is on
+  // screen, for the next time the same folder is opened (see
+  // `restoreSession`). It is called after every change to the tabs.
+  //
+  // The tabs are a convenience, so a failure to keep them is not reported to
+  // the user.
+  private saveSession() {
+    if (!this.workspace) return;
+    api
+      .workspaceSessionSet({
+        openFiles: $state.snapshot(this.openFiles),
+        selected: this.selected,
+      })
+      .catch(() => {});
+  }
+
+  // Shows the file tabs the workspace had when it was last used, and in them
+  // the tab that was on screen then. `openWorkspace` calls it once the folder
+  // and its artifacts are loaded.
+  //
+  // A tab is left out when its file, folder or pipeline is no longer there.
+  // If the tab that was on screen is one of those, the first of the remaining
+  // tabs is shown. With no remaining tab, nothing is selected, as in a folder
+  // that is opened for the first time.
+  private async restoreSession() {
+    let remembered: OpenFile[];
+    let selected: string | null;
+    try {
+      const session = await api.workspaceSessionGet();
+      remembered = tabsOfSession(session.openFiles);
+      selected = session.selected;
+    } catch {
+      return;
+    }
+    const files: OpenFile[] = [];
+    for (const file of remembered)
+      if (await this.tabExists(file.path)) files.push(file);
+    if (!files.length) return;
+    this.openFiles = files;
+    const shown = files.find((file) => file.path === selected) ?? files[0];
+    await this.showOpenFile(shown.path);
+  }
+
+  // Whether what a file tab stands for is still there: the file, the folder,
+  // or the pipeline.
+  private async tabExists(path: string) {
+    if (!path.endsWith('/')) return this.fileOrPipelineExists(path);
+    try {
+      await api.treeChildren(path.slice(0, -1));
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -637,7 +696,7 @@ class AppState {
   // end of every change of place.
   //   - If the selected file, folder or pipeline has no tab yet, it gets one.
   //   - If it has a tab, the tab takes over the view that is showing now:
-  //     Visual, Film or Source, and the line of the source view.
+  //     Blueprint, Film or Source, and the line of the source view.
   private noteOpenFile() {
     if (!this.selected) return;
     this.openFiles = withOpened(
@@ -683,9 +742,11 @@ class AppState {
     const { files, next } = withoutClosed(this.openFiles, path);
     const wasShown = path === this.selected;
     this.openFiles = files;
-    if (!wasShown) return;
-    if (next) await this.showOpenFile(next.path);
-    else this.clearSelection();
+    if (wasShown && next) await this.showOpenFile(next.path);
+    else {
+      if (wasShown) this.clearSelection();
+      this.saveSession();
+    }
   }
 
   // Closes every file tab except the one with the given path, and shows that
@@ -695,6 +756,7 @@ class AppState {
     if (!kept.length) return;
     await this.showOpenFile(path);
     this.openFiles = this.openFiles.filter((file) => file.path === path);
+    this.saveSession();
   }
 
   // Leaves nothing selected, so that the editor area shows its hint to select
@@ -717,6 +779,14 @@ class AppState {
   openMenu(event: MouseEvent, items: MenuItem[]) {
     event.preventDefault();
     this.menu = { x: event.clientX, y: event.clientY, items };
+  }
+
+  // Shows a menu with the given commands under `button`, with the left edges
+  // of the two in line. This is for a button that opens a menu when it is
+  // clicked, so that the menu does not cover the button.
+  openMenuBelow(button: HTMLElement, items: MenuItem[]) {
+    const box = button.getBoundingClientRect();
+    this.menu = { x: box.left, y: box.bottom + 4, items };
   }
 
   closeMenu() {
@@ -862,13 +932,20 @@ class AppState {
   // Whether the file or pipeline of a place is still there. A folder is not
   // checked.
   private async placeExists(place: Place) {
-    if (place.selected.startsWith(PIPELINE_PREFIX))
-      return this.artifacts.some(
-        (a) => a.id === place.selected.slice(PIPELINE_PREFIX.length),
-      );
     if (place.selected.endsWith('/')) return true;
+    return this.fileOrPipelineExists(place.selected);
+  }
+
+  // Whether the file at `path` is still in the workspace. For the id of a
+  // pipeline after `PIPELINE_PREFIX`, whether that pipeline is still among
+  // the artifacts.
+  private async fileOrPipelineExists(path: string) {
+    if (path.startsWith(PIPELINE_PREFIX))
+      return this.artifacts.some(
+        (a) => a.id === path.slice(PIPELINE_PREFIX.length),
+      );
     try {
-      await api.fileInfo(place.selected);
+      await api.fileInfo(path);
       return true;
     } catch {
       return false;
@@ -921,7 +998,7 @@ class AppState {
   }
 
   // Selects an artifact's file and shows the artifact: the Film tab for a film,
-  // the Visual tab for a visual.
+  // the Blueprint tab for a visual.
   async openArtifact(artifact: ArtifactSummary) {
     if (artifact.kind === 'pipeline') return this.selectPipeline(artifact.id);
     await this.move(async () => {
@@ -1189,7 +1266,7 @@ class AppState {
   }
 
   // Shows the version that the job whose key is `key` made, on the tab of its
-  // kind: the Film tab for a film, the Visual tab for a visual.
+  // kind: the Film tab for a film, the Blueprint tab for a visual.
   private async showJobResult(key: number) {
     const job = this.jobs.find((one) => one.key === key);
     if (!job || job.status !== 'done') return;
@@ -1439,6 +1516,7 @@ class AppState {
       await this.reloadArtifacts();
       await this.syncWatched();
       this.recents = await api.workspaceRecent();
+      await this.restoreSession();
     } catch (error) {
       this.fail(error);
     }
@@ -1738,7 +1816,7 @@ class AppState {
   }
 
   // Selects a folder, to make or show a visual or a map of the whole folder.
-  // A folder has no source view and no film. It opens on the Visual tab.
+  // A folder has no source view and no film. It opens on the Blueprint tab.
   async selectFolder(relDir: string) {
     await this.move(() => this.showFolder(relDir));
   }

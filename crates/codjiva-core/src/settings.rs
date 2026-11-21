@@ -169,8 +169,15 @@ pub struct Settings {
     /// find by itself.
     pub agent_paths: BTreeMap<String, String>,
     /// How many times a failed self-test is sent back to the agent before the
-    /// app gives up.
+    /// app gives up. A job makes one round more than this when one of its
+    /// reports has only build problems or exceptions, because such a report
+    /// cannot list the layout problems yet.
     pub max_fix_iterations: u32,
+    /// Whether a command-line agent may load the user's own setup for it:
+    /// instruction files such as CLAUDE.md, skills, plugins and hooks. With
+    /// false, which is the default, an agent whose definition has `plainArgs`
+    /// is started with them, so that a job gets only Codjiva's instructions.
+    pub agent_customizations: bool,
     pub film_length: FilmLength,
     pub sound_on_by_default: bool,
     /// Animation seconds per real second in normal playback of new films.
@@ -204,6 +211,7 @@ impl Default for Settings {
             api_base_urls: BTreeMap::new(),
             agent_paths: BTreeMap::new(),
             max_fix_iterations: 3,
+            agent_customizations: false,
             film_length: FilmLength::Standard,
             sound_on_by_default: false,
             base_playback_speed: 0.6,
@@ -270,9 +278,122 @@ pub fn remember_workspace(dir: &Path, path: &str, name: &str) -> Result<()> {
     util::write_json(&dir.join("recents.json"), &list)
 }
 
+/// One file tab of a workspace, as the interface describes it.
+///
+///   - `path` is what the tab stands for: a file's path inside the workspace,
+///     a folder's path with a slash at its end, or the id of a pipeline after
+///     the prefix the interface gives pipelines.
+///   - `view` is which view of it was showing, such as `visual` or `source`.
+///   - `line` is the line the source view was at, when it was at one.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTab {
+    pub path: String,
+    pub view: String,
+    #[serde(default)]
+    pub line: Option<u64>,
+}
+
+/// What was open in a workspace when the user last used it: the file tabs
+/// from left to right, and the `path` of the tab that was on screen. The
+/// interface shows them again when the user opens the same folder.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkspaceSession {
+    pub open_files: Vec<SessionTab>,
+    pub selected: Option<String>,
+}
+
+/// The sessions of all workspaces, by the path of the workspace folder, as
+/// they are kept in `sessions.json`.
+fn sessions(dir: &Path) -> BTreeMap<String, WorkspaceSession> {
+    util::read_json(&dir.join("sessions.json"))
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
+
+/// What was open in the workspace at `path` when it was last used. Returns an
+/// empty session for a workspace that has none.
+pub fn workspace_session(dir: &Path, path: &str) -> WorkspaceSession {
+    sessions(dir).remove(path).unwrap_or_default()
+}
+
+/// Keeps `session` as what is open in the workspace at `path`.
+///
+/// Sessions are kept only for the workspaces in the recent list, and for
+/// `path` itself. The session of a workspace that has left that list is
+/// dropped here, so the file does not grow without limit.
+pub fn remember_session(
+    dir: &Path,
+    path: &str,
+    session: &WorkspaceSession,
+) -> Result<()> {
+    let recent: Vec<String> =
+        recent_workspaces(dir).into_iter().map(|r| r.path).collect();
+    let mut all = sessions(dir);
+    all.retain(|known, _| recent.contains(known));
+    all.insert(path.to_string(), session.clone());
+    util::write_json(&dir.join("sessions.json"), &all)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_session_is_kept_per_workspace_and_dropped_with_its_recent_entry() {
+        let config = tempfile::tempdir().unwrap();
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let (pa, pb) = (
+            a.path().to_string_lossy().to_string(),
+            b.path().to_string_lossy().to_string(),
+        );
+        assert_eq!(
+            workspace_session(config.path(), &pa),
+            WorkspaceSession::default()
+        );
+        let of_a = WorkspaceSession {
+            open_files: vec![
+                SessionTab {
+                    path: "internal/orders/handler.go".into(),
+                    view: "source".into(),
+                    line: Some(42),
+                },
+                SessionTab {
+                    path: "internal/".into(),
+                    view: "map".into(),
+                    line: None,
+                },
+            ],
+            selected: Some("internal/orders/handler.go".into()),
+        };
+        let of_b = WorkspaceSession {
+            open_files: vec![SessionTab {
+                path: "README.md".into(),
+                view: "source".into(),
+                line: None,
+            }],
+            selected: Some("README.md".into()),
+        };
+        remember_workspace(config.path(), &pa, "a").unwrap();
+        remember_session(config.path(), &pa, &of_a).unwrap();
+        remember_workspace(config.path(), &pb, "b").unwrap();
+        remember_session(config.path(), &pb, &of_b).unwrap();
+        assert_eq!(workspace_session(config.path(), &pa), of_a);
+        assert_eq!(workspace_session(config.path(), &pb), of_b);
+
+        // The folder of `b` is deleted, so it leaves the recent list. Its
+        // session is dropped the next time any session is saved.
+        drop(b);
+        remember_session(config.path(), &pa, &of_a).unwrap();
+        assert_eq!(
+            workspace_session(config.path(), &pb),
+            WorkspaceSession::default()
+        );
+        assert_eq!(workspace_session(config.path(), &pa), of_a);
+    }
 
     #[test]
     fn a_partial_settings_file_keeps_the_defaults_for_what_it_omits() {
@@ -284,6 +405,7 @@ mod tests {
         .unwrap();
         let settings = Settings::load(dir.path()).unwrap();
         assert_eq!(settings.max_fix_iterations, 5);
+        assert!(!settings.agent_customizations);
         assert_eq!(settings.film_length.seconds(), 300);
         assert_eq!(settings.external_editor_command, "code -g {file}:{line}");
         assert_eq!(settings.effort, EffortSetting::Auto);

@@ -258,6 +258,8 @@ pub fn backends(settings: &Settings, keys: &Keys) -> Vec<Arc<dyn Backend>> {
                 default_model: None,
                 quick_model: None,
                 limits: String::new(),
+                plain_args: Vec::new(),
+                plain_note: String::new(),
             };
             match provider(spec, settings, keys) {
                 Ok(client) => {

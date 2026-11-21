@@ -13,7 +13,9 @@ mod selfcheck;
 
 use codjiva_core::error::{AppError, Result};
 use codjiva_core::names;
-use codjiva_core::settings::{self, RecentWorkspace, Settings};
+use codjiva_core::settings::{
+    self, RecentWorkspace, Settings, WorkspaceSession,
+};
 use codjiva_core::store::{self, GitignoreChoice, StoreStatus};
 use codjiva_core::watch::DirWatcher;
 use codjiva_core::workspace::{
@@ -143,6 +145,26 @@ fn workspace_close(state: State<'_, AppState>) {
 #[tauri::command]
 fn workspace_recent(state: State<'_, AppState>) -> Vec<RecentWorkspace> {
     settings::recent_workspaces(&state.config_dir)
+}
+
+/// The file tabs that were open in the open workspace when it was last used.
+#[tauri::command]
+fn workspace_session_get(
+    state: State<'_, AppState>,
+) -> Result<WorkspaceSession> {
+    let root = state.workspace()?.root().to_string_lossy().into_owned();
+    Ok(settings::workspace_session(&state.config_dir, &root))
+}
+
+/// Keeps the file tabs that are open in the open workspace, for the next time
+/// the same folder is opened.
+#[tauri::command]
+fn workspace_session_set(
+    session: WorkspaceSession,
+    state: State<'_, AppState>,
+) -> Result<()> {
+    let root = state.workspace()?.root().to_string_lossy().into_owned();
+    settings::remember_session(&state.config_dir, &root, &session)
 }
 
 #[tauri::command]
@@ -364,6 +386,8 @@ pub fn run() {
             workspace_open,
             workspace_close,
             workspace_recent,
+            workspace_session_get,
+            workspace_session_set,
             tree_children,
             file_info,
             file_read,

@@ -34,6 +34,8 @@ changing a file.
   "effortArgs": ["--effort", "{effort}"],
   "resumeArgs": ["--resume", "{sessionId}"],
   "budgetArgs": ["--max-budget-usd", "{maxBudgetUsd}"],
+  "plainArgs": ["--safe-mode"],
+  "plainNote": "your own CLAUDE.md files, skills, plugins, hooks and custom agents",
   "stdin": "{userPromptText}",
   "cwd": "{workspaceRoot}",
   "parser": "claude-stream-json",
@@ -55,6 +57,8 @@ changing a file.
 | `quickModel` | A small, fast model of the program, for the short question of which view fits a file. Leave it out when the program has none. The question then uses the same model as a job. |
 | `resumeArgs` | Added when a turn continues an earlier session, as fix rounds and feedback do. |
 | `resumeCommand` | The complete arguments for such a turn, for a program whose way of continuing does not fit after `args` (Codex: `exec resume <id> …`). |
+| `plainArgs` | The arguments that start the program without the user's own setup for it, such as their instruction files, skills, plugins and hooks. They are added to every run unless the user turns on "Let … load my own setup" in Settings. That switch is shown only for an agent whose definition has this field. Leave it out when the program has no such arguments. |
+| `plainNote` | What `plainArgs` keeps out, as the end of the sentence "which keeps out …". Settings shows it under the switch. |
 | `stdin` | What is written to the program's standard input. Leave it out to keep standard input closed. |
 | `parser` | Which parser reads the program's output: `claude-stream-json`, `codex-jsonl`, `gemini-stream-json`, `cursor-stream-json` or `pi-json`. |
 | `checkFlags` | Flags that must appear in the program's help text. If one is missing, Settings warns that the installed version no longer matches the definition. |

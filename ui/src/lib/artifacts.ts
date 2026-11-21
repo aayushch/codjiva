@@ -64,10 +64,10 @@ const SHORT: Record<FileKind, string> = {
   structure: 'A data structure in memory, one operation at a time.',
 };
 
-// The six kinds of artifact that can be made of one file, in the order of
-// their tabs. Each has the tab that shows it, the name it is shown under,
-// a few words on what it is (`short`), and a full sentence on what it is for
-// (`about`).
+// The six kinds of artifact that can be made of one file, in the order the
+// interface lists them. Each has the tab that shows it, the name it is shown
+// under, a few words on what it is (`short`), and a full sentence on what it is
+// for (`about`).
 export const FILE_KINDS: {
   kind: FileKind;
   tab: 'visual' | 'film' | 'steps' | ViewName;
@@ -78,7 +78,7 @@ export const FILE_KINDS: {
   {
     kind: 'visual',
     tab: 'visual',
-    label: 'Visual',
+    label: 'Blueprint',
     short: SHORT.visual,
     about:
       'A still blueprint of this code as a machine: its parts, the data that moves between them, its limits and its modes. Click a part to see what it does and where it is in the code.',
@@ -120,12 +120,14 @@ export function isStepped(kind: string | null | undefined): boolean {
   return kind === 'stepthrough' || kind === 'lanes' || kind === 'structure';
 }
 
-// What an artifact is called in a sentence: "visual", "film", "pipeline",
-// "step-through", "map", or "schema view" for a view.
+// What an artifact is called in a sentence: "blueprint", "film", "pipeline",
+// "step-through", "map", or "schema view" for a view. An artifact of the
+// kind `visual` is called a blueprint everywhere the user reads its name.
 export function kindWord(
   artifact: Pick<ArtifactSummary, 'kind'> | null | undefined,
 ): string {
   const kind = artifact?.kind ?? 'visual';
+  if (kind === 'visual') return 'blueprint';
   if (kind === 'stepthrough') return 'step-through';
   if (kind === 'map') return 'map';
   return isView(kind) ? kind + ' view' : kind;
@@ -137,6 +139,27 @@ export function portCount(artifact: Pick<ArtifactSummary, 'ports'>): string {
   const ins = artifact.ports.filter((p) => p.dir === 'in').length;
   const outs = artifact.ports.filter((p) => p.dir === 'out').length;
   return ins + outs === 0 ? '' : `${ins} in · ${outs} out`;
+}
+
+// When an artifact was last generated: the newest `createdAt` among its
+// versions, as milliseconds since 1970. Returns 0 for an artifact that has no
+// version with a readable time.
+export function lastMade(artifact: Pick<ArtifactSummary, 'versions'>): number {
+  return artifact.versions.reduce((newest, version) => {
+    const made = Date.parse(version.createdAt);
+    return Number.isNaN(made) ? newest : Math.max(newest, made);
+  }, 0);
+}
+
+// The artifacts in the order the library lists them: the one that was
+// generated last comes first. Two artifacts generated at the same time are
+// ordered by title. The given list is not changed.
+export function newestFirst<
+  T extends Pick<ArtifactSummary, 'versions' | 'title'>,
+>(artifacts: T[]): T[] {
+  return [...artifacts].sort(
+    (a, b) => lastMade(b) - lastMade(a) || a.title.localeCompare(b.title),
+  );
 }
 
 // Splits the text of a rationale into plain words and identifiers. An

@@ -25,6 +25,11 @@
     "--resume",
     "{sessionId}"
   ],
+  "plainArgs": [
+    "--extensions",
+    "none"
+  ],
+  "plainNote": "your Gemini CLI extensions, with the context files, commands and MCP servers they add",
   "cwd": "{workspaceRoot}",
   "parser": "gemini-stream-json",
   "env": {
@@ -35,7 +40,8 @@
     "--approval-mode",
     "--prompt",
     "--resume",
-    "--skip-trust"
+    "--skip-trust",
+    "--extensions"
   ],
   "supportsResume": true,
   "verified": false,
