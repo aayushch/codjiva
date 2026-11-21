@@ -1,19 +1,31 @@
 # Codjiva
 
-> Codjiva is a free, open-source desktop app that shows what code does instead of showing the code. It opens a folder like an IDE. For a file you pick, the coding agent you already use reads the code and draws it as a blueprint of machines, pipes, tanks and limits, or as a short narrated film that follows one unit of work through the file. Licence: Apache 2.0. Platforms: macOS, Windows, Linux.
+> Codjiva is a free, open-source desktop app that shows what code does instead of showing the code. It opens a folder like an IDE. For a file you pick, the coding agent you already use reads the code and draws it as a blueprint of machines, pipes, tanks and limits, as a short narrated film that follows one unit of work through the file, or as one of four more views for code that is not a flow of work: a step-through of its states, its data shapes, the exchange between its parties, or a data structure in memory. The agent can also say which of these views fits a file. Licence: Apache 2.0. Platforms: macOS, Windows, Linux.
 
 Codjiva contains no AI model. It runs a coding agent installed on the computer (Claude Code, Cursor Agent, Codex CLI, Gemini CLI, Antigravity, Pi), or calls a model provider with the user's own API key (Anthropic, OpenAI, Google Gemini, or any server that speaks the OpenAI chat format). It has no servers, no accounts and no telemetry.
 
-## The three things it makes
+## What it makes
 
-1. Visualise: a still, explorable blueprint of one file or one folder. Click a part to see its role and the line of code it stands for. Numbered markers open short explanations. Layers switch data flow, control, error paths and labels on and off.
-2. Animate: a narrated film of one to five minutes. It follows one unit of work (an order, a request, a log line) through the file and the companion files the user ticks. Chapters show the normal path, the limits, and what happens when a limit is hit. Playback runs from 0.75x to 4x.
-3. Compose: joins the blueprints of several files into one pipeline, at the call or message where one file hands work to the next, as a still picture or as a film that crosses the join.
+Six views can be made of one file:
+
+1. Blueprint: a still, explorable blueprint of one file or one folder. Click a part to see its role and the line of code it stands for. Numbered markers open short explanations. Layers switch data flow, control, error paths and labels on and off.
+2. Film: a narrated film of one to five minutes. It follows one unit of work (an order, a request, a log line) through the file and the companion files the user ticks. Chapters show the normal path, the limits, and what happens when a limit is hit. Playback runs from 0.75x to 4x.
+3. Step-through: the states of the code, which the viewer runs on an input of their own or on an example the agent chose, one step forwards or backwards at a time, with every variable and output in view. It suits a parser, a state machine or a validator.
+4. Schema: the data shapes of a file. Every type with its fields, how the types refer to each other, and which code reads and writes each field.
+5. Lanes: who talks to whom, in time order. Each party of an exchange is a lane, the exchange plays one message at a time, and there is a scenario for each way it can go.
+6. Structure: a data structure as it is in memory. The viewer types a sequence of operations and steps through what each one does to it.
+
+Two more things are made of more than one file:
+
+- Map: a folder shown level by level, down to single functions, with a link from each file to everything that was made of it.
+- Compose: joins the blueprints or films of several files into one pipeline, at the call or message where one file hands work to the next, as a still picture or as a film that crosses the join.
+
+Which view fits a file: on request, the agent reads the file and ranks the six views, with one sentence of reason for each. The first is marked as suggested. The answer takes a few seconds and is kept until the file changes. It only suggests, and the user can make any of the six.
 
 ## How a job works
 
 1. The user picks a file and can say what the picture should show.
-2. The agent reads the file and writes a small set of source files (a plant, scenes, a declarative film.json) against Codjiva's drawing runtime. It may write only inside the workspace's `.codjiva/` folder; a write guard checks this and can undo anything else.
+2. The agent reads the file and writes a small set of source files (a plant, scenes, a declarative film.json) against Codjiva's drawing runtime. For a schema, lanes, structure or map view it writes only data, and Codjiva lays the view out. It may write only inside the workspace's `.codjiva/` folder; a write guard checks this and can undo anything else.
 3. Codjiva builds those sources into one self-contained HTML page and tests it in a hidden frame: overlapping labels, text that overflows its box, scenes that are not deterministic, state that jumps between chapters. Failures go back to the agent to fix, up to a set number of rounds.
 4. The result is shown in a sandboxed frame without network access. Each version is kept. When a source file changes, the artifact is marked stale; nothing is regenerated automatically.
 5. Feedback: the user writes what should change, optionally pinned to a moment of the film and to an element they point at. A new version is made with only that change.
@@ -25,9 +37,9 @@ Codjiva contains no AI model. It runs a coding agent installed on the computer (
 - API keys are stored in the operating system's credential store, never in a file.
 - Tested end to end with Claude Code, Cursor Agent and Codex CLI. The other agents and the API-key providers are implemented but not yet confirmed against the real services.
 - The window is laid out like an IDE: a file explorer and a library of artifacts on the left, an inspector on the right and a job panel at the bottom. Each panel can be resized, closed and reopened by dragging its edge, and the layout is remembered. Back and Forward move through the files, tabs and pipelines the user looked at, and a film continues where it was left.
-- A file that has a blueprint or a film has a dot in the explorer, and the folders above it are tinted.
+- A file that has any view made of it has a dot in the explorer, and the folders above it are tinted.
 - Where the code shows why it is built the way it is, a part of a blueprint or a bubble of a film carries a rationale: the reason, whether the code states it or the agent inferred it, and the line that shows it. A rationale is shown only when the viewer asks for it.
-- The window, the blueprints and the films follow a light or a dark theme.
+- The window and everything the app draws follow a light or a dark theme.
 - The app updates itself from the project's GitHub releases: it reads the latest release's `latest.json`, offers a newer version, verifies the download's signature and installs it. The automatic check can be switched off in Settings.
 - Built with Tauri 2, Rust and Svelte 5.
 

@@ -47,6 +47,36 @@
       note: 'A still blueprint of the same file · hover and click the machines, open the numbered markers, drag to pan, scroll to zoom',
       keys: false,
     },
+    stepthrough: {
+      src: 'demo/stepthrough.html',
+      title: 'A Codjiva step-through of the rate limiter of the same program',
+      note: 'A step-through of the rate limiter · pick an example or type your own orders, then step forwards and backwards',
+      keys: false,
+    },
+    schema: {
+      src: 'demo/schema.html',
+      title: 'A Codjiva schema view of the data an order passes through',
+      note: 'A schema · every type an order passes through, with its fields · click a type to read what it is for',
+      keys: false,
+    },
+    lanes: {
+      src: 'demo/lanes.html',
+      title: 'A Codjiva lanes view of who does what when an order arrives',
+      note: 'Lanes · who does what when an order arrives · pick a scenario and play it one message at a time',
+      keys: false,
+    },
+    structure: {
+      src: 'demo/structure.html',
+      title: 'A Codjiva structure view of what the handler keeps in memory',
+      note: 'A structure · what the handler keeps in memory · pick an example or type your own events, then step through them',
+      keys: false,
+    },
+    map: {
+      src: 'demo/map.html',
+      title: 'A Codjiva map of the whole made-up program',
+      note: 'A map of the whole program · double-click a box to see what is inside it, down to single functions',
+      keys: false,
+    },
     pipeline: {
       src: 'demo/pipeline.html',
       title: 'A Codjiva pipeline of two Go files',

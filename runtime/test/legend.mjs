@@ -79,6 +79,7 @@ check(
 
 const placed = await measure('placed', (film) => {
   film.legend[0].html = LONG_ROW;
+  film.legendAt = [560, 250];
 });
 check(
   inside(placed) && placed.rows[0].lines > 1 && !placed.rows[0].cut,
@@ -88,7 +89,6 @@ check(
 
 const centred = await measure('centred', (film) => {
   film.legend[0].html = LONG_ROW;
-  delete film.legendAt;
 });
 check(
   inside(centred) &&
@@ -99,14 +99,10 @@ check(
   JSON.stringify(centred),
 );
 
-const centredShort = await measure('centred-short', (film) => {
-  delete film.legendAt;
-});
 check(
-  Math.abs(centredShort.left + centredShort.right - STAGE_WIDTH) < 1 &&
-    centredShort.rows.every((row) => row.lines === 1),
+  Math.abs(short.left + short.right - STAGE_WIDTH) < 1,
   'a centred card with short rows sits in the middle of the stage',
-  JSON.stringify(centredShort),
+  JSON.stringify(short),
 );
 
 await browser.close();
