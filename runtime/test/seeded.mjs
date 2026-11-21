@@ -64,10 +64,13 @@ const selfTestCases = [
       ),
   },
   {
-    // The label 'rejected · duplicate · blocked' is 30 characters of 18 px
-    // text at world point (148, 900), so it is 324 px wide and 20.7 px tall.
-    // The planted label starts at (200, 904) and is 151.2 px wide. The two
-    // reach 151.2 px into each other across and 16.7 px down.
+    // The label 'rejected · duplicate · blocked' is at world point (148, 900)
+    // and is 20.7 px tall. The planted label starts at (200, 904), so the two
+    // reach 16.7 px into each other down, and the self-test reports 17.
+    // How wide a label is depends on the fonts of the operating system. So
+    // the distance across is worked out from the two reported world boxes.
+    // The reported number may differ from that distance by up to one pixel,
+    // because the self-test rounds it up to a whole pixel.
     name: 'an overlapping label is given in world pixels, with how far the two overlap',
     plant: (dir) =>
       edit(
@@ -80,13 +83,17 @@ const selfTestCases = [
       issues.some((i) => {
         if (i.check !== 'text-overlap' || !i.a || !i.b) return false;
         const moved = [i.a, i.b].find((e) => e.text === 'shed (counted)');
+        if (!moved || !moved.world || !i.a.world || !i.b.world || !i.overlap)
+          return false;
+        const across =
+          Math.min(i.a.world[0] + i.a.world[2], i.b.world[0] + i.b.world[2]) -
+          Math.max(i.a.world[0], i.b.world[0]);
         return (
-          moved &&
-          moved.world &&
           moved.world[0] === 200 &&
           moved.world[1] === 904 &&
           moved.box[0] !== 200 &&
-          JSON.stringify(i.overlap) === '[152,17]'
+          Math.abs(i.overlap[0] - across) <= 1 &&
+          i.overlap[1] === 17
         );
       }),
   },

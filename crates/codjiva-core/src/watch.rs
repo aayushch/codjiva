@@ -121,6 +121,7 @@ impl DirWatcher {
 mod tests {
     use super::*;
     use std::sync::mpsc;
+    use std::time::Instant;
 
     #[test]
     fn reports_a_change_in_a_watched_folder_and_ignores_unwatched_ones() {
@@ -139,17 +140,26 @@ mod tests {
 
         std::fs::write(root.join("other/b.txt"), "b").unwrap();
         std::fs::write(root.join("src/a.txt"), "a").unwrap();
-        let changes = rx
-            .recv_timeout(Duration::from_secs(5))
-            .expect("a change is reported");
-        assert_eq!(changes.dirs, vec!["src"]);
-        assert!(
-            changes.paths.contains(&"src/a.txt".to_string()),
-            "{changes:?}"
-        );
-        assert!(
-            !changes.paths.iter().any(|p| p.starts_with("other")),
-            "{changes:?}"
-        );
+        // The report that names `src/a.txt` is not always the first one. The
+        // operating system can also send an event for the folder `src`
+        // itself, and the watcher reports that event with the workspace root,
+        // `""`, in `dirs`. The loop reads reports for up to five seconds
+        // until one names `src/a.txt`. No report may name a path in `other`.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let changes = loop {
+            let changes = rx
+                .recv_timeout(
+                    deadline.saturating_duration_since(Instant::now()),
+                )
+                .expect("a change to src/a.txt is reported");
+            assert!(
+                !changes.paths.iter().any(|p| p.starts_with("other")),
+                "{changes:?}"
+            );
+            if changes.paths.contains(&"src/a.txt".to_string()) {
+                break changes;
+            }
+        };
+        assert!(changes.dirs.contains(&"src".to_string()), "{changes:?}");
     }
 }
