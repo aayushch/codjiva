@@ -327,9 +327,22 @@ const buildVisual = (visual, stage, post) => {
     insideOf(entry).forEach((el) => lift(el, null));
   };
 
+  // The veil is placed over the part of the world that the view shows, with
+  // VEIL_MARGIN view pixels to spare on every side. It is placed again on
+  // every draw, so it covers the whole view at every zoom and however large
+  // `visual.bounds` is.
+  const VEIL_MARGIN = 40;
+  const placeVeil = (scale) => {
+    veil.style.left = view.cx - (VIEW_CX + VEIL_MARGIN) / scale + 'px';
+    veil.style.top = view.cy - (VIEW_CY + VEIL_MARGIN) / scale + 'px';
+    veil.style.width = (VIEW_W + 2 * VEIL_MARGIN) / scale + 'px';
+    veil.style.height = (VIEW_H + 2 * VEIL_MARGIN) / scale + 'px';
+  };
+
   const draw = () => {
     const scale = view.z * CAMERA_SCALE;
     applyFraming(world, view.cx, view.cy, scale);
+    placeVeil(scale);
     liftSvg.replaceChildren();
     liftHtml.replaceChildren();
     const focus = selected || hovered;
@@ -510,14 +523,102 @@ const buildVisual = (visual, stage, post) => {
     }
     tip.style.opacity = 0;
   });
+  // The wheel and the trackpad.
+  //   - A wheel event with neither Control nor Command held pans. A trackpad
+  //     and a Magic Mouse report movement on both axes, so they pan in every
+  //     direction. A plain mouse wheel pans up and down, and sideways while
+  //     Shift is held.
+  //   - A wheel event with Control or Command held zooms at the pointer.
+  //
+  // Whether a wheel event pans or zooms is decided once for a run of events:
+  // by the first event that arrives more than WHEEL_PAUSE milliseconds after
+  // the event before it. A trackpad keeps sending wheel events for a moment
+  // after the fingers are lifted. Without this rule, releasing Command during
+  // that moment would turn the rest of a zoom into a pan.
+  //
+  // A pinch on a trackpad zooms too. A browser reports it in one of two ways.
+  //   - Chromium and Firefox report a pinch as wheel events with `ctrlKey`
+  //     set, although no key is held. `deltaY` of such an event is about 100
+  //     times the logarithm of the change in scale, which is far less than
+  //     one notch of a mouse wheel.
+  //   - WebKit on macOS reports a pinch as `gesturestart`, `gesturechange`
+  //     and `gestureend` events and sends no wheel events for it. It is the
+  //     only engine that defines `GestureEvent`, so `pinchIsWheel` is false
+  //     there and true in the other engines.
+  const WHEEL_PAUSE = 200;
+  // A wheel event zooms by the factor e to the power of `-deltaY` times
+  // WHEEL_ZOOM. One notch of a mouse wheel reports about 100, which zooms by
+  // about 16 percent.
+  const WHEEL_ZOOM = 0.0015;
+  // Where a pinch arrives as wheel events, a wheel event with only `ctrlKey`
+  // set may come from a pinch or from a wheel turned with Control held. The
+  // two cannot be told apart, so both zoom by e to the power of `-deltaY`
+  // times PINCH_ZOOM, which makes the drawing follow the fingers of a pinch.
+  // `deltaY` is first limited to the range from -PINCH_MOST to PINCH_MOST.
+  // With that limit, one notch of a mouse wheel zooms by the same 16 percent
+  // as it does with WHEEL_ZOOM.
+  const PINCH_ZOOM = 0.01;
+  const PINCH_MOST = 15;
+  const pinchIsWheel = typeof GestureEvent === 'undefined';
+  // Wheel movement in pixels. Firefox reports a mouse wheel in lines
+  // (`deltaMode` 1), three to a notch, and other browsers report about 100
+  // pixels for the same notch. `deltaMode` 2 counts in pages.
+  const wheelPixels = (ev, delta) =>
+    delta * (ev.deltaMode === 1 ? 33 : ev.deltaMode === 2 ? VIEW_H : 1);
+  // The run of wheel events that is going on. `at` is the time its last
+  // event arrived. `zoom` is true when the run zooms and false when it pans.
+  // `pinch` is true when the events of a zooming run may come from a pinch.
+  const wheelRun = { at: -Infinity, zoom: false, pinch: false };
   m.view.addEventListener(
     'wheel',
     (ev) => {
       ev.preventDefault();
-      zoomAt(Math.exp(-ev.deltaY * 0.0015), ev.clientX, ev.clientY);
+      const now = performance.now();
+      if (now - wheelRun.at > WHEEL_PAUSE) {
+        wheelRun.zoom = ev.ctrlKey || ev.metaKey;
+        wheelRun.pinch = pinchIsWheel && ev.ctrlKey && !ev.metaKey;
+      }
+      wheelRun.at = now;
+      let dx = wheelPixels(ev, ev.deltaX);
+      let dy = wheelPixels(ev, ev.deltaY);
+      if (wheelRun.zoom) {
+        const factor = wheelRun.pinch
+          ? Math.exp(
+              -Math.min(PINCH_MOST, Math.max(-PINCH_MOST, dy)) * PINCH_ZOOM,
+            )
+          : Math.exp(-dy * WHEEL_ZOOM);
+        zoomAt(factor, ev.clientX, ev.clientY);
+        return;
+      }
+      // With Shift held the view only moves sideways, by the larger of the
+      // two movements. macOS already reports a mouse wheel turned with Shift
+      // as sideways movement, and other systems report it as vertical.
+      if (ev.shiftKey) {
+        dx = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+        dy = 0;
+      }
+      const k = stageScale() * view.z * CAMERA_SCALE;
+      view.cx = insideX(view.cx + dx / k);
+      view.cy = insideY(view.cy + dy / k);
+      draw();
     },
     { passive: false },
   );
+  // `scale` of a gesture event is the change in scale since the pinch began.
+  // `pinchScale` is the value the event before had, so each event zooms by
+  // the change since that event.
+  let pinchScale = 1;
+  m.view.addEventListener('gesturestart', (ev) => {
+    ev.preventDefault();
+    pinchScale = 1;
+  });
+  m.view.addEventListener('gesturechange', (ev) => {
+    ev.preventDefault();
+    if (!(ev.scale > 0)) return;
+    zoomAt(ev.scale / pinchScale, ev.clientX, ev.clientY);
+    pinchScale = ev.scale;
+  });
+  m.view.addEventListener('gestureend', (ev) => ev.preventDefault());
 
   // The legend card is hidden until the viewer asks for it, from the control
   // bar of a standalone visual or from the app.

@@ -185,31 +185,91 @@ for (const [name, engine] of [
     `${name}: switching the data layer off hides the pipes`,
   );
   await page.locator('#layers button', { hasText: 'data' }).click();
-  // Zoom with the wheel, then Fit restores the default framing.
-  const home = await page
-    .locator('.world')
-    .evaluate((el) => el.style.transform);
+  // The framing of the visual: how far the world is moved, and its scale.
+  const framing = () =>
+    page.locator('.world').evaluate((el) => {
+      const [x, y, scale] = el.style.transform.match(/-?[\d.]+/g).map(Number);
+      return { x, y, scale };
+    });
+  // The visual decides whether the wheel pans or zooms once for a run of
+  // wheel events, and a run ends after 200 ms without one. So each use of
+  // the wheel here waits for the run before it to end.
+  const wheel = async (dx, dy, key) => {
+    await page.waitForTimeout(300);
+    if (key) await page.keyboard.down(key);
+    await page.mouse.wheel(dx, dy);
+    if (key) await page.keyboard.up(key);
+    await page.waitForTimeout(100);
+    return framing();
+  };
+  const home = await framing();
   await page.mouse.move(800, 500);
-  await page.mouse.wheel(0, -600);
-  const zoomed = await page
-    .locator('.world')
-    .evaluate((el) => el.style.transform);
-  // Drag to pan.
+  const wheeled = await wheel(120, 90);
+  check(
+    wheeled.scale === home.scale && wheeled.x < home.x && wheeled.y < home.y,
+    `${name}: the wheel pans in both directions`,
+    JSON.stringify([home, wheeled]),
+  );
+  const sideways = await wheel(0, 90, 'Shift');
+  check(
+    sideways.scale === wheeled.scale &&
+      sideways.x < wheeled.x &&
+      sideways.y === wheeled.y,
+    `${name}: the wheel with Shift pans sideways`,
+    JSON.stringify([wheeled, sideways]),
+  );
+  const zoomed = await wheel(0, -600, 'Control');
+  check(
+    zoomed.scale > sideways.scale,
+    `${name}: the wheel with Control zooms in`,
+    JSON.stringify([sideways, zoomed]),
+  );
+  const zoomedMore = await wheel(0, -600, 'Meta');
+  check(
+    zoomedMore.scale > zoomed.scale,
+    `${name}: the wheel with Command zooms in`,
+    JSON.stringify([zoomed, zoomedMore]),
+  );
+  // WebKit on macOS reports a pinch as gesture events. No browser lets a
+  // test make a real pinch, so the events are made here, and they are sent
+  // in every engine because the visual listens for them in every engine.
+  const pinched = await page.locator('.view').evaluate((view) => {
+    const send = (type, scale) =>
+      view.dispatchEvent(
+        Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+          scale,
+          clientX: 800,
+          clientY: 500,
+        }),
+      );
+    send('gesturestart', 1);
+    send('gesturechange', 0.8);
+    send('gesturechange', 0.5);
+    send('gestureend', 0.5);
+    return document.querySelector('.world').style.transform;
+  });
+  const pinchedScale = Number(pinched.match(/scale\(([\d.]+)\)/)[1]);
+  check(
+    Math.abs(pinchedScale / zoomedMore.scale - 0.5) < 0.001,
+    `${name}: a pinch to half the size halves the zoom`,
+    `${zoomedMore.scale} | ${pinchedScale}`,
+  );
+  // Drag to pan, then Fit restores the default framing.
+  const beforeDrag = await framing();
   await page.mouse.move(800, 500);
   await page.mouse.down();
   await page.mouse.move(700, 440, { steps: 4 });
   await page.mouse.up();
-  const panned = await page
-    .locator('.world')
-    .evaluate((el) => el.style.transform);
+  const dragged = await framing();
   await page.locator('#fit').click();
-  const fitted = await page
-    .locator('.world')
-    .evaluate((el) => el.style.transform);
+  const fitted = await framing();
   check(
-    zoomed !== home && panned !== zoomed && fitted === home,
-    `${name}: wheel zooms, drag pans, Fit restores the framing`,
-    `${home} | ${zoomed} | ${panned} | ${fitted}`,
+    dragged.scale === beforeDrag.scale &&
+      dragged.x < beforeDrag.x &&
+      dragged.y < beforeDrag.y &&
+      JSON.stringify(fitted) === JSON.stringify(home),
+    `${name}: drag pans, Fit restores the framing`,
+    JSON.stringify([beforeDrag, dragged, fitted]),
   );
   const visualReport = await page.evaluate(() => window.__cj.selfTest({}));
   check(

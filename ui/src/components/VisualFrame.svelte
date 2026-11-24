@@ -3,8 +3,8 @@
   import ArtifactFrame from './ArtifactFrame.svelte';
 
   // Shows a still visual or a step-through in the sandboxed frame, with zoom
-  // controls over its corner. Panning, zooming with the wheel, hovering and
-  // clicking are handled by the visual itself.
+  // controls over its corner. Panning, zooming with the wheel or a pinch,
+  // hovering and clicking are handled by the visual itself.
   //
   // `steps` is true for a step-through. A step-through has a strip of panels
   // along the bottom of its frame, so the zoom controls are placed above that

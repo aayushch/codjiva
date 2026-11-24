@@ -274,7 +274,7 @@ CJ.boot = async (data) => {
   // visuals
   if (visual) {
     controls.innerHTML =
-      '<button id="fit" class="text" title="Fit">Fit</button><button id="zoomout" class="text" title="Zoom out">−</button><button id="zoomin" class="text" title="Zoom in">+</button><div id="layers"></div><div id="hint-text">Drag to pan · scroll to zoom · click a part or a numbered marker</div>';
+      '<button id="fit" class="text" title="Fit">Fit</button><button id="zoomout" class="text" title="Zoom out">−</button><button id="zoomin" class="text" title="Zoom in">+</button><div id="layers"></div><div id="hint-text">Drag or scroll to pan · ⌘/Ctrl + scroll to zoom · click a part or a numbered marker</div>';
     $('fit').addEventListener('click', () => visual.fit());
     $('zoomin').addEventListener('click', () => visual.zoomBy(1.25));
     $('zoomout').addEventListener('click', () => visual.zoomBy(0.8));

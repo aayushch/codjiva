@@ -104,6 +104,30 @@ for (const [engineName, engine] of [
       `${engineName}: selecting a type lights the relations it takes part in`,
       lit.join(),
     );
+    // A type is selected, so the rest of the drawing is dimmed. The veil that
+    // dims it must cover the whole view: as the schema opens, zoomed out as
+    // far as it goes, and moved to the far corner of the schema.
+    const veilCovers = () =>
+      page.evaluate(() => {
+        const veil = document.querySelector('.cj-veil').getBoundingClientRect();
+        const view = document.querySelector('.view').getBoundingClientRect();
+        return (
+          veil.left <= view.left &&
+          veil.top <= view.top &&
+          veil.right >= view.right &&
+          veil.bottom >= view.bottom
+        );
+      });
+    const covered = [await veilCovers()];
+    await page.evaluate(() => window.__cj.visual.zoomBy(0.01));
+    covered.push(await veilCovers());
+    await page.evaluate(() => window.__cj.visual.panTo(1e6, 1e6));
+    covered.push(await veilCovers());
+    check(
+      covered.every(Boolean),
+      `${engineName}: the veil of a selected type covers the whole view`,
+      covered.join(),
+    );
     check(
       errors.length === 0,
       `${engineName}: schema logs no errors`,
