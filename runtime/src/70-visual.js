@@ -530,11 +530,11 @@ const buildVisual = (visual, stage, post) => {
   //     Shift is held.
   //   - A wheel event with Control or Command held zooms at the pointer.
   //
-  // Whether a wheel event pans or zooms is decided once for a run of events:
-  // by the first event that arrives more than WHEEL_PAUSE milliseconds after
-  // the event before it. A trackpad keeps sending wheel events for a moment
-  // after the fingers are lifted. Without this rule, releasing Command during
-  // that moment would turn the rest of a zoom into a pan.
+  // Each wheel event is handled by the keys held when it arrives. So
+  // pressing or releasing Control or Command in the middle of a scroll
+  // changes between panning and zooming at once. A trackpad keeps sending
+  // wheel events for a moment after the fingers are lifted, and those events
+  // follow the keys in the same way.
   //
   // A pinch on a trackpad zooms too. A browser reports it in one of two ways.
   //   - Chromium and Firefox report a pinch as wheel events with `ctrlKey`
@@ -545,7 +545,6 @@ const buildVisual = (visual, stage, post) => {
   //     and `gestureend` events and sends no wheel events for it. It is the
   //     only engine that defines `GestureEvent`, so `pinchIsWheel` is false
   //     there and true in the other engines.
-  const WHEEL_PAUSE = 200;
   // A wheel event zooms by the factor e to the power of `-deltaY` times
   // WHEEL_ZOOM. One notch of a mouse wheel reports about 100, which zooms by
   // about 16 percent.
@@ -565,24 +564,15 @@ const buildVisual = (visual, stage, post) => {
   // pixels for the same notch. `deltaMode` 2 counts in pages.
   const wheelPixels = (ev, delta) =>
     delta * (ev.deltaMode === 1 ? 33 : ev.deltaMode === 2 ? VIEW_H : 1);
-  // The run of wheel events that is going on. `at` is the time its last
-  // event arrived. `zoom` is true when the run zooms and false when it pans.
-  // `pinch` is true when the events of a zooming run may come from a pinch.
-  const wheelRun = { at: -Infinity, zoom: false, pinch: false };
   m.view.addEventListener(
     'wheel',
     (ev) => {
       ev.preventDefault();
-      const now = performance.now();
-      if (now - wheelRun.at > WHEEL_PAUSE) {
-        wheelRun.zoom = ev.ctrlKey || ev.metaKey;
-        wheelRun.pinch = pinchIsWheel && ev.ctrlKey && !ev.metaKey;
-      }
-      wheelRun.at = now;
       let dx = wheelPixels(ev, ev.deltaX);
       let dy = wheelPixels(ev, ev.deltaY);
-      if (wheelRun.zoom) {
-        const factor = wheelRun.pinch
+      if (ev.ctrlKey || ev.metaKey) {
+        const mayBePinch = pinchIsWheel && ev.ctrlKey && !ev.metaKey;
+        const factor = mayBePinch
           ? Math.exp(
               -Math.min(PINCH_MOST, Math.max(-PINCH_MOST, dy)) * PINCH_ZOOM,
             )

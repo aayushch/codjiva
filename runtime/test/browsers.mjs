@@ -191,11 +191,10 @@ for (const [name, engine] of [
       const [x, y, scale] = el.style.transform.match(/-?[\d.]+/g).map(Number);
       return { x, y, scale };
     });
-  // The visual decides whether the wheel pans or zooms once for a run of
-  // wheel events, and a run ends after 200 ms without one. So each use of
-  // the wheel here waits for the run before it to end.
+  // Turns the wheel, with `key` held if one is given, and returns the
+  // framing after it. The calls below follow each other without a pause, so
+  // they also check that a key changes what the wheel does at once.
   const wheel = async (dx, dy, key) => {
-    await page.waitForTimeout(300);
     if (key) await page.keyboard.down(key);
     await page.mouse.wheel(dx, dy);
     if (key) await page.keyboard.up(key);
