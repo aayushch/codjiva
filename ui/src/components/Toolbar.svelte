@@ -210,7 +210,7 @@
         ><Icon name="export" size={16} /></button
       >
       <button
-        class="tb-btn"
+        class="tb-btn tip-end"
         data-tip="Open in the browser"
         aria-label="Open in browser"
         onclick={() =>
@@ -220,7 +220,7 @@
         ><Icon name="external" size={16} /></button
       >
       <button
-        class="tb-btn"
+        class="tb-btn tip-end"
         data-tip="Show the files in {app.info?.dotDir ?? '.codjiva'}"
         aria-label="Reveal in {app.info?.dotDir ?? '.codjiva'}"
         onclick={() =>

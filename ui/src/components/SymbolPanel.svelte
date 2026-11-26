@@ -11,10 +11,14 @@
   import { app } from '$lib/state/app.svelte';
   import Icon from './Icon.svelte';
 
-  // The right-hand panel beside the source view while a name is selected in
-  // it (`app.symbol`). It takes the place the inspector has beside a visual.
+  // The right-hand panel beside the source view. It takes the place the
+  // inspector has beside a visual.
   //
-  // From top to bottom it shows the name, one sentence on how exact the
+  // While no name is selected in the source view (`app.symbol` is null), the
+  // panel says what it lists and how to select a name.
+  //
+  // While a name is selected, the panel describes that name. From top to
+  // bottom it shows the name, one sentence on how exact the
   // lists below are, the places that define the name, the places that define
   // its type when the code writes one, and the places that use the name,
   // grouped by file. A click on a place shows it in the source view. The
@@ -190,5 +194,13 @@
         </button>
       {/each}
     {/each}
+  </aside>
+{:else}
+  <aside class="inspector symbol-empty">
+    <div class="kicker">Definitions and references</div>
+    <p class="muted">
+      Click a symbol in the code to see where it is defined and where it is
+      used.
+    </p>
   </aside>
 {/if}

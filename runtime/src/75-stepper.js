@@ -438,6 +438,9 @@ const buildStepper = (visual, handle, post, layout) => {
         ),
         0,
       );
+    // The state of a step may move a packet of the plant under a label, or
+    // away from one.
+    shadeLabels(handle.mounted);
     // The marker shows the character the step read, on the corner of the
     // state the code is in. A step that read no character has no marker.
     const read = step && step.at != null ? input[step.at] : null;

@@ -325,6 +325,17 @@ html.embed #app {
 .pl span {
   display: block;
 }
+/* A label that lies over a filled packet. Its text is not filled with the
+   label's colour. It is filled by the label's background, which `shadeLabels`
+   in 60-film.js sets: the label's own colour, and above that one rectangle in
+   the ground colour for each packet under the label. So the letters over a
+   packet are dark and the other letters keep their colour. */
+.pl.cj-over {
+  -webkit-text-fill-color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  background-repeat: no-repeat;
+}
 .plt {
   position: absolute;
   font-size: 18px;

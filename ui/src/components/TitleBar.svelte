@@ -13,7 +13,7 @@
   // panels around the editor area: the sidebar button at the left end, and the
   // job panel and inspector buttons at the right end. The inspector button is
   // disabled while the panel has nothing to describe: no visual or film is on
-  // screen, and no name is selected in the source view.
+  // screen, and the source view is not on screen either.
   //
   // The update notice is at the left of the agent status while a newer
   // version of the app waits, is being installed, is ready or failed to
@@ -107,8 +107,8 @@
       >
       <button
         class="tb-btn tip-end"
-        class:on={app.inspectorOpen && (app.artifactShown || app.symbolShown)}
-        disabled={!app.artifactShown && !app.symbolShown}
+        class:on={app.inspectorOpen && (app.artifactShown || app.sourceShown)}
+        disabled={!app.artifactShown && !app.sourceShown}
         data-tip="{app.inspectorOpen
           ? 'Hide'
           : 'Show'} the inspector ({alt}{cmd}0)"

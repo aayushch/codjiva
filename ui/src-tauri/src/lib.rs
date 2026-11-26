@@ -231,6 +231,11 @@ fn gitignore_keep_tracked(state: State<'_, AppState>) -> Result<StoreStatus> {
 }
 
 #[tauri::command]
+fn gitignore_stop_asking(state: State<'_, AppState>) -> Result<StoreStatus> {
+    store::stop_asking_about_gitignore(&*state.workspace()?)
+}
+
+#[tauri::command]
 fn settings_get(state: State<'_, AppState>) -> Settings {
     state
         .settings
@@ -396,6 +401,7 @@ pub fn run() {
             store_ensure,
             gitignore_add,
             gitignore_keep_tracked,
+            gitignore_stop_asking,
             settings_get,
             settings_set,
             open_external,

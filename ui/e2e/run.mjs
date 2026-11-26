@@ -250,6 +250,15 @@ await page
   .getByRole('button', { name: 'Visualise', exact: true })
   .click();
 await page.getByRole('dialog').getByText('to .gitignore?').waitFor();
+check(
+  (await page.getByRole('dialog').getByRole('button').allTextContents()).join(
+    ' | ',
+  ) === 'Do not ask again | Ask later | Keep tracked (share with team) | Add',
+  'the .gitignore question can be added, kept tracked, put off, or stopped',
+  (await page.getByRole('dialog').getByRole('button').allTextContents()).join(
+    ' | ',
+  ),
+);
 await shot('03-gitignore');
 await page.getByRole('button', { name: 'Add', exact: true }).click();
 await page.getByRole('dialog').getByText('Visualise handler.go').waitFor();
@@ -896,7 +905,23 @@ check(
   'the second file shows that a job is running for it',
 );
 await page.locator('.dock .log .tool').first().waitFor();
+// The whole title of a job, with its status, is shown as soon as the pointer
+// is over the job in the list.
+await page.locator('.dock .job-pick', { hasText: 'handler.go' }).hover();
+check(
+  (await page.locator('.job-tip').count()) === 1 &&
+    (await page.locator('.job-tip').textContent()).trim() ===
+      'Visualise · handler.go (running)' &&
+    (await page.locator('.dock .job-pick[title]').count()) === 0,
+  'a job in the list shows its whole title and status under the pointer at once',
+  await page.locator('.job-tip').allTextContents(),
+);
 await shot('03f-two-jobs');
+await page.mouse.move(800, 400);
+check(
+  (await page.locator('.job-tip').count()) === 0,
+  'the label of a job in the list goes when the pointer leaves the job',
+);
 await page.locator('.dock .job-pick', { hasText: 'handler.go' }).click();
 check(
   /handler\.go/.test(await page.locator('.dock .steps .kicker').textContent()),
@@ -1551,7 +1576,7 @@ await page.getByLabel('Feedback').fill('This machine needs a clearer label');
 await shot('09d-feedback');
 await page.getByRole('button', { name: 'Send feedback' }).click();
 await page
-  .locator('.dock .kicker', { hasText: 'Feedback · handler.go' })
+  .locator('.dock .kicker', { hasText: 'Film feedback · handler.go' })
   .waitFor();
 const feedbackRequest = await page.evaluate(() => window.__mockLastRequest);
 check(
@@ -1820,6 +1845,40 @@ check(
     .trim() === 'Pipeline / Orders: from the handler to the store',
   'the pipeline opens by itself, under its own name',
 );
+// The toolbar of a pipeline ends with its action buttons, so their labels are
+// the ones nearest the right edge of the window. A label is as wide as its
+// text and is not wrapped. The label of a button with the class `tip-end`
+// ends at the button's right edge. Any other label is centred under its
+// button. A label has a width only while it shows, so each button is hovered
+// before its label is measured.
+{
+  const buttons = page.locator('.toolbar .actions .tb-btn');
+  const cutOff = [];
+  for (let i = 0; i < (await buttons.count()); i++) {
+    await buttons.nth(i).hover();
+    const right = await buttons.nth(i).evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      const style = getComputedStyle(button, '::after');
+      const width =
+        parseFloat(style.width) +
+        parseFloat(style.paddingLeft) +
+        parseFloat(style.paddingRight) +
+        parseFloat(style.borderLeftWidth) +
+        parseFloat(style.borderRightWidth);
+      return button.classList.contains('tip-end')
+        ? box.right
+        : box.left + box.width / 2 + width / 2;
+    });
+    if (!(right <= page.viewportSize().width))
+      cutOff.push(await buttons.nth(i).getAttribute('data-tip'));
+  }
+  await page.mouse.move(0, 0);
+  check(
+    cutOff.length === 0,
+    'the labels of the toolbar buttons of a pipeline fit inside the window',
+    JSON.stringify(cutOff),
+  );
+}
 check(
   (await page.locator('.inspector .part-row').count()) === 2 &&
     /handler.*→.*store/.test(
@@ -2011,6 +2070,7 @@ const copiedFull = await page
   .locator('.toast', {
     hasText: /Copied .+[\\/]internal[\\/]orders[\\/]limiter\.go/,
   })
+  .locator('.toast-text')
   .textContent();
 check(
   !canReadClipboard || 'Copied ' + (await clipboard()) === copiedFull,
@@ -3326,6 +3386,36 @@ check(
   await page.evaluate(() => !CSS.highlights?.has('nav-use')),
   'Escape selects nothing and removes the marks',
 );
+
+// With no symbol selected, the panel beside the source view stays and says
+// how to select one. Dragging it shut leaves its handle on the right edge of
+// the window and its button in the title bar enabled, and a click in the code
+// does not take them away.
+{
+  const inspectorButton = page
+    .locator('.titlebar')
+    .getByRole('button', { name: 'Inspector' });
+  check(
+    /Click a symbol in the code/.test(
+      await page.locator('.symbol-empty').textContent(),
+    ) && (await inspectorButton.isEnabled()),
+    'with no symbol selected, the panel beside the source view says how to select one',
+  );
+  await inspectorButton.click();
+  const blank = await page.locator('.source').boundingBox();
+  await page.mouse.click(
+    blank.x + blank.width - 200,
+    blank.y + blank.height - 40,
+  );
+  check(
+    (await page.locator('.inspector').count()) === 0 &&
+      (await page.locator('.insp-edge.closed').count()) === 1 &&
+      (await inspectorButton.isEnabled()),
+    'the closed panel beside the source view keeps its handle and its button after a click in the code',
+  );
+  await inspectorButton.click();
+  await page.locator('.symbol-empty').waitFor();
+}
 
 // A definition is found by its name in the quick-open dialog.
 await page.keyboard.press(`${mod}+KeyT`);

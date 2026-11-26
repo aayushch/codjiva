@@ -339,10 +339,16 @@ const buildVisual = (visual, stage, post) => {
     veil.style.height = (VIEW_H + 2 * VEIL_MARGIN) / scale + 'px';
   };
 
+  // False until the labels that lie over a packet have their two colours (see
+  // `shadeLabels`). The packets of a visual do not move, so this is done
+  // once, in the first `draw` in which the plant has a size on the page.
+  let labelsShaded = false;
+
   const draw = () => {
     const scale = view.z * CAMERA_SCALE;
     applyFraming(world, view.cx, view.cy, scale);
     placeVeil(scale);
+    if (!labelsShaded) labelsShaded = shadeLabels(m);
     liftSvg.replaceChildren();
     liftHtml.replaceChildren();
     const focus = selected || hovered;
@@ -373,6 +379,9 @@ const buildVisual = (visual, stage, post) => {
         el.classList.toggle('cj-layer-off', !layerOn[layer]),
       );
     });
+    // A layer that is switched off hides its packets, and a label that was
+    // over one of them gets its own colour back.
+    labelsShaded = shadeLabels(m);
   };
 
   // Functions that other parts of the runtime add to be told what the viewer

@@ -772,6 +772,9 @@ export interface Api {
   storeEnsure(): Promise<StoreStatus>;
   gitignoreAdd(): Promise<StoreStatus>;
   gitignoreKeepTracked(): Promise<StoreStatus>;
+  // Stops the .gitignore question for this workspace. It changes neither
+  // .gitignore nor `gitignoreChoice`.
+  gitignoreStopAsking(): Promise<StoreStatus>;
   settingsGet(): Promise<Settings>;
   settingsSet(settings: Settings): Promise<Settings>;
   openExternal(relPath: string, line?: number): Promise<void>;

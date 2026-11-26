@@ -512,13 +512,12 @@ class AppState {
       this.shownVersion != null &&
       this.detail.manifest.artifactId === this.currentArtifact.id,
   );
-  // The source view is on screen and a name is selected in it. The panel on
-  // the right then lists where that name is defined and used, in place of the
-  // inspector. The selected name stays while the user follows its references
-  // into other files.
-  symbolShown = $derived(
+  // The source view of a file is on screen. The panel on the right then holds
+  // `SymbolPanel` in place of the inspector. `SymbolPanel` lists where the
+  // selected name (`symbol`) is defined and used, and says how to select a
+  // name while none is selected.
+  sourceShown = $derived(
     !this.example &&
-      !!this.symbol &&
       this.tab === 'source' &&
       !!this.selected &&
       !this.selectedIsFolder &&
@@ -1467,12 +1466,13 @@ class AppState {
   notify(text: string, kind: Toast['kind'] = 'info') {
     const id = this.nextToast++;
     this.toasts.push({ id, kind, text });
-    setTimeout(
-      () => {
-        this.toasts = this.toasts.filter((t) => t.id !== id);
-      },
-      kind === 'error' ? 8000 : 4000,
-    );
+    setTimeout(() => this.dismissToast(id), kind === 'error' ? 8000 : 4000);
+  }
+
+  // Removes the toast with this id. Does nothing if that toast has already
+  // been removed.
+  dismissToast(id: number) {
+    this.toasts = this.toasts.filter((t) => t.id !== id);
   }
 
   fail(error: unknown) {
@@ -1950,14 +1950,20 @@ class AppState {
     }
   }
 
-  // Records the answer to the .gitignore question. `later` leaves the question
-  // open, so it is asked again next time.
-  async answerGitignore(answer: 'add' | 'track' | 'later') {
+  // Records the answer to the .gitignore question.
+  //   - `add` adds the .codjiva folder to .gitignore.
+  //   - `track` records that the folder is to stay tracked.
+  //   - `later` records nothing, so the question is asked again next time.
+  //   - `never` records that the question is not to be asked again in this
+  //     workspace. It decides nothing about .gitignore.
+  async answerGitignore(answer: 'add' | 'track' | 'later' | 'never') {
     try {
       if (this.workspace && answer === 'add')
         this.workspace.store = await api.gitignoreAdd();
       if (this.workspace && answer === 'track')
         this.workspace.store = await api.gitignoreKeepTracked();
+      if (this.workspace && answer === 'never')
+        this.workspace.store = await api.gitignoreStopAsking();
     } catch (error) {
       this.fail(error);
     }

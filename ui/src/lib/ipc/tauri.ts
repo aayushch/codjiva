@@ -48,6 +48,7 @@ export const tauriApi: Api = {
   storeEnsure: () => invoke('store_ensure'),
   gitignoreAdd: () => invoke('gitignore_add'),
   gitignoreKeepTracked: () => invoke('gitignore_keep_tracked'),
+  gitignoreStopAsking: () => invoke('gitignore_stop_asking'),
   settingsGet: () => invoke('settings_get'),
   settingsSet: (settings) => invoke('settings_set', { settings }),
   openExternal: (relPath, line) => invoke('open_external', { relPath, line }),

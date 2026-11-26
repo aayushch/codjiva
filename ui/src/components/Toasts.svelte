@@ -4,6 +4,13 @@
 
 <div class="toasts" aria-live="polite">
   {#each app.toasts as toast (toast.id)}
-    <div class="toast" class:error={toast.kind === 'error'}>{toast.text}</div>
+    <div class="toast" class:error={toast.kind === 'error'}>
+      <span class="toast-text">{toast.text}</span>
+      <button
+        class="toast-close"
+        aria-label="Dismiss this message"
+        onclick={() => app.dismissToast(toast.id)}>✕</button
+      >
+    </div>
   {/each}
 </div>

@@ -783,6 +783,10 @@ export const mockApi: Api = {
     };
     return store;
   },
+  async gitignoreStopAsking() {
+    store = { ...store, askAboutGitignore: false };
+    return store;
+  },
   async settingsGet() {
     return settings;
   },

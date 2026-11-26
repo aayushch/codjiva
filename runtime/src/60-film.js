@@ -464,6 +464,150 @@ const mountPlantCopy = (box, prefix, plant, title, extras, bubbles) => {
   };
 };
 
+// ---- labels over packets
+//
+// A packet is drawn inside the plant's <svg>. A label is an HTML element that
+// comes after the <svg>. So when a packet and a label are in the same place,
+// the label is painted on top of the packet. A label in the packet's own
+// colour could then not be read: a lit label of `CJ.modeLamps` is amber, and
+// so is a primary packet.
+//
+// `shadeLabels` makes such a label readable. The part of the label that lies
+// over a packet is drawn in the ground colour, which is the colour a packet's
+// own tag has. The rest of the label keeps its colour. It works like this:
+//   - The label gets the class `cj-over`. With that class the label's text is
+//     filled by the label's background (see runtime.css).
+//   - The lowest layer of that background is the label's own colour.
+//   - Above it lies one rectangle in the ground colour for each packet under
+//     the label, as large as the packet and in the packet's place.
+// A packet that is fading in or out is partly transparent. Its rectangle is
+// then a mix of the ground colour and the label's colour, in the same
+// proportion.
+
+// The kinds of packet that have a filled body. A packet of another kind,
+// `transient` or `tally`, has a body in the ground colour, and a label over
+// it can be read as it is.
+const FILLED_PACKETS = { primary: 1, secondary: 1, batch: 1 };
+
+// How opaque `el` is drawn inside `world`, from 0 to 1. That is its own
+// opacity multiplied by the opacity of every element between it and `world`.
+const opacityInside = (el, world) => {
+  if (getComputedStyle(el).visibility === 'hidden') return 0;
+  let value = 1;
+  for (let at = el; at && at !== world && value > 0; at = at.parentElement)
+    value *= Number(getComputedStyle(at).opacity);
+  return value;
+};
+
+// Draws the part of every label that lies over a filled packet in the ground
+// colour, and gives a label that no longer lies over one its own look back.
+// `m` is what `mountPlantCopy` returned. Call it after everything that moves,
+// shows or hides a packet.
+//
+// Returns false when the plant has no size on the page yet, for example
+// because it is not shown. Nothing can be measured then, and the caller has
+// to call again later.
+const shadeLabels = (m) => {
+  if (!m.world.getBoundingClientRect().width) return false;
+  // The packets and labels of the plant are found once. `over` holds, for
+  // each label that lies over a packet, the background it was given last.
+  const shade =
+    m.shade ||
+    (m.shade = {
+      packets: Array.from(
+        m.world.querySelectorAll('[data-cj="packet"]'),
+      ).filter(
+        (el) =>
+          FILLED_PACKETS[el.getAttribute('data-kind')] &&
+          el.firstElementChild &&
+          !el.closest('.cj-legend, .cj-lift'),
+      ),
+      labels: Array.from(m.world.querySelectorAll('.pl')).filter(
+        (el) => !el.closest('.cj-lift-html'),
+      ),
+      over: new Map(),
+    });
+
+  // Where each packet is on the page. The first element of a packet is its
+  // outline. A packet that is not displayed has an empty box.
+  const packets = [];
+  shade.packets.forEach((el) => {
+    const box = el.firstElementChild.getBoundingClientRect();
+    if (box.width && box.height) packets.push({ el, box, opacity: null });
+  });
+
+  const still = new Set();
+  if (packets.length)
+    shade.labels.forEach((label) => {
+      const box = label.getBoundingClientRect();
+      if (!box.width || !box.height) return;
+      const under = packets.filter((packet) => {
+        if (
+          packet.box.right <= box.left ||
+          packet.box.left >= box.right ||
+          packet.box.bottom <= box.top ||
+          packet.box.top >= box.bottom
+        )
+          return false;
+        // The opacity is worked out only for a packet that is under a label,
+        // because it takes several style lookups.
+        if (packet.opacity == null)
+          packet.opacity = opacityInside(packet.el, m.world);
+        return packet.opacity > 0.01;
+      });
+      if (!under.length) return;
+      // The boxes are in pixels of the page. The background is placed in the
+      // label's own pixels, which differ by the zoom of the camera.
+      const own = getComputedStyle(label);
+      const kx = parseFloat(own.width) / box.width;
+      const ky = parseFloat(own.height) / box.height;
+      const images = [];
+      const positions = [];
+      const sizes = [];
+      under.forEach((packet) => {
+        const share = Math.round(packet.opacity * 100);
+        const ink =
+          share >= 100
+            ? 'var(--ground)'
+            : 'color-mix(in srgb, var(--ground) ' + share + '%, currentColor)';
+        images.push('linear-gradient(' + ink + ',' + ink + ')');
+        positions.push(
+          ((packet.box.left - box.left) * kx).toFixed(1) +
+            'px ' +
+            ((packet.box.top - box.top) * ky).toFixed(1) +
+            'px',
+        );
+        sizes.push(
+          (packet.box.width * kx).toFixed(1) +
+            'px ' +
+            (packet.box.height * ky).toFixed(1) +
+            'px',
+        );
+      });
+      images.push('linear-gradient(currentColor,currentColor)');
+      positions.push('0 0');
+      sizes.push('100% 100%');
+      still.add(label);
+      const key = images.join() + '|' + positions.join() + '|' + sizes.join();
+      if (shade.over.get(label) === key) return;
+      shade.over.set(label, key);
+      label.classList.add('cj-over');
+      label.style.backgroundImage = images.join();
+      label.style.backgroundPosition = positions.join();
+      label.style.backgroundSize = sizes.join();
+    });
+
+  shade.over.forEach((key, label) => {
+    if (still.has(label)) return;
+    shade.over.delete(label);
+    label.classList.remove('cj-over');
+    label.style.backgroundImage = '';
+    label.style.backgroundPosition = '';
+    label.style.backgroundSize = '';
+  });
+  return true;
+};
+
 // Keeps a bubble wholly inside the view, with a margin, by shifting it.
 // `framing` is the live camera framing with its zoom already multiplied by
 // CAMERA_SCALE. The bubble's size is measured the first time it is shown and
@@ -783,6 +927,7 @@ const buildFilm = (film, stage, onError) => {
       most = Math.max(most, v);
     });
     scene.mounted.dimmer.style.opacity = (0.32 * most).toFixed(3);
+    shadeLabels(scene.mounted);
   };
 
   return {

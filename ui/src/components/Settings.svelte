@@ -199,7 +199,7 @@
               ></label
             >
           {/if}
-          <button class="btn small" onclick={() => app.loadAgents(true)}
+          <button class="btn small rescan" onclick={() => app.loadAgents(true)}
             >Look for agents again</button
           >
         {:else if section === 'keys'}
@@ -574,6 +574,11 @@
   }
   .pane .seg {
     flex-wrap: wrap;
+  }
+  /* The "Look for agents again" button, below the last option of the Agent
+     section. */
+  .rescan {
+    margin-top: 12px;
   }
   .patterns {
     width: 100%;

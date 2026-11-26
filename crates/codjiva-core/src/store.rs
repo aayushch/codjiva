@@ -49,6 +49,10 @@ pub struct WorkspaceConfig {
     /// asked again.
     #[serde(default)]
     pub gitignore_choice: Option<GitignoreChoice>,
+    /// True when the user asked not to be asked about `.gitignore` again in
+    /// this workspace, without choosing to ignore the folder or to track it.
+    #[serde(default)]
+    pub skip_gitignore_question: bool,
 }
 
 impl Default for WorkspaceConfig {
@@ -56,6 +60,7 @@ impl Default for WorkspaceConfig {
         WorkspaceConfig {
             schema_version: SCHEMA_VERSION,
             gitignore_choice: None,
+            skip_gitignore_question: false,
         }
     }
 }
@@ -80,8 +85,9 @@ pub struct StoreStatus {
     pub git: GitState,
     pub gitignore_choice: Option<GitignoreChoice>,
     /// True when the user should be asked whether to add the folder to
-    /// `.gitignore`: the workspace is a repository, the folder is not ignored,
-    /// and the user has not answered yet.
+    /// `.gitignore`. That is the case when all of these hold: the workspace
+    /// is a repository, the folder is not ignored, the user has not answered
+    /// yet, and the user has not asked for the question to stop.
     pub ask_about_gitignore: bool,
 }
 
@@ -163,7 +169,8 @@ pub fn status(ws: &Workspace) -> Result<StoreStatus> {
         git,
         gitignore_choice: config.gitignore_choice,
         ask_about_gitignore: git == GitState::NotIgnored
-            && config.gitignore_choice.is_none(),
+            && config.gitignore_choice.is_none()
+            && !config.skip_gitignore_question,
     })
 }
 
@@ -209,6 +216,17 @@ pub fn record_choice(
     ensure(ws)?;
     let mut config = read_config(ws)?;
     config.gitignore_choice = Some(choice);
+    write_config(ws, &config)?;
+    status(ws)
+}
+
+/// Records that the user does not want to be asked about `.gitignore` again
+/// in this workspace. It leaves `.gitignore` and the recorded choice as they
+/// are.
+pub fn stop_asking_about_gitignore(ws: &Workspace) -> Result<StoreStatus> {
+    ensure(ws)?;
+    let mut config = read_config(ws)?;
+    config.skip_gitignore_question = true;
     write_config(ws, &config)?;
     status(ws)
 }
@@ -273,6 +291,21 @@ mod tests {
             (GitState::NotIgnored, false)
         );
         assert!(!dir.path().join(".gitignore").exists());
+    }
+
+    #[test]
+    fn asking_not_to_be_asked_again_stops_the_question_and_decides_nothing() {
+        let (dir, ws) = repo();
+        ensure(&ws).unwrap();
+        let after = stop_asking_about_gitignore(&ws).unwrap();
+        assert_eq!(
+            (after.git, after.ask_about_gitignore, after.gitignore_choice),
+            (GitState::NotIgnored, false, None)
+        );
+        assert!(!dir.path().join(".gitignore").exists());
+        // The answer is kept in the folder, so it holds the next time the
+        // workspace is opened.
+        assert!(!ensure(&ws).unwrap().ask_about_gitignore);
     }
 
     #[test]

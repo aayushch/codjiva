@@ -90,13 +90,15 @@
   // the screen at all, and so whether its handle is there. `showSidebar`,
   // `showInspector` and `showDock` say whether the panel is open. Full screen
   // hides all three. The inspector also needs something to describe: an
-  // artifact on screen, or a name that is selected in the source view. For
-  // such a name the panel holds `SymbolPanel` in place of `Inspector`.
+  // artifact on screen, or the source view of a file. Beside the source view
+  // the panel holds `SymbolPanel` in place of `Inspector`. Both use
+  // `app.inspectorOpen`, so a panel that is closed beside one of them is
+  // closed beside the other too.
   const hasSidebar = $derived(!!app.workspace && !app.theater);
   const showSidebar = $derived(hasSidebar && app.sidebarOpen);
   const showArtifact = $derived(app.artifactShown);
   const hasInspector = $derived(
-    (showArtifact || app.symbolShown) && !app.theater,
+    (showArtifact || app.sourceShown) && !app.theater,
   );
   const showInspector = $derived(hasInspector && app.inspectorOpen);
 
@@ -411,7 +413,7 @@
   </main>
 
   {#if showInspector}
-    {#if app.symbolShown}<SymbolPanel />{:else}<Inspector />{/if}
+    {#if app.sourceShown}<SymbolPanel />{:else}<Inspector />{/if}
   {/if}
   {#if hasInspector}
     <div class="insp-edge" class:closed={!showInspector}>

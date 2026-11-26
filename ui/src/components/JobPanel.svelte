@@ -8,7 +8,7 @@
     type JobView,
   } from '$lib/jobs';
   import { app } from '$lib/state/app.svelte';
-  import { PIPELINE_PREFIX, VIEWS } from '$lib/artifacts';
+  import { kindWord, PIPELINE_PREFIX, VIEWS } from '$lib/artifacts';
   import { nameOf } from '$lib/tree';
 
   // The bottom dock: what one job is doing, step by step, with the agent's
@@ -31,7 +31,10 @@
   // Several jobs can run at the same time. When `app.jobs` holds more than one
   // job, the dock has a list of them at its left edge. Clicking a job in the
   // list shows that job in the rest of the dock. A job that has ended has a
-  // button in the list that removes it from the list.
+  // button in the list that removes it from the list. A long title is cut
+  // short in the list. While the pointer is over a job in the list, or the job
+  // has keyboard focus, a label above it shows the whole title and the job's
+  // status.
   const job = $derived(app.job);
   const steps = $derived(job ? stepStates(job, stepsFor(job)) : []);
   // What the job makes, for the sentences that report its outcome.
@@ -79,13 +82,49 @@
         : one.subject.startsWith(PIPELINE_PREFIX)
           ? 'pipeline'
           : nameOf(one.subject);
+    return `${whatOf(one)} · ${about}`;
+  }
+  // The part of a job's title before the " · ". It says what kind of job
+  // this is.
+  function whatOf(one: JobView): string {
     // A view job is called by the view it makes: "Schema · handler.go".
-    const what =
-      one.request.kind === 'view'
-        ? (VIEWS.find((view) => view.name === one.request.view)?.label ??
-          JOB_NAMES.view)
-        : JOB_NAMES[one.request.kind];
-    return `${what} · ${about}`;
+    if (one.request.kind === 'view')
+      return (
+        VIEWS.find((view) => view.name === one.request.view)?.label ??
+        JOB_NAMES.view
+      );
+    // A feedback job is called by the kind of artifact it changes. For a
+    // film the title is "Film feedback · handler.go", and for a blueprint it
+    // is "Blueprint feedback · handler.go". One file can have several
+    // artifacts, and a feedback job can run for each of them at the same
+    // time, so the kind is what tells those jobs apart in the list.
+    // A feedback job for a pipeline is called "Feedback · pipeline".
+    // If the artifact is no longer in `app.artifacts`, its kind is not known,
+    // and the title is "Feedback · handler.go".
+    if (one.request.kind === 'feedback') {
+      const artifact = app.artifacts.find(
+        (a) => a.id === one.request.artifactId,
+      );
+      if (!artifact || artifact.kind === 'pipeline') return JOB_NAMES.feedback;
+      const word = kindWord(artifact);
+      return `${word[0].toUpperCase()}${word.slice(1)} feedback`;
+    }
+    return JOB_NAMES[one.request.kind];
+  }
+  // The label that shows a job's whole title and status above the job in the
+  // list. `key` is the `key` of the job the label is for. `left` and `top`
+  // are the window coordinates of the top left corner of that job's button.
+  // `tip` is null while the pointer is over no job of the list and none has
+  // keyboard focus.
+  let tip = $state<{ key: number; left: number; top: number } | null>(null);
+  const tipJob = $derived(app.jobs.find((one) => one.key === tip?.key));
+  function showTip(event: Event, one: JobView) {
+    const button = event.currentTarget as HTMLElement;
+    // A click also gives the button focus. The label is shown for focus only
+    // when the focus came from the keyboard.
+    if (event.type === 'focus' && !button.matches(':focus-visible')) return;
+    const box = button.getBoundingClientRect();
+    tip = { key: one.key, left: box.left, top: box.top };
   }
   // How a job's status is said in the list of jobs.
   const STATUS_WORDS: Record<JobView['status'], string> = {
@@ -132,13 +171,22 @@
             <button
               class="job-pick"
               aria-current={one.key === job.key}
-              title="{titleOf(one)} ({STATUS_WORDS[one.status]})"
+              aria-describedby="job-status-{one.key}"
               onclick={() => app.showJob(one.key)}
+              onmouseenter={(e) => showTip(e, one)}
+              onmouseleave={() => (tip = null)}
+              onfocus={(e) => showTip(e, one)}
+              onblur={() => (tip = null)}
             >
               <span class="state {one.status}"></span><span class="name"
                 >{titleOf(one)}</span
               >
             </button>
+            <!-- The job's status in words, for a screen reader. It is not
+                 shown. The button above names it as its description. -->
+            <span id="job-status-{one.key}" hidden
+              >{STATUS_WORDS[one.status]}</span
+            >
             {#if one.status !== 'running'}
               <button
                 class="job-drop"
@@ -150,6 +198,11 @@
           </div>
         {/each}
       </div>
+      {#if tip && tipJob}
+        <div class="job-tip" style:left="{tip.left}px" style:top="{tip.top}px">
+          {titleOf(tipJob)} ({STATUS_WORDS[tipJob.status]})
+        </div>
+      {/if}
     {/if}
     <div class="steps">
       <div class="steps-list">

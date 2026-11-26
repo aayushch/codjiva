@@ -676,14 +676,19 @@ html.dragging-handle iframe {
   max-height: 50vh;
   overflow: auto;
 }
+/* One row of the list: an icon, a name, and smaller text that says where the
+   name is. A name that is too long for one line wraps onto more lines, and
+   the row becomes as tall as the name. The name takes at most 70% of the
+   row's width, so the smaller text always has room. The smaller text stays
+   on one line and is cut short with an ellipsis. */
 .quick-row {
   display: grid;
-  grid-template-columns: 16px auto 1fr;
+  grid-template-columns: 16px fit-content(70%) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   width: 100%;
-  height: 30px;
-  padding: 0 10px;
+  min-height: 30px;
+  padding: 5px 10px;
   border: 0;
   border-left: 2px solid transparent;
   background: none;
@@ -702,6 +707,7 @@ html.dragging-handle iframe {
 }
 .quick-row .name {
   color: var(--second);
+  overflow-wrap: anywhere;
 }
 .quick-row .where {
   color: var(--muted);
@@ -728,8 +734,11 @@ html.dragging-handle iframe {
   pointer-events: none;
 }
 .toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   max-width: 460px;
-  padding: 10px 14px;
+  padding: 10px 10px 10px 14px;
   background: var(--shell-bar);
   border: 1px solid var(--shell-border);
   border-left: 3px solid var(--accent);
@@ -739,6 +748,26 @@ html.dragging-handle iframe {
 }
 .toast.error {
   border-left-color: var(--main);
+}
+/* `.toasts` has `pointer-events: none`, so a click on a toast goes to the page
+   under it. The close button sets `pointer-events: auto` so that it can be
+   clicked. */
+.toast-close {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  font-size: 10px;
+  color: var(--shell-text-2);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.toast-close:hover {
+  background: var(--shell-button);
+  color: var(--second);
 }
 
 /* ---------- update notice in the title bar ---------- */
@@ -1435,6 +1464,26 @@ html.dragging-handle iframe {
 }
 .job-drop:hover {
   color: var(--ink);
+}
+/* The label that shows a job's whole title and status. JobPanel sets `left`
+   and `top` to the top left corner of the job's button in the list, and the
+   label lies 6px above that corner. Its position is fixed to the window so
+   that it can be wider than the list, which cuts off what does not fit inside
+   it. The label looks like the label of a control with a `data-tip`
+   attribute. */
+.job-tip {
+  position: fixed;
+  z-index: 30;
+  transform: translateY(calc(-100% - 6px));
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--shell-button);
+  border: 1px solid var(--shell-border);
+  box-shadow: 0 4px 12px var(--drop);
+  color: var(--second);
+  font: 400 12px/1.4 var(--font);
+  white-space: nowrap;
+  pointer-events: none;
 }
 .outline-pane {
   padding: 12px 16px;
