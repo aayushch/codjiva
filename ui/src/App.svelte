@@ -2,6 +2,7 @@
   import { isStepped, showsFilm } from '$lib/artifacts';
   import { api, inDesktopApp } from '$lib/ipc';
   import { applyTheme, onSystemThemeChange } from '$lib/theme';
+  import { discuss } from '$lib/state/discuss.svelte';
   import { updater } from '$lib/state/updater.svelte';
   import {
     app,
@@ -31,9 +32,9 @@
   import Validator from './components/Validator.svelte';
   import QuickOpen from './components/QuickOpen.svelte';
   import Settings from './components/Settings.svelte';
+  import SourcePanel from './components/SourcePanel.svelte';
   import SourceView from './components/SourceView.svelte';
   import Splitter from './components/Splitter.svelte';
-  import SymbolPanel from './components/SymbolPanel.svelte';
   import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import Toolbar from './components/Toolbar.svelte';
@@ -91,9 +92,15 @@
   // `showInspector` and `showDock` say whether the panel is open. Full screen
   // hides all three. The inspector also needs something to describe: an
   // artifact on screen, or the source view of a file. Beside the source view
-  // the panel holds `SymbolPanel` in place of `Inspector`. Both use
+  // the panel holds `SourcePanel` in place of `Inspector`. Both use
   // `app.inspectorOpen`, so a panel that is closed beside one of them is
   // closed beside the other too.
+  //
+  // The width of the panel on the right. Beside a visual it is
+  // `app.inspectorWidth`, between INSPECTOR_MIN and INSPECTOR_MAX. Beside
+  // the source view it is `app.sourcePanelWidth`. That panel can hold a
+  // visual, so its only upper limit is `sourcePanelMax`: the window without
+  // the sidebar and without EDITOR_MIN pixels that are kept for the code.
   const hasSidebar = $derived(!!app.workspace && !app.theater);
   const showSidebar = $derived(hasSidebar && app.sidebarOpen);
   const showArtifact = $derived(app.artifactShown);
@@ -101,6 +108,26 @@
     (showArtifact || app.sourceShown) && !app.theater,
   );
   const showInspector = $derived(hasInspector && app.inspectorOpen);
+  let windowWidth = $state(window.innerWidth);
+  const sourcePanelMax = $derived(
+    Math.max(
+      INSPECTOR_MIN,
+      windowWidth - (showSidebar ? app.sidebarWidth : 0) - EDITOR_MIN,
+    ),
+  );
+  const panelWidth = $derived(
+    app.sourceShown
+      ? Math.min(app.sourcePanelWidth, sourcePanelMax)
+      : app.inspectorWidth,
+  );
+
+  // The discussions are read when a folder is opened or closed, and again
+  // when the file on screen changes on disk, because a discussion about a
+  // part of a file says where that part is in the file now.
+  $effect(() => {
+    void [app.workspace?.root, app.sourceRefresh];
+    discuss.reload();
+  });
 
   // The sidebar's width when a drag of its handle began, or 0 if the sidebar
   // was closed then.
@@ -127,10 +154,16 @@
       return;
     }
     app.inspectorOpen = true;
-    app.inspectorWidth = Math.min(
-      INSPECTOR_MAX,
-      Math.max(INSPECTOR_MIN, wanted),
-    );
+    if (app.sourceShown)
+      app.sourcePanelWidth = Math.min(
+        sourcePanelMax,
+        Math.max(INSPECTOR_MIN, wanted),
+      );
+    else
+      app.inspectorWidth = Math.min(
+        INSPECTOR_MAX,
+        Math.max(INSPECTOR_MIN, wanted),
+      );
   }
   // Saves the panels' sizes and open states half a second after the last
   // change, so that a drag writes the settings file once and not on every
@@ -145,6 +178,9 @@
       app.libraryOpen,
       app.libraryHeight,
       app.stepPanelHeight,
+      app.sourcePanelWidth,
+      app.sourceSplit,
+      app.sourceSwapped,
     ];
     const timer = setTimeout(() => app.saveLayout(), 500);
     return () => clearTimeout(timer);
@@ -289,6 +325,7 @@
      -->
 <svelte:window
   bind:innerHeight={windowHeight}
+  bind:innerWidth={windowWidth}
   onkeydown={onKey}
   onfocus={() => app.windowFocused()}
   onmouseup={(e) => {
@@ -306,7 +343,7 @@
   style:--sidebar-w="{showSidebar ? app.sidebarWidth : 0}px"
   style:--tabs-h="{showFileTabs ? FILE_TABS_HEIGHT : 0}px"
   style:--bar-h="{showToolbar ? TOOLBAR_HEIGHT : 0}px"
-  style:--inspector-w="{showInspector ? app.inspectorWidth : 0}px"
+  style:--inspector-w="{showInspector ? panelWidth : 0}px"
   style:--dock-h="{showDock ? dockHeight : 0}px"
 >
   {#if !app.theater}<TitleBar />{/if}
@@ -376,7 +413,7 @@
             </div>
           </div>
         </div>
-      {:else if app.tab === 'source' && !app.selectedPipelineId}
+      {:else if app.tab === 'source' && !app.selectedPipelineId && !app.spotlight}
         <SourceView
           relPath={app.selected}
           line={app.sourceLine}
@@ -393,6 +430,7 @@
                 `artifact/${app.currentArtifact.id}/${app.shownVersion}`,
               ) + '?embed=1'}
               title={app.currentArtifact.title}
+              artifactId={app.currentArtifact.id}
               feedback
             />
           {:else}
@@ -402,7 +440,11 @@
               ) + '?embed=1'}
               title={app.currentArtifact.title}
               steps={isStepped(app.currentArtifact.kind)}
+              artifactId={app.currentArtifact.id}
               onselect={(nodeId) => (app.selectedNode = nodeId)}
+              onnote={(_id, open) => {
+                if (open) app.inspectorTab = 'ask';
+              }}
             />
           {/if}
         {/key}
@@ -413,7 +455,7 @@
   </main>
 
   {#if showInspector}
-    {#if app.sourceShown}<SymbolPanel />{:else}<Inspector />{/if}
+    {#if app.sourceShown}<SourcePanel />{:else}<Inspector />{/if}
   {/if}
   {#if hasInspector}
     <div class="insp-edge" class:closed={!showInspector}>
@@ -422,8 +464,7 @@
         hint={showInspector
           ? undefined
           : 'Drag left or click to show the inspector'}
-        onstart={() =>
-          (inspectorAtDragStart = showInspector ? app.inspectorWidth : 0)}
+        onstart={() => (inspectorAtDragStart = showInspector ? panelWidth : 0)}
         ondrag={dragInspector}
         onend={(moved) => {
           if (inspectorAtDragStart === 0 && Math.abs(moved) < CLICK_SLACK)

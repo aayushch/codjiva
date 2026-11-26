@@ -1,5 +1,6 @@
 <script lang="ts">
   import { FILE_KINDS, isView, showsFilm } from '$lib/artifacts';
+  import { scopeTitle } from '$lib/discuss';
   import { targetOfArtifact } from '$lib/jobs';
   import { api } from '$lib/ipc';
   import { app, type MenuItem } from '$lib/state/app.svelte';
@@ -30,6 +31,11 @@
   // artifact suits the file (`app.askSuggestion`). The "Visuals" button is
   // then underlined, and the command of the kind the agent put first has the
   // word "suggested". The last command of the menu asks the agent.
+  //
+  // A visual of a part of a file. While such a visual fills the editor area
+  // (`app.spotlight`), the bar names the file and the part, has a button
+  // that goes back to the code, and has the controls of the visual. The
+  // controls that choose a view of the file are not shown.
   //
   // The copy button puts the path inside the workspace on the clipboard, which
   // is the path the bar shows. A right-click on the path opens a menu that
@@ -128,7 +134,13 @@
   // makes a film of the file is disabled meanwhile.
   const filmBusy = $derived(
     !!artifact &&
-      app.isBusy(targetOfArtifact({ kind: 'film', subject: artifact.subject })),
+      app.isBusy(
+        targetOfArtifact({
+          kind: 'film',
+          subject: artifact.subject,
+          scope: artifact.scope,
+        }),
+      ),
   );
 
   // Describes when a version was made, relative to today: "today 14:05",
@@ -280,6 +292,22 @@
     <span class="spacer"></span>
     {@render controls(
       'A source file of one of its parts changed after this version was made',
+    )}
+  {:else if app.spotlight && artifact?.scope}
+    <span class="crumb"
+      >{#each parts.slice(0, -1) as part}{part}{' / '}{/each}{parts[
+        parts.length - 1
+      ]}{' › '}<b>{scopeTitle(artifact.scope, artifact.scopeNow)}</b></span
+    >
+    <button
+      class="btn small back-to-code"
+      title="Show the code again, with this visual beside it"
+      onclick={() => app.closeSpotlight()}
+      ><Icon name="code" size={14} /> Back to the code</button
+    >
+    <span class="spacer"></span>
+    {@render controls(
+      'The code of this part changed after this version was made',
     )}
   {:else if app.selected}
     {@const path = app.selected}

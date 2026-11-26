@@ -163,7 +163,9 @@
     const path = row.entry.relPath + (isDir ? '/' : '');
     const noAgent = app.agentsLoaded && !app.activeAgent;
     const has = (kind: ArtifactKind) =>
-      app.artifacts.some((a) => a.kind === kind && a.subject[0] === path);
+      app.artifacts.some(
+        (a) => a.kind === kind && a.subject[0] === path && !a.scope,
+      );
     const making = (kind: ArtifactKind) =>
       app.isBusy(targetOfArtifact({ kind, subject: [path] }));
     const items: MenuItem[] = [

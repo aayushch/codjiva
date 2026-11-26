@@ -27,7 +27,9 @@
     | 'forward'
     | 'copy'
     | 'check'
-    | 'code';
+    | 'code'
+    | 'swap'
+    | 'chat';
 
   let { name, size = 14 }: { name: Name; size?: number } = $props();
 
@@ -73,6 +75,10 @@
     check: 'M3 8.5l3.5 3.5 6.5-7.5',
     // Two angle brackets with a slash between them: source code.
     code: 'M5 4.5 1.5 8 5 11.5 M11 4.5 14.5 8 11 11.5 M9.3 3 6.7 13',
+    // One arrow up and one arrow down: swap the upper and the lower one.
+    swap: 'M5 13V3 M2.5 5.5 5 3l2.5 2.5 M11 3v10 M8.5 10.5 11 13l2.5-2.5',
+    // A speech bubble: a discussion.
+    chat: 'M2.5 3h11v7.5H7L4 13v-2.5H2.5z',
   };
 </script>
 

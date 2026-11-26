@@ -9,6 +9,7 @@
   } from '$lib/jobs';
   import { app } from '$lib/state/app.svelte';
   import { kindWord, PIPELINE_PREFIX, VIEWS } from '$lib/artifacts';
+  import { scopeTitle } from '$lib/discuss';
   import { nameOf } from '$lib/tree';
 
   // The bottom dock: what one job is doing, step by step, with the agent's
@@ -74,14 +75,18 @@
   });
 
   // What a job is called in the dock: the kind of job and what it is about,
-  // such as "Visualise · handler.go".
+  // such as "Visualise · handler.go". A job for a part of a file names the
+  // part too: "Visualise · handler.go › Handler.Submit".
   function titleOf(one: JobView): string {
+    const scope =
+      one.request.scope ??
+      app.artifacts.find((a) => a.id === one.request.artifactId)?.scope;
     const about =
       one.request.kind === 'compose'
         ? `${one.request.parts?.length ?? 0} parts`
         : one.subject.startsWith(PIPELINE_PREFIX)
           ? 'pipeline'
-          : nameOf(one.subject);
+          : nameOf(one.subject) + (scope ? ` › ${scopeTitle(scope)}` : '');
     return `${whatOf(one)} · ${about}`;
   }
   // The part of a job's title before the " · ". It says what kind of job

@@ -3,6 +3,9 @@ name: CI
 # Every push and pull request builds the app on macOS, Linux and Windows and runs the Rust and
 # interface tests there. The browser-based tests of the runtime and of the interface run once,
 # on Linux.
+#
+# Two kinds of test are not run here. The Rust tests marked `#[ignore]` start a real agent.
+# scripts/selfcheck.sh drives the window of the desktop app on macOS.
 
 on:
   push:
@@ -94,6 +97,12 @@ jobs:
           npm ci
           npm run unit
 
+      # Every script of runtime/test except `unit`, which the step above runs on all three
+      # systems. `stepthrough` also runs views.mjs. A new script has to be added here and to
+      # the `test` command of runtime/test/package.json.
+      #
+      # The interface is then driven three times: in Chromium, in WebKit, which is the engine
+      # of the app's window on macOS and Linux, and in Chromium with the light theme.
       - name: Browser tests of the runtime and the interface (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -104,11 +113,17 @@ jobs:
           npm run seeded
           npm run browsers
           npm run pipeline
+          npm run legend
+          npm run highlight
+          npm run rationale
+          npm run labels
+          npm run notes
           npm run parts
           npm run stepthrough
-          npm run views
           cd ../../ui
           npm run e2e
+          npm run e2e -- --browser webkit
+          npm run e2e -- --scheme light
 
       - name: Build the app binary
         working-directory: ui

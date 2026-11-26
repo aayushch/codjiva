@@ -8,6 +8,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import type {
   Api,
   AppInfo,
+  AskEvent,
   Changes,
   JobEvent,
   NavRefsEvent,
@@ -110,6 +111,16 @@ export const tauriApi: Api = {
   navRefresh: () => invoke('nav_refresh'),
   suggestCached: (relPath) => invoke('suggest_cached', { relPath }),
   suggestViews: (relPath) => invoke('suggest_views', { relPath }),
+  threadList: () => invoke('thread_list'),
+  async threadAsk(request, askId, onEvent) {
+    const channel = new Channel<AskEvent>();
+    channel.onmessage = onEvent;
+    return invoke('thread_ask', { request, askId, onEvent: channel });
+  },
+  threadDelete: (id) => invoke('thread_delete', { id }),
+  scopeForSelection: (relPath, startLine, endLine) =>
+    invoke('scope_for_selection', { relPath, startLine, endLine }),
+  artifactRebuild: (id, version) => invoke('artifact_rebuild', { id, version }),
   async onValidateRequest(handler) {
     return listen<ValidateRequest>('validate-request', (event) =>
       handler(event.payload),

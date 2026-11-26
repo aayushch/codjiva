@@ -602,6 +602,83 @@ html.embed #app {
   font-size: 15px;
   color: var(--muted);
 }
+/* ---------- notes ----------
+   A note is put on a visual after it was built (see `setNotes` in
+   70-visual.js). Its mark is a marker with square corners, so that it is told
+   apart from the round numbered markers. A `flag` has the alarm colour, and
+   an `emphasis` has a dashed frame around its node as well. The card that
+   shows a note's text looks like a bubble without a tail. A film shows its
+   notes as cards in the top right corner of the stage, below the title band.
+   */
+.cj-marker.cj-note {
+  border-radius: 8px;
+  color: var(--ground);
+  background: var(--second);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--second) 25%, transparent);
+}
+.cj-marker.cj-note.cj-flag {
+  background: var(--main);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--main) 25%, transparent);
+}
+.cj-marker.cj-note.cj-emphasis {
+  box-sizing: border-box;
+  color: var(--second);
+  background: var(--ground);
+  border: 2px solid var(--second);
+}
+.cj-marker.cj-note.open {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.cj-note-ring {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed var(--second);
+  border-radius: var(--radius-m);
+  pointer-events: none;
+}
+.cj-note-card,
+.cj-film-note {
+  width: max-content;
+  max-width: 400px;
+  padding: 12px 16px;
+  font-size: 20px;
+  line-height: 1.4;
+  color: var(--second);
+  background: var(--ground);
+  border: 2px solid var(--second);
+  border-radius: var(--radius-l);
+  box-shadow: 0 12px 30px var(--drop);
+  white-space: normal;
+}
+.cj-note-card {
+  position: absolute;
+}
+.cj-note-card.cj-flag,
+.cj-film-note.cj-flag {
+  border-color: var(--main);
+}
+.cj-note-card .k,
+.cj-film-note .k {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.cj-note-card.cj-flag .k,
+.cj-film-note.cj-flag .k {
+  color: var(--main);
+}
+.cj-film-notes {
+  position: absolute;
+  top: calc(var(--hud-h) + 24px);
+  right: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
 .cj-layer-off {
   display: none !important;
 }

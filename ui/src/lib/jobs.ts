@@ -8,6 +8,7 @@ import type {
   JobEvent,
   JobRequest,
   Outline,
+  Scope,
   ValidationReport,
   Violation,
 } from './ipc';
@@ -156,17 +157,24 @@ export const JOB_NAMES: Record<JobRequest['kind'], string> = {
 const stepOf = (phase: string): string =>
   phase === 'building' ? 'validating' : phase;
 
-// Names the artifact of the given kind for the given source files. The name
-// is the same whatever order the files are in.
-function targetName(kind: ArtifactSummary['kind'], subject: string[]): string {
-  return kind + ':' + [...subject].sort().join('\n');
+// Names the artifact of the given kind for the given source files, or for
+// the part of the one source file that `scope` names. The name is the same
+// whatever order the files are in.
+function targetName(
+  kind: ArtifactSummary['kind'],
+  subject: string[],
+  scope?: Scope,
+): string {
+  return (
+    kind + ':' + [...subject].sort().join('\n') + (scope ? '#' + scope.id : '')
+  );
 }
 
 // Names the artifact that `artifact` is, in the same form as `targetOf`.
 export function targetOfArtifact(
-  artifact: Pick<ArtifactSummary, 'kind' | 'subject'>,
+  artifact: Pick<ArtifactSummary, 'kind' | 'subject' | 'scope'>,
 ): string {
-  return targetName(artifact.kind, artifact.subject);
+  return targetName(artifact.kind, artifact.subject, artifact.scope);
 }
 
 // Names the artifact that a job with this request makes a version of. Two
@@ -175,7 +183,8 @@ export function targetOfArtifact(
 // the first one is running. `artifacts` is the list of the workspace's
 // artifacts.
 //
-// An artifact is identified by its kind and the source files it explains.
+// An artifact is identified by its kind, the source files it explains and,
+// for an artifact of a part of a file, the scope of that part.
 //   - A Visualise request makes the visual of its one file or folder.
 //   - An Animate request makes the film of its one file.
 //   - A Step through request makes the step-through of its one file.
@@ -208,6 +217,7 @@ export function targetOf(
           ? (request.view ?? 'schema')
           : 'visual',
     request.subject,
+    request.scope,
   );
 }
 

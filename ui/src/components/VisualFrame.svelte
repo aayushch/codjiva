@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from '$lib/state/app.svelte';
+  import { discuss } from '$lib/state/discuss.svelte';
   import ArtifactFrame from './ArtifactFrame.svelte';
 
   // Shows a still visual or a step-through in the sandboxed frame, with zoom
@@ -25,16 +26,30 @@
   //     its layout.
   // A step-through built before the strip could be resized ignores the
   // message and reports nothing. Its strip is always STRIP_DEFAULT tall.
+  //
+  // Notes. `artifactId` is the id of the artifact the page shows, or null
+  // for a page that is not an artifact of the workspace, such as the bundled
+  // example. The notes that answers of discussions put on that artifact are
+  // sent to the page in a `notes` message when the page is ready, and again
+  // whenever the notes change or are switched on or off. The page draws a
+  // mark for each. When the user clicks a mark, the page reports it in a
+  // `note` message, and `onnote` is called with the note's id and whether
+  // its text is now showing. A page built before notes existed ignores the
+  // message.
   let {
     src,
     title,
     steps = false,
+    artifactId = null,
     onselect = () => {},
+    onnote = () => {},
   }: {
     src: string;
     title: string;
     steps?: boolean;
+    artifactId?: string | null;
     onselect?: (nodeId: string | null) => void;
+    onnote?: (id: string, open: boolean) => void;
   } = $props();
 
   let frame: ReturnType<typeof ArtifactFrame> | undefined = $state();
@@ -43,6 +58,19 @@
   // The height of the strip, in pixels, until the page reports another.
   const STRIP_DEFAULT = 190;
   let stripHeight = $state(STRIP_DEFAULT);
+  // True once the page has reported that it is ready for messages.
+  let ready = $state(false);
+  const notes = $derived(artifactId ? discuss.notesFor(artifactId) : []);
+  $effect(() => {
+    const list = notes.map((note) => ({
+      id: note.id,
+      n: note.n,
+      part: note.part,
+      kind: note.kind,
+      text: note.text,
+    }));
+    if (ready) send({ cj: 'notes', notes: list, on: discuss.notesOn });
+  });
 
   export function send(message: Record<string, unknown>) {
     frame?.send(message);
@@ -53,7 +81,11 @@
     // A step-through reports the state that the step on screen is in.
     else if (message.cj === 'step') app.stepNode = message.nodeId ?? null;
     else if (message.cj === 'ready') {
+      ready = true;
       if (message.stepper) send({ cj: 'panel', height: app.stepPanelHeight });
+    } else if (message.cj === 'note') {
+      discuss.focusNote = message.open ? message.id : null;
+      onnote(message.id, !!message.open);
     } else if (message.cj === 'panel') {
       if (typeof message.height !== 'number') return;
       stripHeight = message.height;

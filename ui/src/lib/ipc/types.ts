@@ -115,6 +115,12 @@ export type Layout = {
   libraryOpen: boolean;
   libraryHeight: number | null;
   stepPanelHeight: number | null;
+  // The panel on the right of the source view: its width, the share of its
+  // height that its upper section has, in percent, and whether the
+  // discussion is the upper section in place of the references.
+  sourcePanelWidth: number;
+  sourceSplit: number;
+  sourceSwapped: boolean;
 };
 
 // An agent that could run jobs, as found on this machine.
@@ -281,7 +287,123 @@ export type JobRequest = {
   parts?: string[];
   joins?: Join[];
   film?: boolean;
+  // The part of the subject file the artifact is about. Without it the
+  // artifact is about the whole file.
+  scope?: Scope;
+  // The id of the discussion the job was started from. The agent then
+  // continues that discussion's conversation, or is given its text.
+  thread?: string;
 };
+
+// A part of one file that a discussion or a visual is about. The Rust side
+// is `scope.rs`.
+//   - `id` names the scope within its file and never changes.
+//   - `symbol` is the name of the definition the scope is anchored to, such
+//     as `Queue.Push`. A scope without it is anchored to its lines.
+//   - `startLine` and `endLine` are the lines the scope had when it was
+//     made, counted from 1, and `textHash` is the hash of their text.
+export type Scope = {
+  id: string;
+  path: string;
+  symbol?: string;
+  startLine: number;
+  endLine: number;
+  textHash: string;
+};
+// Where a scope is in its file now, and how its code compares with the code
+// it was made for.
+//   - `same`: the same text on the same lines.
+//   - `moved`: the same text on other lines.
+//   - `changed`: the definition is still there and its text is different.
+//   - `lost`: the definition or the text is no longer in the file. The
+//     lines are then the ones the scope was made on.
+export type ScopeNow = {
+  startLine: number;
+  endLine: number;
+  state: 'same' | 'moved' | 'changed' | 'lost';
+};
+// What a selection of lines can stand for: the lines themselves, and the
+// smallest definition that holds them all, when there is one. `exact` is
+// true when the selected lines are exactly that definition.
+export type ScopeCandidates = { lines: Scope; symbol?: Scope; exact: boolean };
+
+// Discussions. The Rust side is `threads.rs`.
+
+// A note an answer puts on a visual. `part` is the id of the node it is on,
+// for a visual or a view. `time` is the moment it is shown at, in real
+// seconds, for a film.
+export type Note = {
+  id: string;
+  artifactId: string;
+  part?: string;
+  time?: number;
+  kind: 'note' | 'flag' | 'emphasis';
+  text: string;
+};
+// A place in the code that an answer names and that exists. `text` is the
+// place as the answer writes it, such as `handler.go:42`.
+export type AnswerRef = {
+  text: string;
+  path: string;
+  line: number;
+  end?: number;
+};
+// What the user was looking at when they asked: the visual and its version,
+// the part selected in it, and the moment and chapter of a film.
+export type AskAbout = {
+  artifactId?: string;
+  version?: number;
+  part?: string;
+  time?: number;
+  chapter?: string;
+};
+// One question or one answer. `author` is the name of the person who asked,
+// as git knows it, or the name of the agent that answered.
+export type ThreadMessage = {
+  role: 'user' | 'agent';
+  text: string;
+  createdAt: string;
+  author: string;
+  model?: string;
+  about?: AskAbout;
+  refs?: AnswerRef[];
+  notes?: Note[];
+};
+// One discussion. It is about the part `scope` of the file `path`, or, without
+// a scope, about the artifact `artifactId`. `scopeNow` says where the scope is
+// in the file now.
+export type Thread = {
+  id: string;
+  title: string;
+  path: string;
+  scope?: Scope;
+  artifactId?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ThreadMessage[];
+  scopeNow?: ScopeNow;
+};
+// One question. `threadId` names the discussion to add to. Without it a new
+// discussion is started about `scope`, or about the artifact in `about`.
+export type AskRequest = {
+  threadId?: string;
+  path: string;
+  scope?: Scope;
+  text: string;
+  about: AskAbout;
+};
+// What a question reports while its agent works.
+//   - `started`: an agent is about to be asked. `continues` is true when it
+//     continues an earlier conversation.
+//   - `text`: prose from the agent. What it writes after its last use of a
+//     tool is its answer.
+//   - `tool`: the agent used a tool, for example to read a file.
+//   - `notice`: something the user should know.
+export type AskEvent =
+  | { type: 'started'; agent: string; continues: boolean }
+  | { type: 'text'; text: string }
+  | { type: 'tool'; name: string; summary: string }
+  | { type: 'notice'; text: string };
 
 // How long a job is expected to take, in seconds. Most jobs like it finish
 // between `lowSeconds` and `highSeconds`. `samples` is the number of earlier
@@ -593,6 +715,10 @@ export type ArtifactSummary = {
   // parts.
   form?: 'visual' | 'film';
   parts?: Part[];
+  // For an artifact of a part of a file: that part as the current version
+  // recorded it, and where it is in the file now.
+  scope?: Scope;
+  scopeNow?: ScopeNow;
 };
 
 // A place in the code. `end` is the last line when the reference names a
@@ -713,6 +839,8 @@ export type Manifest = {
   form?: 'visual' | 'film';
   parts?: Part[];
   joins?: Join[];
+  // For an artifact of a part of a file: that part.
+  scope?: Scope;
 };
 
 export type ArtifactDetail = {
@@ -873,6 +1001,33 @@ export interface Api {
   // Asks the agent which kind of artifact suits a file. The promise resolves
   // when the agent has answered, which takes a few seconds or more.
   suggestViews(relPath: string): Promise<ViewSuggestion>;
+  // Every discussion of the open workspace, the one that was added to last
+  // first.
+  threadList(): Promise<Thread[]>;
+  // Puts one question to the agent. The promise resolves with the
+  // discussion, with the question and the answer added, when the agent has
+  // answered. `onEvent` is called with what the agent does meanwhile.
+  // `askId` is a name the caller chooses for the question. Passing it to
+  // `jobCancel` stops the question, and the promise is then rejected with
+  // the code `cancelled`.
+  threadAsk(
+    request: AskRequest,
+    askId: string,
+    onEvent: (event: AskEvent) => void,
+  ): Promise<Thread>;
+  // Deletes a discussion, and with it the notes its answers put on visuals.
+  threadDelete(id: string): Promise<void>;
+  // Works out what lines `startLine` to `endLine` of a file can stand for.
+  scopeForSelection(
+    relPath: string,
+    startLine: number,
+    endLine: number,
+  ): Promise<ScopeCandidates>;
+  // Builds a version of an artifact again with the runtime of this app, as a
+  // new version, without an agent. Returns the number of the new version.
+  // The promise is rejected, and nothing is kept, when the new page does not
+  // pass its checks.
+  artifactRebuild(id: string, version: number): Promise<number>;
   // Asks the latest release on GitHub whether it is newer than this app.
   // Returns that version, or null if this app is the newest.
   updateCheck(): Promise<UpdateInfo | null>;

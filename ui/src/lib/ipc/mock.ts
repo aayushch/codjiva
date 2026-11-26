@@ -28,8 +28,11 @@ import type {
   NavLookup,
   NavReference,
   NavTarget,
+  Scope,
+  ScopeCandidates,
   Settings,
   StoreStatus,
+  Thread,
   TreeEntry,
   ViewSuggestion,
   ValidateRequest,
@@ -139,6 +142,9 @@ const DEFAULT_SETTINGS: Settings = {
     libraryOpen: true,
     libraryHeight: null,
     stepPanelHeight: null,
+    sourcePanelWidth: 380,
+    sourceSplit: 40,
+    sourceSwapped: false,
   },
   checkForUpdates: true,
 };
@@ -230,8 +236,61 @@ const extras = new Map<
     form?: 'visual' | 'film';
     parts?: Part[];
     joins?: Join[];
+    scope?: Scope;
+    // The runtime the version was built with. A version without it was
+    // built with the runtime `mockDetail` names.
+    runtimeVersion?: string;
   }
 >();
+
+// The discussions of the made-up workspace, the one that was added to last
+// first. A mock question adds to this list.
+let threads: Thread[] = [];
+let mockAsksStarted = 0;
+
+// The scope for lines `start` to `end` of the file at `path`, with the
+// definition `symbol` when it is anchored to one. The id is made from the
+// name or the lines alone, so the same selection always gives the same scope.
+function mockScope(
+  path: string,
+  start: number,
+  end: number,
+  symbol?: string,
+): Scope {
+  return {
+    id: symbol
+      ? symbol.replace(/[^a-z0-9]+/gi, '_').toLowerCase()
+      : `l${start}_${end}`,
+    path,
+    symbol,
+    startLine: start,
+    endLine: end,
+    textHash: 'sha256:mock',
+  };
+}
+
+// The definitions of the file at `path` that have a body, each with its name
+// and its first and last line, counted from 1. A definition starts at a line
+// that begins with `func` or `type` and ends at the next line that is a
+// closing brace alone, which is how the made-up files are written.
+function mockExtents(path: string) {
+  const lines = (FILES[path] ?? '').split('\n');
+  const found: { name: string; first: number; last: number }[] = [];
+  lines.forEach((text, row) => {
+    const head = text.match(
+      /^(?:func\s*(?:\(\w+\s+\*?(\w+)\)\s*)?|type\s+)(\w+)/,
+    );
+    if (!head) return;
+    const close = lines.findIndex((line, at) => at >= row && line === '}');
+    if (close < 0) return;
+    found.push({
+      name: head[1] ? `${head[1]}.${head[2]}` : head[2],
+      first: row + 1,
+      last: close + 1,
+    });
+  });
+  return found;
+}
 
 // The ports a mock artifact records, by the name of its file. The handler sends
 // batches to the store, so the two can be joined into a pipeline.
@@ -339,7 +398,9 @@ const mockDetail = (
       sessionId: null,
     },
     promptVersion: '1.0.0',
-    runtimeVersion: '1.0.0',
+    // The runtime a version was built with, unless its job recorded another
+    // one in `extras`, which is spread over this object below.
+    runtimeVersion: '1.5.0',
     validation: { passed: true, iterations: 1, errors: 0, warnings: 1 },
     createdAt:
       summary.versions.find((v) => v.version === version)?.createdAt ?? '',
@@ -1032,10 +1093,12 @@ export const mockApi: Api = {
           ? ('film' as const)
           : ('visual' as const)
         : extras.get(`${base?.id}/${request.baseVersion}`)?.form;
+    const scope = base?.scope ?? request.scope;
     const id =
       base?.id ??
       `${kind}-` +
         subject.replace(/[^a-z0-9]+/gi, '_').toLowerCase() +
+        (scope ? `-${scope.id}` : '') +
         '-mock01';
     const existing = artifacts.find((a) => a.id === id);
     const version = (existing?.versions.length ?? 0) + 1;
@@ -1245,6 +1308,10 @@ export const mockApi: Api = {
           request.kind === 'compose'
             ? request.joins
             : extras.get(`${id}/${request.baseVersion}`)?.joins,
+        scope,
+        // The end-to-end test sets `window.__mockRuntime` to make the version
+        // look as if an older app had built it.
+        runtimeVersion: (window as any).__mockRuntime,
       });
       const recorded = extras.get(`${id}/${version}`);
       if (existing) {
@@ -1254,8 +1321,9 @@ export const mockApi: Api = {
         artifacts.push({
           id,
           kind,
-          title:
-            kind === 'pipeline'
+          title: scope
+            ? `${scope.symbol ?? `lines ${scope.startLine}–${scope.endLine}`} · ${subject.split('/').pop()}`
+            : kind === 'pipeline'
               ? 'Orders: from the handler to the store'
               : kind === 'film'
                 ? 'How an order moves through the orders Handler'
@@ -1280,6 +1348,12 @@ export const mockApi: Api = {
           ports: kind === 'pipeline' ? [] : mockPorts(subject),
           form: recorded?.form,
           parts: kind === 'pipeline' ? recorded?.parts : undefined,
+          scope,
+          scopeNow: scope && {
+            startLine: scope.startLine,
+            endLine: scope.endLine,
+            state: 'same',
+          },
         });
       emit({
         type: 'result',
@@ -1313,6 +1387,177 @@ export const mockApi: Api = {
   },
   async artifactDelete(id) {
     artifacts = artifacts.filter((a) => a.id !== id);
+  },
+  // Adds a version that is a copy of `version` and records the current
+  // runtime. The end-to-end test sets `window.__mockRebuildFails` to try the
+  // case that the new page does not pass its checks.
+  async artifactRebuild(id, version) {
+    const summary = artifacts.find((a) => a.id === id);
+    const from = summary?.versions.find((v) => v.version === version);
+    if (!summary || !from)
+      throw fail('not_found', 'That version of the artifact does not exist.');
+    await sleep(200);
+    if ((window as any).__mockRebuildFails)
+      throw fail(
+        'rebuild_failed',
+        'The page that the current runtime builds from this version does not pass the checks, so the version was left as it is. Regenerate it to get one that does.',
+      );
+    const made = summary.versions.length + 1;
+    summary.versions.push({
+      ...from,
+      version: made,
+      createdAt: new Date().toISOString(),
+      parent: version,
+    });
+    summary.currentVersion = made;
+    extras.set(`${id}/${made}`, {
+      ...extras.get(`${id}/${version}`),
+      feedback: undefined,
+      runtimeVersion: '1.5.0',
+    });
+    return made;
+  },
+  async threadList() {
+    return threads.map((thread) => ({
+      ...thread,
+      messages: [...thread.messages],
+    }));
+  },
+  // Plays a made-up question: the agent reads the file and answers a moment
+  // later. The answer names a line of the file, and one that does not
+  // exist, which is not among its `refs`.
+  //   - A question about a visual gets a note on the first part of the
+  //     visual, and a question with the word "flag" in it a flag on the
+  //     second part as well.
+  //   - A question about a film gets a note at the moment the film is at.
+  //   - A question with the word "fail" in it is refused, as it is when the
+  //     agent reports an error.
+  async threadAsk(request, askId, onEvent) {
+    (window as any).__mockLastAsk = request;
+    const number = ++mockAsksStarted;
+    let cancelled = false;
+    cancelledJobs.set(askId, () => {
+      cancelled = true;
+    });
+    const existing = threads.find((one) => one.id === request.threadId);
+    const path = existing?.path ?? request.scope?.path ?? request.path;
+    onEvent({
+      type: 'started',
+      agent: 'Mock Agent',
+      continues: !!existing || !!request.about.artifactId,
+    });
+    await sleep(150);
+    onEvent({ type: 'text', text: 'I will read the code first.' });
+    onEvent({ type: 'tool', name: 'Read', summary: path });
+    await sleep((window as any).__mockAskDelay ?? 250);
+    if (cancelled) throw fail('cancelled', 'The question was cancelled.');
+    if (/\bfail\b/i.test(request.text))
+      throw fail('ask_failed', 'Mock Agent reported an error: Not logged in');
+    const shown = artifacts.find((a) => a.id === request.about.artifactId);
+    const scope = existing?.scope ?? request.scope;
+    const what = scope
+      ? (scope.symbol ?? `Lines ${scope.startLine} to ${scope.endLine}`)
+      : (path.split('/').pop() ?? path);
+    const place =
+      FILES[path] != null ? `${path}:20` : 'internal/orders/handler.go:20';
+    const text =
+      `${what} queues the order and flushes when the batch is full, see \`${place}\`.\n\n` +
+      '- It refuses an order that is not valid.\n' +
+      `- It asks \`limiter\` first, which is not at \`${path}:9000\`.`;
+    onEvent({ type: 'text', text });
+    const nodes = shown
+      ? (mockDetail(shown, shown.currentVersion).definition?.nodes ?? [])
+      : [];
+    const isFilm = shown?.kind === 'film' || shown?.form === 'film';
+    const thread: Thread = existing ?? {
+      id: `t-mock-${number}`,
+      title: request.text.trim().split('\n')[0].slice(0, 80),
+      path,
+      scope: request.scope,
+      artifactId: request.scope ? undefined : request.about.artifactId,
+      createdAt: new Date().toISOString(),
+      updatedAt: '',
+      messages: [],
+      scopeNow: request.scope && {
+        startLine: request.scope.startLine,
+        endLine: request.scope.endLine,
+        state: 'same',
+      },
+    };
+    const noteId = (n: number) =>
+      `${thread.id}-${thread.messages.length / 2 + 1}-${n}`;
+    const notes: NonNullable<Thread['messages'][number]['notes']> = [];
+    if (shown && isFilm)
+      notes.push({
+        id: noteId(1),
+        artifactId: shown.id,
+        time: request.about.time ?? 5,
+        kind: 'note',
+        text: 'This is the moment the batch is written.',
+      });
+    else if (shown && nodes[0]) {
+      notes.push({
+        id: noteId(1),
+        artifactId: shown.id,
+        part: nodes[0].id,
+        kind: 'note',
+        text: `${nodes[0].label} is where the order comes in.`,
+      });
+      if (/\bflag\b/i.test(request.text) && nodes[1])
+        notes.push({
+          id: noteId(2),
+          artifactId: shown.id,
+          part: nodes[1].id,
+          kind: 'flag',
+          text: `${nodes[1].label} keeps the batch when the write fails.`,
+        });
+    }
+    const now = new Date().toISOString();
+    thread.messages = [
+      ...thread.messages,
+      {
+        role: 'user',
+        text: request.text.trim(),
+        createdAt: now,
+        author: 'Mock User',
+        about: request.about,
+      },
+      {
+        role: 'agent',
+        text,
+        createdAt: now,
+        author: 'Mock Agent',
+        model: 'mock-model',
+        refs: [{ text: place, path: place.split(':')[0], line: 20 }],
+        notes,
+      },
+    ];
+    thread.updatedAt = now;
+    threads = [thread, ...threads.filter((one) => one.id !== thread.id)];
+    return { ...thread, messages: [...thread.messages] };
+  },
+  async threadDelete(id) {
+    threads = threads.filter((one) => one.id !== id);
+  },
+  async scopeForSelection(relPath, startLine, endLine) {
+    const lines = (FILES[relPath] ?? '').split('\n');
+    const blank = (line: number) => !(lines[line - 1] ?? '').trim();
+    let first = Math.min(Math.max(1, startLine), lines.length);
+    let last = Math.min(Math.max(first, endLine), lines.length);
+    while (first < last && blank(first)) first++;
+    while (last > first && blank(last)) last--;
+    if (FILES[relPath] == null || blank(first))
+      throw fail('bad_request', 'Select at least one line of code first.');
+    const around = mockExtents(relPath)
+      .filter((one) => one.first <= first && one.last >= last)
+      .sort((a, b) => a.last - a.first - (b.last - b.first))[0];
+    const found: ScopeCandidates = {
+      lines: mockScope(relPath, first, last),
+      symbol:
+        around && mockScope(relPath, around.first, around.last, around.name),
+      exact: !!around && around.first === first && around.last === last,
+    };
+    return found;
   },
   async artifactExport(_id, _version, suggestedName) {
     return `/mock/exports/${suggestedName}`;

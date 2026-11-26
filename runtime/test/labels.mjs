@@ -125,8 +125,11 @@ await page.evaluate(() => {
   delete el.dataset.kept;
   el.classList.add('cj-over');
 });
+// The dark letters add about 90 dark pixels in Chromium on macOS and about
+// 60 on Linux, which draws the letters thinner. When the letters are not
+// drawn dark, the two counts are the same.
 check(
-  darkWith > darkWithout + 60,
+  darkWith > darkWithout + 30,
   'the letters over the packet are drawn dark',
   `${darkWith} dark pixels with the two colours, ${darkWithout} without them`,
 );

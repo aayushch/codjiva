@@ -1,6 +1,7 @@
 <script lang="ts">
   import { formatTime } from '$lib/tree';
   import { app } from '$lib/state/app.svelte';
+  import { discuss } from '$lib/state/discuss.svelte';
   import ArtifactFrame from './ArtifactFrame.svelte';
   import Icon from './Icon.svelte';
 
@@ -14,16 +15,26 @@
   // inspector: it keeps `app.filmMoment` up to date, lets the user pin a moment
   // by holding Alt while clicking the scrubber, and passes on the element the
   // user pointed at.
+  //
+  // Notes. `artifactId` is the id of the artifact the film is, or null for a
+  // film that is not an artifact of the workspace, such as the bundled
+  // example. The notes that answers of discussions put on that artifact are
+  // sent to the film when it is ready, and again whenever they change or are
+  // switched on or off. The film shows each note for a few seconds from its
+  // moment. Each note also has a mark on the scrubber. A film built before
+  // notes existed ignores the message, and only the marks show.
   let {
     src,
     title,
     feedback = false,
+    artifactId = null,
     onready = () => {},
     onchapter = () => {},
   }: {
     src: string;
     title: string;
     feedback?: boolean;
+    artifactId?: string | null;
     onready?: (chapters: Chapter[]) => void;
     onchapter?: (index: number) => void;
   } = $props();
@@ -42,6 +53,18 @@
   let rate = $state(1);
   let problem = $state<string | null>(null);
   let dragging = false;
+
+  const notes = $derived(artifactId ? discuss.notesFor(artifactId) : []);
+  $effect(() => {
+    const list = notes.map((note) => ({
+      id: note.id,
+      n: note.n,
+      time: note.time,
+      kind: note.kind,
+      text: note.text,
+    }));
+    if (ready) frame?.send({ cj: 'notes', notes: list, on: discuss.notesOn });
+  });
 
   // The speeds on offer, as multiples of the film's normal speed.
   const SPEEDS = [0.75, 1, 1.25, 2, 4];
@@ -225,6 +248,16 @@
         style:left="{(c.start / duration) * 100}%"
         title={c.name}
       ></span>{/each}
+    {#if discuss.notesOn && duration}
+      {#each notes as note (note.id)}
+        {#if note.time != null}<span
+            class="note-mark"
+            class:flag={note.kind === 'flag'}
+            style:left="{(note.time / duration) * 100}%"
+            title="Note {note.n}: {note.text}"
+          ></span>{/if}
+      {/each}
+    {/if}
     {#if feedback && app.pinnedTime != null && duration}<span
         class="pin"
         style:left="{(app.pinnedTime / duration) * 100}%"

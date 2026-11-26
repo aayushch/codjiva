@@ -80,6 +80,35 @@ impl Default for JobState {
 }
 
 impl JobState {
+    /// Registers something that can be cancelled under `id`, and returns
+    /// the token that `job_cancel` triggers for that id. `forget` removes it
+    /// when the work has ended.
+    pub(crate) fn track(&self, id: &str) -> CancellationToken {
+        let cancel = CancellationToken::new();
+        self.running
+            .lock()
+            .expect("the jobs lock is not poisoned")
+            .insert(id.to_string(), cancel.clone());
+        cancel
+    }
+
+    pub(crate) fn forget(&self, id: &str) {
+        self.running
+            .lock()
+            .expect("the jobs lock is not poisoned")
+            .remove(id);
+    }
+
+    /// The validator that checks a built version in a hidden frame of the
+    /// app's window.
+    pub(crate) fn validator(&self, app: &AppHandle) -> Arc<dyn Validator> {
+        Arc::new(WindowValidator {
+            app: app.clone(),
+            pending: Arc::clone(&self.validations),
+            turn: Arc::clone(&self.validation_turn),
+        })
+    }
+
     /// The environment agents run in. Reading it starts the user's login shell,
     /// which can take a few seconds, so it is done once and only when an agent
     /// is first needed.
@@ -450,7 +479,7 @@ impl Validator for WindowValidator {
 
 /// Finds the agent that runs the next job and the model it is asked for. The
 /// model is `None` when Settings names none for that agent.
-async fn agent_for_next_job(
+pub(crate) async fn agent_for_next_job(
     app: &AppHandle,
     settings: &Settings,
 ) -> Result<(Arc<dyn Backend>, Option<String>)> {
@@ -550,13 +579,7 @@ pub async fn job_start(
         .filter(|_| backend.info().kind != "replay");
 
     let job_id = jobs::new_job_id();
-    let cancel = CancellationToken::new();
-    state
-        .jobs
-        .running
-        .lock()
-        .expect("the jobs lock is not poisoned")
-        .insert(job_id.clone(), cancel.clone());
+    let cancel = state.jobs.track(&job_id);
 
     // Set when the job reports that it saved a version.
     let saved = Arc::new(AtomicBool::new(false));
@@ -564,11 +587,7 @@ pub async fn job_start(
     let ctx = JobContext {
         workspace,
         backend,
-        validator: Arc::new(WindowValidator {
-            app: app.clone(),
-            pending: Arc::clone(&state.jobs.validations),
-            turn: Arc::clone(&state.jobs.validation_turn),
-        }),
+        validator: state.jobs.validator(&app),
         cancel,
         emit: Arc::new(move |event| {
             if matches!(event, JobEvent::Result { .. }) {
@@ -588,12 +607,7 @@ pub async fn job_start(
         use tauri::Manager;
         jobs::run(ctx, request, finished_id.clone()).await;
         let state = app.state::<AppState>();
-        state
-            .jobs
-            .running
-            .lock()
-            .expect("the jobs lock is not poisoned")
-            .remove(&finished_id);
+        state.jobs.forget(&finished_id);
         if let Some(shape) = shape.filter(|_| saved.load(Ordering::SeqCst)) {
             // An estimate is still made without this job, so a failure to
             // save it is not reported.
@@ -649,7 +663,8 @@ pub async fn suggest_views(
 }
 
 /// Asks a running job to stop. The job reports `cancelled` on its event channel
-/// when it has.
+/// when it has. A question in a discussion is stopped in the same way, with
+/// the id the interface gave it (see `threads::thread_ask`).
 #[tauri::command]
 pub fn job_cancel(job_id: String, state: State<'_, AppState>) {
     if let Some(cancel) = state

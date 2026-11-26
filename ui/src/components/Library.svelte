@@ -1,6 +1,8 @@
 <script lang="ts">
   import { kindWord, lastMade, newestFirst, portCount } from '$lib/artifacts';
+  import { scopeTitle } from '$lib/discuss';
   import { app, LIBRARY_MIN, TREE_MIN } from '$lib/state/app.svelte';
+  import { nameOf } from '$lib/tree';
   import Icon from './Icon.svelte';
   import Poster from './Poster.svelte';
   import Splitter from './Splitter.svelte';
@@ -56,8 +58,20 @@
   // Visuals and films can be ticked to compose them into a pipeline. An
   // artifact without ports records no place where it meets other code, so it
   // cannot be joined.
+  // A visual of a part of a file is shown beside its code and is not composed.
   const canTick = (artifact: (typeof app.artifacts)[number]) =>
-    artifact.kind !== 'pipeline' && artifact.ports.length > 0;
+    artifact.kind !== 'pipeline' &&
+    artifact.ports.length > 0 &&
+    !artifact.scope;
+
+  // For a visual of a part of a file: the file's name and the part, such as
+  // "queue.go › Queue.Push" or "queue.go › lines 4–9". The lines are the ones
+  // the part is on now.
+  function partOf(artifact: (typeof app.artifacts)[number]): string {
+    const scope = artifact.scope;
+    if (!scope) return '';
+    return `${nameOf(scope.path)} › ${scopeTitle(scope, artifact.scopeNow)}`;
+  }
 </script>
 
 {#if app.artifacts.length}
@@ -104,7 +118,10 @@
           {@const made = whenMade(artifact)}
           <div
             class="lib-item"
-            class:on={app.currentArtifact?.id === artifact.id}
+            class:on={artifact.scope
+              ? app.spotlight === artifact.id ||
+                (app.sourceShown && app.scopeArtifactId === artifact.id)
+              : app.currentArtifact?.id === artifact.id}
             role="button"
             tabindex="0"
             title={artifact.subject.join(', ')}
@@ -119,6 +136,9 @@
             />
             <div class="lib-text">
               <div class="t">{artifact.title}</div>
+              {#if artifact.scope}
+                <div class="m lib-part">{partOf(artifact)}</div>
+              {/if}
               <div class="m">
                 {kindWord(artifact)}{artifact.durationSec
                   ? ' · ' + formatDuration(artifact.durationSec)

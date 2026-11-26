@@ -37,7 +37,8 @@ The interface then uses a stand-in backend with a made-up workspace, and its job
 |-----------|-------------|
 | `runtime/` | The JavaScript that every artifact carries: the drawing parts, the film engine, the self-test |
 | `crates/codjiva-build/` | Turns an agent's source files into one HTML page, after checking them |
-| `crates/codjiva-core/` | Workspaces, agents, jobs, artifacts and the write guard. No user interface |
+| `crates/codjiva-core/` | Workspaces, agents, jobs, artifacts, discussions and the write guard. No user interface |
+| `crates/codjiva-nav/` | Code navigation for the Source view: where a name is defined and where it is used |
 | `ui/src/` | The Svelte 5 interface |
 | `ui/src-tauri/` | The Tauri v2 Rust shell |
 | `resources/` | Prompts, schemas, agent definitions, fonts and the theme |
@@ -171,6 +172,10 @@ npm test
 
 # The interface in a real browser, with the stand-in backend
 npm run build && npm run e2e
+
+# The same in WebKit, and in the light theme. CI runs all three
+npm run e2e -- --browser webkit
+npm run e2e -- --scheme light
 ```
 
 ### Runtime
@@ -180,6 +185,10 @@ cd runtime/test
 npm ci
 npm test
 ```
+
+`npm test` runs one script after the other. Each script is also a command of its own, for example
+`npm run notes`. A new script belongs in the `test` command of `runtime/test/package.json` and in the browser
+step of `.github/workflows/ci.yml`.
 
 ### The real app
 

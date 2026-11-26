@@ -11,8 +11,9 @@
   import { app } from '$lib/state/app.svelte';
   import Icon from './Icon.svelte';
 
-  // The right-hand panel beside the source view. It takes the place the
-  // inspector has beside a visual.
+  // The section of the panel beside the source view that says where a name
+  // is defined and where it is used. SourcePanel.svelte holds it, with the
+  // section for the discussion and the visuals of the selected code.
   //
   // While no name is selected in the source view (`app.symbol` is null), the
   // panel says what it lists and how to select a name.
@@ -108,7 +109,7 @@
 {/snippet}
 
 {#if symbol && lookup}
-  <aside class="inspector symbol-panel">
+  <div class="symbol-panel">
     <div class="symbol-head">
       <div class="kicker">Selected name</div>
       <button
@@ -194,13 +195,13 @@
         </button>
       {/each}
     {/each}
-  </aside>
+  </div>
 {:else}
-  <aside class="inspector symbol-empty">
+  <div class="symbol-empty">
     <div class="kicker">Definitions and references</div>
     <p class="muted">
       Click a symbol in the code to see where it is defined and where it is
       used.
     </p>
-  </aside>
+  </div>
 {/if}

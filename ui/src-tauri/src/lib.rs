@@ -10,6 +10,7 @@ mod jobs;
 mod nav;
 mod protocol;
 mod selfcheck;
+mod threads;
 
 use codjiva_core::error::{AppError, Result};
 use codjiva_core::names;
@@ -435,6 +436,11 @@ pub fn run() {
             nav::nav_cancel,
             nav::nav_symbols,
             nav::nav_refresh,
+            threads::thread_list,
+            threads::thread_ask,
+            threads::thread_delete,
+            threads::scope_for_selection,
+            threads::artifact_rebuild,
             selfcheck::selfcheck_config,
             selfcheck::selfcheck_capture,
             selfcheck::selfcheck_edit_file,

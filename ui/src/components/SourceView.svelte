@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { api, type NavSpan } from '$lib/ipc';
+  import { api, type NavSpan, type Scope } from '$lib/ipc';
+  import { FILE_KINDS } from '$lib/artifacts';
+  import { asMade, sameScope, scopeTitle, type FileScope } from '$lib/discuss';
   import { highlightLines, linesOf } from '$lib/highlight';
   import { hasPrototypes, wordAt } from '$lib/nav';
   import { app, type MenuItem } from '$lib/state/app.svelte';
+  import { discuss } from '$lib/state/discuss.svelte';
   import { untrack } from 'svelte';
 
   // The source viewer is read-only. Lines are LINE_HEIGHT pixels tall and only
@@ -29,6 +32,18 @@
   // The app's state (`app` in app.svelte.ts) asks the core what a name is;
   // this component only finds which name is under the pointer and draws the
   // marks.
+  //
+  // Discussing and visualising selected code. When the user has selected
+  // lines of code, a small bar appears near the end of the selection. Its
+  // buttons start a discussion about that code, or make a visual of just
+  // that code. Both open in the panel on the right of the window (see
+  // SourcePanel.svelte). When the selection lies inside a function or a
+  // type, the bar lets the user choose between the selected lines and the
+  // whole definition. A right-click on the selection offers the same.
+  //   - Code that has a discussion or a visual has a mark in front of its
+  //     first line. A click on the mark opens it in the panel.
+  //   - The lines of the code that is open in the panel have a tinted
+  //     background.
   //
   // The props:
   //   - `relPath` is the file to show.
@@ -93,9 +108,16 @@
 
   // `measure` only writes `scrollTop` and `height` and never reads them, so
   // that an effect which calls it does not run again on every scroll.
+  // `lastScrolled` is the scroll position `measure` saw last.
+  let lastScrolled = 0;
   function measure() {
     if (!viewport) return;
     const scrolled = viewport.scrollTop;
+    // The bar for the selected lines is placed in the window, so it would
+    // stay behind when the code scrolls away under it. `lastScrolled` is a
+    // plain variable, so that reading it here makes no effect run again.
+    if (scrolled !== lastScrolled) discuss.clearSelection();
+    lastScrolled = scrolled;
     scrollTop = scrolled;
     height = viewport.clientHeight;
     app.sourceTop = Math.floor(scrolled / LINE_HEIGHT) + 1;
@@ -272,6 +294,165 @@
   // text.
   let pressedAt: { x: number; y: number } | null = null;
   const CLICK_SLACK = 3;
+  // True from a press of the main button in the code until the pointer is
+  // released, wherever that happens.
+  let selecting = false;
+
+  // The parts of this file that have a discussion or a visual, by the line
+  // each starts on now. Each gets a mark in front of that line.
+  const fileScopes = $derived(discuss.scopesIn(relPath));
+  const marks = $derived.by(() => {
+    const byLine = new Map<number, FileScope[]>();
+    for (const one of fileScopes)
+      byLine.set(one.now.startLine, [
+        ...(byLine.get(one.now.startLine) ?? []),
+        one,
+      ]);
+    return byLine;
+  });
+  // Where the part that is open in the panel is in this file now, or null.
+  const openNow = $derived(
+    app.scope?.path === relPath
+      ? (fileScopes.find((one) => sameScope(one.scope, app.scope))?.now ??
+          asMade(app.scope))
+      : null,
+  );
+
+  // What the mark of the parts that start on one line says while the
+  // pointer is on it.
+  const markTip = (found: FileScope[]) =>
+    found
+      .map((one) =>
+        [
+          scopeTitle(one.scope, one.now),
+          one.threads.length ? 'discussion' : '',
+          ...one.artifacts.map(
+            (made) =>
+              FILE_KINDS.find((kind) => kind.kind === made.kind)?.label ??
+              made.kind,
+          ),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      )
+      .join('\n');
+
+  // A click on a mark opens its part in the panel. Where several parts
+  // start on the same line, a menu lists them.
+  function openMark(event: MouseEvent, found: FileScope[]) {
+    event.stopPropagation();
+    if (found.length === 1) return app.openScope(found[0].scope);
+    app.openMenu(
+      event,
+      found.map((one) => ({
+        label: scopeTitle(one.scope, one.now),
+        action: () => app.openScope(one.scope),
+      })),
+    );
+  }
+
+  // The first and the last line in the page of which `range` covers at least
+  // one character, or null when it covers none.
+  //
+  // The lines are found by comparing `range` with the text of every line in
+  // the page, and not by looking at where `range` starts and ends. A drag
+  // that ends below the last line, or outside the code, leaves the end of
+  // the selection on an element that is not a line. A selection that ends in
+  // front of the first character of a line covers nothing of that line, so
+  // the line is not counted.
+  function linesIn(range: Range): [number, number] | null {
+    let start: number | null = null;
+    let end: number | null = null;
+    for (const row of rows?.children ?? []) {
+      const holder = row.querySelector('.source-text');
+      if (!holder) continue;
+      const part = new Range();
+      part.selectNodeContents(holder);
+      if (range.compareBoundaryPoints(Range.START_TO_START, part) > 0)
+        part.setStart(range.startContainer, range.startOffset);
+      if (range.compareBoundaryPoints(Range.END_TO_END, part) < 0)
+        part.setEnd(range.endContainer, range.endOffset);
+      if (part.collapsed || !holder.contains(part.startContainer)) continue;
+      const number = Number((row as HTMLElement).dataset.line);
+      start ??= number;
+      end = number;
+    }
+    return start != null && end != null ? [start, end] : null;
+  }
+
+  // Called when the pointer is released after a press in the code. If text
+  // is selected now, the selected lines become `discuss.selection`, and the
+  // bar that offers to discuss or visualise them appears at the pointer.
+  //
+  // A selection inside one line counts only when it covers at least half of
+  // the line's code, so that a word that was selected to copy it does not
+  // bring the bar up.
+  function onSelected(event: MouseEvent) {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount)
+      return discuss.clearSelection();
+    const found = linesIn(selection.getRangeAt(0));
+    if (!found) return discuss.clearSelection();
+    const [start, end] = found;
+    if (
+      start === end &&
+      selection.toString().trim().length <
+        (text[start - 1] ?? '').trim().length / 2
+    )
+      return discuss.clearSelection();
+    // The bar is placed at the pointer, but inside the code, for a drag
+    // that ended outside it.
+    const box = viewport?.getBoundingClientRect();
+    const x = box
+      ? Math.min(Math.max(event.clientX, box.left), box.right - 40)
+      : event.clientX;
+    const y = box
+      ? Math.min(Math.max(event.clientY, box.top), box.bottom - 20)
+      : event.clientY;
+    discuss.select(relPath, start, end, x, y);
+  }
+
+  // The selection as the bar shows it: the scope its buttons act on, and
+  // where the bar is. The bar is kept inside the window.
+  const picked = $derived.by(() => {
+    const now = discuss.selection;
+    if (!now || now.path !== relPath) return null;
+    const { lines, symbol, exact } = now.candidates;
+    return {
+      lines,
+      symbol: symbol ?? null,
+      // With `exact`, the lines are the definition, so there is no choice.
+      choice: !!symbol && !exact,
+      scope: now.useSymbol && symbol ? symbol : lines,
+      left: Math.max(8, Math.min(now.x, window.innerWidth - 380)),
+      top: Math.min(now.y + 14, window.innerHeight - 48),
+    };
+  });
+
+  // Starts a discussion about `scope`: opens it in the panel, with the
+  // keyboard focus in the question box.
+  function discussScope(scope: Scope) {
+    app.openScope(scope, null, true);
+    discuss.clearSelection();
+    window.getSelection()?.removeAllRanges();
+  }
+
+  // The commands that make a visual of `scope`, one for each kind.
+  const visualiseItems = (scope: Scope): MenuItem[] => {
+    const made = app.scopeArtifacts(scope);
+    const thread = discuss.shown({ path: relPath, scope })?.id;
+    return FILE_KINDS.map((kind) => ({
+      label: kind.label,
+      detail: kind.about,
+      mark: made.some((one) => one.kind === kind.kind) ? 'made' : '',
+      disabled: !app.activeAgent,
+      action: () => {
+        app.openScope(scope);
+        discuss.clearSelection();
+        app.askScoped(scope, kind.kind, thread);
+      },
+    }));
+  };
 
   function onClick(event: MouseEvent) {
     const press = pressedAt;
@@ -294,25 +475,39 @@
 
   function onMenu(event: MouseEvent) {
     const name = nameAt(event.clientX, event.clientY);
-    // Anywhere but on a name, the webview's own menu is left to open.
-    if (!name) return;
+    const scope = picked?.scope;
+    // Anywhere but on a name or on selected lines, the webview's own menu
+    // is left to open.
+    if (!name && !scope) return;
     hover = null;
-    const { line, column } = name;
-    const items: MenuItem[] = [
-      {
+    const items: MenuItem[] = [];
+    if (name) {
+      const { line, column } = name;
+      items.push({
         label: 'Go to definition',
         action: () => app.goToDefinition(relPath, line, column),
-      },
-    ];
-    if (hasPrototypes(relPath))
-      items.push({
-        label: 'Go to declaration',
-        action: () => app.goToDefinition(relPath, line, column, true),
       });
-    items.push({
-      label: 'Find references',
-      action: () => app.findReferences(relPath, line, column),
-    });
+      if (hasPrototypes(relPath))
+        items.push({
+          label: 'Go to declaration',
+          action: () => app.goToDefinition(relPath, line, column, true),
+        });
+      items.push({
+        label: 'Find references',
+        action: () => app.findReferences(relPath, line, column),
+      });
+    }
+    if (scope) {
+      if (items.length) items.push('separator');
+      const what = scopeTitle(scope);
+      items.push({
+        label: `Discuss ${what}`,
+        action: () => discussScope(scope),
+      });
+      for (const item of visualiseItems(scope))
+        if (item !== 'separator')
+          items.push({ ...item, label: `${item.label} of ${what}…` });
+    }
     const selected = window.getSelection()?.toString();
     if (selected)
       items.push('separator', {
@@ -327,6 +522,7 @@
     if (app.dialog || app.menu) return;
     if ((event.target as HTMLElement).closest('input, textarea, select'))
       return;
+    if (event.key === 'Escape') discuss.clearSelection();
     const symbol = app.symbol;
     if (!symbol) return;
     if (event.key === 'Escape') {
@@ -397,7 +593,18 @@
   });
 </script>
 
-<svelte:window onkeydown={onKey} onkeyup={underline} />
+<!-- A drag that selects text can end outside the code, so the release of the
+     pointer is listened for on the window. It counts only after a press in
+     the code (`selecting`). -->
+<svelte:window
+  onkeydown={onKey}
+  onkeyup={underline}
+  onmouseup={(event) => {
+    if (!selecting) return;
+    selecting = false;
+    if (event.button === 0) onSelected(event);
+  }}
+/>
 
 <!-- The keyboard has its own way to every command a click gives here: F12,
      Shift with F12 and Escape act on the selected name, see `onKey`. -->
@@ -407,7 +614,12 @@
   class:linking={!!hover}
   bind:this={viewport}
   onscroll={measure}
-  onmousedown={(event) => (pressedAt = { x: event.clientX, y: event.clientY })}
+  onmousedown={(event) => {
+    pressedAt = { x: event.clientX, y: event.clientY };
+    selecting = event.button === 0;
+    // A right-click on the selection keeps it, for the menu.
+    if (event.button === 0) discuss.clearSelection();
+  }}
   onclick={onClick}
   oncontextmenu={onMenu}
   onmousemove={(event) => {
@@ -436,12 +648,33 @@
       >
         {#each lines.slice(first, last) as html, i (first + i)}
           {@const number = first + i + 1}
+          {@const found = marks.get(number)}
           <div
             class="source-line"
             class:ref={number === line}
+            class:in-scope={!!openNow &&
+              number >= openNow.startLine &&
+              number <= openNow.endLine}
             data-line={number}
           >
-            <span class="source-num" style:width="{gutter + 2}ch">{number}</span
+            <span class="source-mark"
+              >{#if found}<button
+                  class="scope-mark tip-start"
+                  class:visual={found.some((one) => one.artifacts.length > 0)}
+                  class:lost={found.every((one) => one.now.state === 'lost')}
+                  class:on={found.some((one) =>
+                    sameScope(one.scope, app.scope),
+                  )}
+                  data-tip={markTip(found)}
+                  aria-label="Open the discussion and visuals of {scopeTitle(
+                    found[0].scope,
+                    found[0].now,
+                  )}"
+                  onmousedown={(event) => event.stopPropagation()}
+                  onclick={(event) => openMark(event, found)}
+                ></button>{/if}</span
+            ><span class="source-num" style:width="{gutter + 2}ch"
+              >{number}</span
             ><span class="source-text">{@html html || ' '}</span>
           </div>
         {/each}
@@ -455,12 +688,53 @@
     </div>
   {/if}
 </div>
+{#if picked}
+  {@const scope = picked.scope}
+  <div
+    class="select-bar"
+    role="toolbar"
+    aria-label="Selected code"
+    style:left="{picked.left}px"
+    style:top="{picked.top}px"
+  >
+    {#if picked.choice && picked.symbol && discuss.selection}
+      {@const selection = discuss.selection}
+      <span class="seg" role="group" aria-label="What to use">
+        <button
+          class:on={!selection.useSymbol}
+          aria-pressed={!selection.useSymbol}
+          onclick={() => (selection.useSymbol = false)}
+          >{scopeTitle(picked.lines)}</button
+        ><button
+          class:on={selection.useSymbol}
+          aria-pressed={selection.useSymbol}
+          title="The whole definition around the selected lines"
+          onclick={() => (selection.useSymbol = true)}
+          >{scopeTitle(picked.symbol)}</button
+        >
+      </span>
+    {:else}
+      <span class="what">{scopeTitle(scope)}</span>
+    {/if}
+    <button class="btn small primary" onclick={() => discussScope(scope)}
+      >Discuss</button
+    >
+    <button
+      class="btn small"
+      aria-haspopup="menu"
+      onclick={(event) =>
+        app.openMenuBelow(event.currentTarget, visualiseItems(scope))}
+      >Visualise ▾</button
+    >
+  </div>
+{/if}
 <div class="source-bar">
   <span>Read-only</span>
   <span class="source-hint"
     >Click a name to see where it is defined and used. {onMac
       ? '⌘-click'
-      : 'Ctrl+click'} goes to its definition.</span
+      : 'Ctrl+click'} goes to its definition. Select lines to discuss or visualise
+    them.</span
   >
   <button
     class="btn small"

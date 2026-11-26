@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type Suggestion } from '$lib/ipc';
+  import { scopeTitle } from '$lib/discuss';
   import { app, FILM_SECONDS } from '$lib/state/app.svelte';
   import IgnoreDialog from './IgnoreDialog.svelte';
   import JobEstimate from './JobEstimate.svelte';
@@ -9,6 +10,11 @@
   // show, and picks its length.
   const ask = $derived(app.animateAsk);
   const fileName = $derived(ask?.subject.split('/').pop() ?? '');
+  // What the film is of: the file, or for a film of a part of the file that
+  // part and the file, such as "Queue.Push in queue.go".
+  const subjectName = $derived(
+    ask?.scope ? `${scopeTitle(ask.scope)} in ${fileName}` : fileName,
+  );
   const limit = $derived(app.settings?.maxCompanionFiles ?? 12);
 
   // The companion files on offer, each with the reason it is listed, and which
@@ -148,6 +154,7 @@
           subject: [ask.subject],
           companions: chosen,
           lengthSeconds: FILM_SECONDS[length],
+          scope: ask.scope,
         }
       : null,
   );
@@ -162,6 +169,8 @@
       companions: chosen,
       instructions: text.trim(),
       lengthSeconds: FILM_SECONDS[length],
+      scope: ask.scope,
+      thread: ask.thread,
     });
   }
 
@@ -190,7 +199,7 @@
     <div class="dialog animate" role="dialog" aria-labelledby="animate-title">
       <h2 id="animate-title">
         {ask.regenerate ? 'Make the film again for' : 'Animate'}
-        {fileName}
+        {subjectName}
       </h2>
       <p class="lead">
         The agent follows one piece of work through this file and the companion

@@ -55,7 +55,8 @@ changing a file.
 | `args` | The arguments of every run. |
 | `modelArgs`, `effortArgs`, `budgetArgs` | Added only when Settings gives a model, an effort level or a spending limit. `defaultModel` is the model used when Settings names none. |
 | `quickModel` | A small, fast model of the program, for the short question of which view fits a file. Leave it out when the program has none. The question then uses the same model as a job. |
-| `resumeArgs` | Added when a turn continues an earlier session, as fix rounds and feedback do. |
+| `resumeArgs` | Added when a turn continues an earlier session, as fix rounds, feedback and a question in the Ask tab do. |
+| `supportsResume` | `false` for a program that cannot continue an earlier session. Each question in the Ask tab is then sent with the text of its discussion. |
 | `resumeCommand` | The complete arguments for such a turn, for a program whose way of continuing does not fit after `args` (Codex: `exec resume <id> …`). |
 | `plainArgs` | The arguments that start the program without the user's own setup for it, such as their instruction files, skills, plugins and hooks. They are added to every run unless the user turns on "Let … load my own setup" in Settings. That switch is shown only for an agent whose definition has this field. Leave it out when the program has no such arguments. |
 | `plainNote` | What `plainArgs` keeps out, as the end of the sentence "which keeps out …". Settings shows it under the switch. |
@@ -86,6 +87,19 @@ see `resources/adapters/cursor-agent.json`.
 - Write files inside `{artifactDirAbs}`.
 - Run without asking a person anything.
 - Print its progress as one JSON object per line, in a format one of the parsers understands.
+
+## Questions
+
+A question in the Ask tab is one run of the same command, with other instructions
+(`resources/prompts/ask.md`). It needs nothing more from a definition.
+
+- `{artifactDirAbs}` is an empty folder for that run, and the agent is told to write no file.
+- The answer is the text the agent prints after its last use of a tool.
+- With `resumeArgs` or `resumeCommand`, the run continues the session in which the visual was drawn, or
+  the session of the discussion. When the program does not accept that session, Codjiva starts the run once
+  more as a new session and sends the text of the discussion with the question.
+
+## The write guard
 
 Codjiva does not rely on the agent to stay inside its folder. After every run it compares the project with a
 snapshot taken before.

@@ -2145,3 +2145,503 @@ iframe {
   font-size: 11px;
   color: var(--shell-text-2);
 }
+
+/* ---------- discussions (AskPanel.svelte) ----------
+   The inspector has two tabs, About and Ask. The Ask tab holds one discussion:
+   its messages from top to bottom, and the box for the next question. The box
+   stays at the bottom edge of the panel while the messages scroll under it,
+   so the user can always type. */
+.insp-tabs {
+  display: flex;
+  gap: 2px;
+  margin: -4px -6px 12px;
+}
+.insp-tabs .itab {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: var(--shell-text-2);
+  cursor: pointer;
+}
+.insp-tabs .itab.on {
+  background: var(--shell-button);
+  color: var(--second);
+}
+.insp-tabs .count {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--shell-text-2);
+  background: var(--shell-border);
+}
+/* With the Ask tab open the panel does not scroll as a whole. The list of
+   messages scrolls, between the heading and the question box. */
+.inspector.asking {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ask {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ask-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ask-head .select,
+.ask-title {
+  flex: 1;
+  min-width: 0;
+}
+.ask-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--second);
+}
+.ask-head .btn.armed {
+  border-color: var(--main);
+  color: var(--main);
+}
+.ask-notes {
+  flex: none;
+  margin-bottom: 4px;
+}
+.ask-notes .layer {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+}
+.ask-old {
+  font-size: 12px;
+  color: var(--shell-text-2);
+}
+.ask-log {
+  flex: 1;
+  min-height: 60px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+.ask-q,
+.ask-a {
+  margin-bottom: 12px;
+}
+.ask-who {
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: var(--shell-text-2);
+}
+/* A question, as the user typed it. Its line breaks are kept. */
+.ask-q .ask-words {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--shell-button);
+  color: var(--second);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ask-a.waiting {
+  opacity: 0.85;
+}
+.answer-text {
+  overflow-wrap: anywhere;
+}
+.answer-text p {
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+.answer-text ul {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  color: var(--ink);
+}
+.answer-text li {
+  margin-bottom: 3px;
+}
+.answer-text pre {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--ground);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow: auto;
+}
+/* One note of an answer: the number its mark has on the visual, what it is
+   on, and its text. A click shows it on the visual. A flag has the alarm
+   colour. The note the user clicked last is drawn as chosen. */
+.ask-note {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 8px;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 5px 8px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+.ask-note:hover,
+.ask-note.on {
+  border-color: var(--accent);
+}
+.ask-note.on {
+  background: var(--shell-button);
+}
+.ask-note .n {
+  grid-row: span 2;
+  align-self: start;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ground);
+  background: var(--second);
+}
+.ask-note.flag .n {
+  background: var(--main);
+}
+.ask-note .where {
+  color: var(--second);
+}
+.ask-note .t {
+  grid-column: 2;
+  font-size: 12px;
+}
+.ask-apply {
+  margin-top: 4px;
+}
+.ask-box {
+  flex: none;
+  padding-top: 8px;
+  border-top: 1px solid var(--shell-border-soft);
+}
+.ask-box textarea.input {
+  width: 100%;
+  resize: vertical;
+}
+.ask-box .line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ask-box .grow {
+  flex: 1;
+}
+.ask-box .pill {
+  max-width: 60%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- the panel beside the source view (SourcePanel.svelte) ----------
+   The panel is a column of two sections. Each has a heading and a body. An
+   open section's body scrolls on its own. SourcePanel gives each section its
+   share of the height as an inline `flex` value. */
+.inspector.source-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+.sp-section {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sp-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid var(--shell-border-soft);
+}
+.sp-section:not(.first) .sp-head {
+  border-top: 1px solid var(--shell-border-soft);
+}
+.sp-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--shell-text-2);
+  text-align: left;
+  cursor: pointer;
+}
+.sp-toggle:hover {
+  color: var(--second);
+}
+.sp-toggle .chev {
+  width: 10px;
+}
+/* The name of what the section is about. It is not in capitals, because it
+   is a name from the code. */
+.sp-what {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--second);
+}
+.sp-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 12px 16px;
+}
+/* The line between the two sections. The handle that changes their shares
+   lies on it. */
+.sp-split {
+  flex: none;
+  position: relative;
+  height: 0;
+  z-index: 2;
+}
+
+/* ---------- the discussion and the visuals of selected code
+   (ScopePanel.svelte) ----------
+   The body of the section is a column: where the code is, the buttons of its
+   visuals, the frame of the chosen visual, and the discussion, which takes the
+   height that is left. */
+.sp-body.scope {
+  display: flex;
+  flex-direction: column;
+}
+.scope-open {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.scope-where {
+  flex: none;
+}
+.scope-state {
+  margin-left: 6px;
+  color: var(--main);
+}
+.scope-kinds {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.scope-kinds .chip {
+  cursor: pointer;
+}
+.scope-kinds .chip.on {
+  border-color: var(--accent);
+  color: var(--second);
+  background: var(--shell-button);
+}
+.scope-kinds .chip .stale {
+  color: var(--main);
+}
+/* The frame of the visual and the discussion under it share the height that
+   is left in the section. The frame is as wide as the panel. ScopePanel
+   gives it a greatest height that suits its width, as an inline style, and
+   it grows up to that height before the discussion grows. Neither goes below
+   its least height. In a section that is lower than the two together, the
+   section scrolls. */
+.scope-frame {
+  flex: 1 1 180px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin-bottom: 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.scope-open .ask {
+  flex: 1 1 170px;
+  min-height: 170px;
+}
+.scope-node {
+  flex: none;
+}
+.scope-node b {
+  color: var(--second);
+}
+.scope-list .scope-row.lost {
+  opacity: 0.6;
+}
+
+/* ---------- selected code in the source view (SourceView.svelte) ---------- */
+/* The room in front of the line number for the mark of code that has a
+   discussion or a visual. */
+.source-mark {
+  display: inline-block;
+  width: 16px;
+  height: 20px;
+  vertical-align: top;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* The mark: a small rounded bar. It is filled when the code has a visual, and
+   an outline when it only has a discussion. The mark of code that is no
+   longer in the file as it was is faint. */
+.scope-mark {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.scope-mark::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  width: 6px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--accent);
+  border-radius: 3px;
+}
+.scope-mark.visual::before {
+  background: var(--accent);
+}
+.scope-mark:hover::before,
+.scope-mark.on::before {
+  border-color: var(--main);
+}
+.scope-mark.visual:hover::before,
+.scope-mark.visual.on::before {
+  background: var(--main);
+}
+.scope-mark.lost::before {
+  opacity: 0.45;
+}
+/* The label of a mark names every part that starts on the line, one to a
+   line. */
+.scope-mark[data-tip]::after {
+  white-space: pre;
+  text-align: left;
+}
+/* The lines of the code that is open in the panel. */
+.source-line.in-scope {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.source-line.in-scope.ref {
+  background: color-mix(in srgb, var(--main) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--main);
+}
+/* The bar that offers to discuss or visualise the selected lines. SourceView
+   sets `left` and `top` to a point near the end of the selection. Its
+   position is fixed to the window, so that it is not cut off by the edge of
+   the code. */
+.select-bar {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  background: var(--shell-bar);
+  box-shadow: 0 6px 18px var(--drop);
+  font-size: 12px;
+}
+.select-bar .what {
+  max-width: 180px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--second);
+}
+/* The two choices of what the bar acts on, the selected lines or the
+   definition around them, drawn as one control with two halves. */
+.select-bar .seg {
+  display: flex;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.select-bar .seg button {
+  max-width: 150px;
+  padding: 3px 8px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--shell-text-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.select-bar .seg button.on {
+  background: var(--shell-button);
+  color: var(--second);
+}
+
+/* ---------- a visual of a part of a file ---------- */
+/* In the toolbar, while such a visual fills the editor area. */
+.toolbar .back-to-code {
+  margin-left: 10px;
+  flex: none;
+}
+/* In the library: the file and the part, under the title. */
+.lib-item .m.lib-part {
+  color: var(--accent);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* On the scrubber of a film: the moment of a note. */
+.player .scrub .note-mark {
+  position: absolute;
+  top: 1px;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 2px;
+  background: var(--second);
+  pointer-events: none;
+}
+.player .scrub .note-mark.flag {
+  background: var(--main);
+}

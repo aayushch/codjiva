@@ -131,6 +131,16 @@ pub struct Layout {
     /// The height the user dragged the strip of panels under a step-through
     /// to. `None` means the height the step-through's own page starts with.
     pub step_panel_height: Option<u32>,
+    /// The panel on the right of the source view. It has a width of its own,
+    /// because it can hold a visual and is then much wider than the inspector
+    /// beside a visual. It has two sections, one above the other: where the
+    /// selected name is defined and used, and the discussion and the visual
+    /// of the selected code. `source_split` is the share of the panel's
+    /// height that the upper section has, in percent. With
+    /// `source_swapped`, the discussion is the upper section.
+    pub source_panel_width: u32,
+    pub source_split: u32,
+    pub source_swapped: bool,
 }
 
 impl Default for Layout {
@@ -144,6 +154,9 @@ impl Default for Layout {
             library_open: true,
             library_height: None,
             step_panel_height: None,
+            source_panel_width: 380,
+            source_split: 40,
+            source_swapped: false,
         }
     }
 }

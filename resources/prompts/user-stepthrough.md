@@ -2,6 +2,13 @@ Make a step-through of this code: a drawing of its states that the viewer can ru
 time.
 
 Subject: {{subject}}
+{{#scopeLines}}
+Draw only a part of that file: lines {{scopeLines}}{{#scopeName}}, the definition `{{scopeName}}`{{/scopeName}}.
+The user selected this code and wants to understand it. Read the rest of the file, and other files where a
+call leads there, only to understand what enters and leaves these lines. Give the code outside these lines no
+parts of its own: show it, where it matters, as what the selected code receives from or hands on to. Every
+`refs` entry of a node names lines inside the selection.
+{{/scopeLines}}
 {{#companions}}Also read: {{companions}}
 {{/companions}}{{#instructions}}
 Instructions from the user for this step-through:

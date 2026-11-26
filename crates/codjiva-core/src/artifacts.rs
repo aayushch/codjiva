@@ -13,8 +13,14 @@
 //!
 //! Versions are only ever added. Regenerating an artifact adds a version; it
 //! never replaces one.
+//!
+//! An artifact is about a whole file or folder, or about a part of one file.
+//! In the second case its manifests hold that part as a
+//! [`Scope`](crate::scope::Scope), and the artifact is a different one from
+//! the artifact of the same kind for the whole file.
 
 use crate::error::{AppError, Result};
+use crate::scope::{self, Located, Scope};
 use crate::util;
 use crate::workspace::{hash_bytes, Workspace};
 use serde::{Deserialize, Serialize};
@@ -196,6 +202,10 @@ pub struct Manifest {
     pub parts: Vec<crate::compose::Part>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub joins: Vec<crate::compose::Join>,
+    /// For an artifact of a part of a file: that part, as it was when this
+    /// version was made. `None` for an artifact of a whole file or folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Scope>,
 }
 
 /// One version, as the interface lists it.
@@ -238,6 +248,12 @@ pub struct ArtifactSummary {
     pub form: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parts: Vec<crate::compose::Part>,
+    /// For an artifact of a part of a file: that part as the current version
+    /// recorded it, and where it is in the file now.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Scope>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope_now: Option<Located>,
 }
 
 /// Everything the interface needs to show one version.
@@ -274,16 +290,36 @@ fn slug(path: &str) -> String {
 /// and files always give the same id, in any order, so regenerating adds a
 /// version to the same artifact.
 pub fn artifact_id(kind: ArtifactKind, subject: &[String]) -> String {
+    artifact_id_of(kind, subject, None)
+}
+
+/// The id of the artifact of `kind` for a set of subject files, or for the
+/// part `scope` of the one subject file.
+///
+/// Without a scope this is the id [`artifact_id`] gives. With a scope, the
+/// scope's id is part of the name and of what is hashed, so every scope of a
+/// file has artifacts of its own. The same kind, file and scope id always
+/// give the same id.
+pub fn artifact_id_of(
+    kind: ArtifactKind,
+    subject: &[String],
+    scope: Option<&Scope>,
+) -> String {
     let mut sorted: Vec<&str> = subject.iter().map(String::as_str).collect();
     sorted.sort_unstable();
-    let hash = hash_bytes(sorted.join("\n").as_bytes());
+    let mut hashed = sorted.join("\n");
+    let mut name = slug(subject.first().map(String::as_str).unwrap_or(""));
+    if let Some(scope) = scope {
+        hashed.push_str("\n#");
+        hashed.push_str(&scope.id);
+        // The file's part of the name is cut so that the id stays within the
+        // length `check_id` allows.
+        let start = name.len().saturating_sub(40);
+        name = format!("{}-{}", name[start..].trim_matches('_'), scope.id);
+    }
+    let hash = hash_bytes(hashed.as_bytes());
     let short = &hash["sha256:".len().."sha256:".len() + 6];
-    format!(
-        "{}-{}-{}",
-        kind.as_str(),
-        slug(subject.first().map(String::as_str).unwrap_or("")),
-        short
-    )
+    format!("{}-{}-{}", kind.as_str(), name, short)
 }
 
 /// An id is used as a folder name, so anything that is not one of ours is
@@ -391,11 +427,24 @@ pub fn commit_version(ws: &Workspace, manifest: &Manifest) -> Result<()> {
 
 /// Compares the hashes a manifest recorded with the files as they are now, and
 /// returns the paths that differ or no longer exist.
-fn changed_sources(ws: &Workspace, manifest: &Manifest) -> Vec<String> {
+///
+/// For an artifact of a part of a file, the file of that part is judged by
+/// the part alone. `scope_now` says where the part is now. The file is
+/// returned when the code of the part has changed or is gone, and is not
+/// returned when only other lines of the file have changed.
+fn changed_sources(
+    ws: &Workspace,
+    manifest: &Manifest,
+    scope_now: Option<&Located>,
+) -> Vec<String> {
+    let scoped = manifest.scope.as_ref().zip(scope_now);
     manifest
         .sources
         .iter()
-        .filter(|(path, hash)| ws.hash_file(path).as_ref() != Some(*hash))
+        .filter(|(path, hash)| match scoped {
+            Some((scope, now)) if &scope.path == *path => now.state.is_stale(),
+            _ => ws.hash_file(path).as_ref() != Some(*hash),
+        })
         .map(|(path, _)| path.clone())
         .collect()
 }
@@ -428,7 +477,11 @@ fn summarise(ws: &Workspace, id: &str) -> Result<ArtifactSummary> {
     let current = current.ok_or_else(|| {
         AppError::new("not_found", "The artifact has no finished version.")
     })?;
-    let stale_sources = changed_sources(ws, &current);
+    let scope_now = current
+        .scope
+        .as_ref()
+        .map(|scope| scope::locate_in(ws, scope));
+    let stale_sources = changed_sources(ws, &current, scope_now.as_ref());
     Ok(ArtifactSummary {
         id: meta.id,
         kind: meta.kind,
@@ -443,6 +496,8 @@ fn summarise(ws: &Workspace, id: &str) -> Result<ArtifactSummary> {
         ports: current.ports.clone(),
         form: current.form.clone(),
         parts: current.parts.clone(),
+        scope: current.scope.clone(),
+        scope_now,
     })
 }
 
@@ -489,6 +544,7 @@ pub fn write_index(ws: &Workspace) -> Result<()> {
                 "current": a.current_version,
                 "sources": a.sources,
                 "stale": a.stale,
+                "scope": a.scope.as_ref().map(|scope| scope.id.as_str()),
                 "ports": a
                     .ports
                     .iter()
@@ -631,6 +687,7 @@ mod tests {
             form: None,
             parts: vec![],
             joins: vec![],
+            scope: None,
         }
     }
 
@@ -741,6 +798,62 @@ mod tests {
 
         delete(&ws, &id).unwrap();
         assert!(list(&ws).is_empty());
+    }
+
+    #[test]
+    fn an_artifact_of_a_part_of_a_file_is_its_own_and_goes_stale_with_that_part(
+    ) {
+        const CODE: &str =
+            "package a\n\nfunc Read() int {\n\treturn 1\n}\n\nfunc \
+                            Write() {\n}\n";
+        let (dir, ws) = workspace();
+        fs::write(dir.path().join("src/handler.go"), CODE).unwrap();
+        let subject = vec!["src/handler.go".to_string()];
+        let scope = scope::for_selection(&ws, "src/handler.go", 3, 5, &[])
+            .unwrap()
+            .symbol
+            .unwrap();
+        let id = artifact_id_of(ArtifactKind::Visual, &subject, Some(&scope));
+        assert!(id.starts_with("visual-src_handler_go-read-"), "{id}");
+        assert_ne!(id, artifact_id(ArtifactKind::Visual, &subject));
+        assert!(artifact_dir(&ws, &id).is_ok());
+        // A long path and a long scope id still give a valid folder name.
+        let long = Scope {
+            id: "x".repeat(40),
+            ..scope.clone()
+        };
+        let deep = vec![format!("{}/file.rs", "deep/".repeat(40))];
+        let long_id =
+            artifact_id_of(ArtifactKind::Stepthrough, &deep, Some(&long));
+        assert!(artifact_dir(&ws, &long_id).is_ok(), "{long_id}");
+
+        fs::create_dir_all(version_dir(&ws, &id, 1).unwrap()).unwrap();
+        let mut made = manifest(&ws, &id, 1);
+        made.scope = Some(scope);
+        commit_version(&ws, &made).unwrap();
+        let listed = &list(&ws)[0];
+        assert!(!listed.stale);
+        assert_eq!(listed.scope.as_ref().unwrap().id, "read");
+
+        // Another function of the file changes. The file's hash is different,
+        // and the part is not, so the artifact is not stale.
+        fs::write(
+            dir.path().join("src/handler.go"),
+            CODE.replace("Write() {\n", "Write() {\n\t// more\n"),
+        )
+        .unwrap();
+        assert!(!list(&ws)[0].stale);
+
+        // The part itself changes.
+        fs::write(
+            dir.path().join("src/handler.go"),
+            CODE.replace("return 1", "return 2"),
+        )
+        .unwrap();
+        let after = &list(&ws)[0];
+        assert!(after.stale);
+        assert_eq!(after.stale_sources, vec!["src/handler.go"]);
+        assert_eq!(after.scope_now.unwrap().state, scope::ScopeState::Changed);
     }
 
     #[test]

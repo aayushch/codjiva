@@ -40,7 +40,9 @@ mod syntax;
 mod text;
 
 pub use grammar::{family_of, has_grammar};
-pub use index::{definitions_of, Index, IndexedDef, SymbolHit};
+pub use index::{
+    definitions_of, extents_of, Extent, Index, IndexedDef, SymbolHit,
+};
 pub use lookup::{lookup, Basis, Group, Lookup, Span, Target};
 pub use refs::{references, Reference, RefsEvent};
 pub use syntax::{Kind, Role};

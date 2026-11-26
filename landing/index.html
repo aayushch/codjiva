@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Codjiva — See what your code does, not just what it says</title>
-<meta name="description" content="Codjiva is a free, open-source desktop app that draws what a source file does: an explorable blueprint, a narrated film of how work moves through it, and four more views for state machines, data shapes, exchanges and data structures. It works with a coding agent installed on your computer, or with an API key.">
+<meta name="description" content="Codjiva is a free, open-source desktop app that draws what a source file does: an explorable blueprint, a narrated film of how work moves through it, and four more views for state machines, data shapes, exchanges and data structures. You can ask the agent about what it drew, and it marks the answer on the picture. It works with a coding agent installed on your computer, or with an API key.">
 <meta property="og:title" content="Codjiva — see what your code does">
-<meta property="og:description" content="Open a folder, pick a file, and watch one request move through it. Blueprints, narrated films and four more views of your code, drawn by the coding agent you already use. Free, open source, local.">
+<meta property="og:description" content="Open a folder, pick a file, and watch one request move through it. Blueprints, narrated films and four more views of your code, drawn by the coding agent you already use, which also answers your questions about them. Free, open source, local.">
 <meta property="og:url" content="https://aayushch.github.io/codjiva/">
 <meta property="og:image" content="https://aayushch.github.io/codjiva/images/app-film.png">
 <meta property="og:type" content="website">
@@ -32,7 +32,7 @@
   "@type": "SoftwareApplication",
   "name": "Codjiva",
   "url": "https://aayushch.github.io/codjiva/",
-  "description": "A desktop app that shows what code does. A coding agent reads a source file and draws it as an explorable blueprint, as a narrated film that follows one unit of work through the file, or as one of four more views: its states to step through, its data shapes, the exchange between its parties, or a data structure in memory.",
+  "description": "A desktop app that shows what code does. A coding agent reads a source file and draws it as an explorable blueprint, as a narrated film that follows one unit of work through the file, or as one of four more views: its states to step through, its data shapes, the exchange between its parties, or a data structure in memory. The same agent answers questions about a view and puts numbered notes on its parts, and a view can be made of one function or type of a file.",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS, Windows, Linux",
   "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -52,6 +52,7 @@
 		</a>
 		<div class="navlinks">
 			<a href="#demo">Live example</a>
+			<a href="#ask">Ask</a>
 			<a href="#how">How it works</a>
 			<a href="#app">The app</a>
 			<a href="#agents">Agents</a>
@@ -79,7 +80,7 @@
 		<div>
 			<span class="eyebrow">A desktop app for understanding code</span>
 			<h1>See what your code does.<br><span class="accent">Not just what it says.</span></h1>
-			<p class="lead">Codjiva opens a folder like an IDE. But where an IDE shows you the text of a file, Codjiva shows you a blueprint of it: the machines, the pipes between them, the limits, and a short narrated film that follows one request from the way in to the way out. A parser, a set of types, a protocol or a data structure gets a view of its own. The coding agent you already use reads the code and draws it, and can say which view fits a file.</p>
+			<p class="lead">Codjiva opens a folder like an IDE. But where an IDE shows you the text of a file, Codjiva shows you a blueprint of it: the machines, the pipes between them, the limits, and a short narrated film that follows one request from the way in to the way out. A parser, a set of types, a protocol or a data structure gets a view of its own. The coding agent you already use reads the code and draws it, and can say which view fits a file. When the picture raises a question, you ask the agent that drew it.</p>
 			<div class="actions">
 				<a class="btn primary" data-dl-link href="https://github.com/aayushch/codjiva/releases/latest" target="_blank" rel="noopener">
 					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -231,6 +232,20 @@
 	</div>
 </section>
 
+<section class="section wrap" id="ask">
+	<span class="eyebrow">Ask about it</span>
+	<h2>Ask the agent that drew it. The answer is marked on the picture.</h2>
+	<p class="lead">A picture raises questions: where can this fail, why is the batch kept here, who else calls this. Beside every blueprint, film and view there is an Ask tab. And when a whole file is too much, select one function and work with only that.</p>
+	<div class="facts">
+		<div class="fact"><b>The same agent, the same conversation</b><span>Your question continues the conversation in which the picture was drawn, so the agent has already read the code. An answer usually takes seconds, not the minutes of a new picture.</span></div>
+		<div class="fact"><b>Answers that point at the code</b><span>An answer names the lines it relies on. Codjiva checks each one against your files and makes it a link only when the file and the line exist.</span></div>
+		<div class="fact"><b>Notes on the picture</b><span>An answer can put numbered notes on the parts it is about, or flag one to be careful with. The picture is not made again for this, and one switch hides the notes.</span></div>
+		<div class="fact"><b>Select code, then discuss or draw it</b><span>Select a function, a type or any lines in the source. Start a discussion about only that code, or make any of the six views of it.</span></div>
+		<div class="fact"><b>Code and picture side by side</b><span>The discussion and the picture of the selected code stand beside the source, above or below the references of a name. One button gives the picture the whole editor area.</span></div>
+		<div class="fact"><b>Marks that follow the code</b><span>A mark in the margin shows which code has a discussion or a picture. It stays with a function when the function moves, and the picture is marked stale only when that function changes.</span></div>
+	</div>
+</section>
+
 <section class="section wrap" id="how">
 	<span class="eyebrow">How it works</span>
 	<h2>Your agent reads the code. Codjiva checks the drawing.</h2>
@@ -240,7 +255,7 @@
 			<li><div><b>Open a folder and pick a file</b><span>Its card offers the six views, and your agent can say which one fits. Say what the picture should show, or leave that empty. For a film, Codjiva suggests companion files from the imports, the tests and the files that use this one. You tick the ones that matter, and can ignore folders such as <code>vendor/</code> for good.</span></div></li>
 			<li><div><b>The agent draws with Codjiva's parts</b><span>For a film it writes a few small source files: the plant, one scene per chapter, and a list of timings and explanations. For a schema, lanes, structure or map view it writes only the data, and Codjiva lays the view out. It may write only inside <code>.codjiva/</code>. A write guard checks every other file and can put back anything that changed.</span></div></li>
 			<li><div><b>Codjiva builds and tests the result</b><span>The sources become one HTML page. A hidden frame plays it and looks for labels that overlap, text that does not fit, scenes that change between two runs, and state that jumps between chapters. Problems go back to the agent to fix.</span></div></li>
-			<li><div><b>Watch, then say what should change</b><span>Pause the film, point at the thing you mean, and write one sentence. A new version is made with only that change. Earlier versions are kept.</span></div></li>
+			<li><div><b>Watch, then say what should change</b><span>Pause the film, point at the thing you mean, and write one sentence. A new version is made with only that change. Earlier versions are kept. A question needs no new version: the agent answers it, and what a discussion found can become the next version.</span></div></li>
 		</ol>
 		<figure class="shot themed">
 			<img class="dark" src="images/animate-dialog.png" width="1600" height="960" loading="lazy" alt="The Animate dialog. It lists suggested companion files with the reason for each, a field for what the film should show, and a choice of length.">
@@ -268,7 +283,7 @@
 	<span class="eyebrow">What it does to your project</span>
 	<h2>It reads your code. It writes one folder.</h2>
 	<div class="facts">
-		<div class="fact"><b>One folder, plain files</b><span>Everything is saved under <code>.codjiva/</code> in the folder you opened. A film is a single HTML file that opens offline in any browser.</span></div>
+		<div class="fact"><b>One folder, plain files</b><span>Everything is saved under <code>.codjiva/</code> in the folder you opened, your discussions too. A film is a single HTML file that opens offline in any browser.</span></div>
 		<div class="fact"><b>Your code is never changed</b><span>Agents are confined to that folder. After every job the write guard compares the rest of the workspace with how it was.</span></div>
 		<div class="fact"><b>Films have no network access</b><span>Every picture and film runs in a sandboxed frame that has no access to the network, your files or the app.</span></div>
 		<div class="fact"><b>No account, no telemetry</b><span>Codjiva has no server. Your code goes only to the agent or provider you chose, under your own account with them. The app's only other request asks GitHub whether a newer version exists, and you can switch that off.</span></div>

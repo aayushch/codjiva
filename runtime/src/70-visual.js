@@ -109,6 +109,27 @@ const buildVisual = (visual, stage, post) => {
   const tip = elementFromHtml('<div class="cj-tip"></div>');
   m.view.append(tip);
 
+  // Notes. The app can put notes on the nodes of a visual that is already
+  // built: it sends them in a `notes` message (see 90-player.js), which calls
+  // `setNotes`. Nothing of the plant changes. Each note is a numbered mark on
+  // a corner of its node, and a click on the mark shows the note's text in
+  // `noteCard`. A note of the kind `emphasis` also has a frame around its
+  // node.
+  //
+  // Each entry of `notes` holds the note as the app sent it, the entry of
+  // `nodes` it is on, its mark `el`, its frame `ring` or null, and the place
+  // `x`, `y` of the mark in world pixels. `openNote` is the id of the note
+  // whose text is shown, or null. `notesStale` is true when a node may have
+  // moved or been hidden since the marks were placed, so that the next
+  // `draw` places them again.
+  let notes = [];
+  let notesOn = true;
+  let notesStale = false;
+  let openNote = null;
+  const noteCard = elementFromHtml('<div class="cj-note-card"></div>');
+  noteCard.style.display = 'none';
+  world.append(noteCard);
+
   // Every element that belongs to a node, by node id.
   const nodes = (visual.nodes || []).map((node) => {
     const els = [];
@@ -249,7 +270,9 @@ const buildVisual = (visual, stage, post) => {
     el === liftSvg ||
     el === liftHtml ||
     el === m.dimmer ||
+    el === noteCard ||
     el.classList.contains('cj-marker') ||
+    el.classList.contains('cj-note-ring') ||
     el.classList.contains('bub');
 
   // The elements that are drawn inside the elements of a node without being
@@ -339,6 +362,110 @@ const buildVisual = (visual, stage, post) => {
     veil.style.height = (VIEW_H + 2 * VEIL_MARGIN) / scale + 'px';
   };
 
+  // Puts the mark of each note on a corner of the first element of its node
+  // that is displayed. The corners are tried in the order top right, top
+  // left, bottom right, bottom left, and the first one that is at least 40 px
+  // away from every marker of the visual and every mark placed so far is
+  // taken. If none is, the top right corner is used. A note whose node is not
+  // displayed, for example on a level of a map that is not on screen, has
+  // its mark hidden. All marks are hidden while the notes are switched off.
+  const placeNotes = () => {
+    const frame = world.getBoundingClientRect();
+    if (!frame.width) {
+      notesStale = true;
+      return;
+    }
+    notesStale = false;
+    const scale = frame.width / STAGE_W;
+    const placed = markers.map((marker) => [marker.x, marker.y]);
+    notes.forEach((one) => {
+      const box = one.entry.els
+        .map((el) => el.getBoundingClientRect())
+        .find((rect) => rect.width || rect.height);
+      const shown = notesOn && !!box;
+      one.el.style.display = shown ? '' : 'none';
+      if (one.ring) one.ring.style.display = shown ? '' : 'none';
+      one.shown = shown;
+      if (!shown) return;
+      const left = (box.left - frame.left) / scale;
+      const top = (box.top - frame.top) / scale;
+      const right = (box.right - frame.left) / scale;
+      const bottom = (box.bottom - frame.top) / scale;
+      const corners = [
+        [right, top],
+        [left, top],
+        [right, bottom],
+        [left, bottom],
+      ];
+      const free = corners.find((corner) =>
+        placed.every(
+          (other) =>
+            Math.hypot(other[0] - corner[0], other[1] - corner[1]) >= 40,
+        ),
+      );
+      const at = free || corners[0];
+      one.x = Math.round(at[0]);
+      one.y = Math.round(at[1]);
+      one.el.style.left = one.x + 'px';
+      one.el.style.top = one.y + 'px';
+      placed.push([one.x, one.y]);
+      if (one.ring) {
+        one.ring.style.left = left - NOTE_RING_GAP + 'px';
+        one.ring.style.top = top - NOTE_RING_GAP + 'px';
+        one.ring.style.width = right - left + 2 * NOTE_RING_GAP + 'px';
+        one.ring.style.height = bottom - top + 2 * NOTE_RING_GAP + 'px';
+      }
+    });
+  };
+  // How far the frame of an `emphasis` note is from the box of its node, in
+  // world pixels.
+  const NOTE_RING_GAP = 8;
+
+  // Shows the text of the open note beside its mark, or hides the card when
+  // no note is open or the open note has no text. The card opens below and to
+  // the right of the mark. It is moved left or up as far as needed to stay
+  // inside the part of the world that the view shows. `scale` is the factor
+  // between world pixels and view pixels.
+  const placeNoteCard = (scale) => {
+    const open = notes.find((one) => one.note.id === openNote);
+    notes.forEach((one) => one.el.classList.toggle('open', one === open));
+    if (!open || !open.shown || !open.note.text) {
+      noteCard.style.display = 'none';
+      return;
+    }
+    noteCard.style.display = '';
+    noteCard.classList.toggle('cj-flag', open.note.kind === 'flag');
+    const margin = 12 / scale;
+    const viewLeft = view.cx - VIEW_CX / scale + margin;
+    const viewRight = view.cx + (VIEW_W - VIEW_CX) / scale - margin;
+    const viewTop = view.cy - VIEW_CY / scale + margin;
+    const viewBottom = view.cy + (VIEW_H - VIEW_CY) / scale - margin;
+    const left = Math.max(
+      viewLeft,
+      Math.min(open.x + 24, viewRight - noteCard.offsetWidth),
+    );
+    const top = Math.max(
+      viewTop,
+      Math.min(open.y + 24, viewBottom - noteCard.offsetHeight),
+    );
+    noteCard.style.left = left + 'px';
+    noteCard.style.top = top + 'px';
+  };
+
+  // Makes the note with the id `id` the open one, or closes the open note
+  // with null, and writes its text into the card.
+  const setOpenNote = (id) => {
+    const found = notes.find((one) => one.note.id === id);
+    openNote = found ? found.note.id : null;
+    if (found)
+      noteCard.innerHTML =
+        '<span class="k">' +
+        (found.note.kind === 'flag' ? 'FLAG ' : 'NOTE ') +
+        CJ.esc(found.note.n) +
+        '</span>' +
+        CJ.esc(found.note.text);
+  };
+
   // False until the labels that lie over a packet have their two colours (see
   // `shadeLabels`). The packets of a visual do not move, so this is done
   // once, in the first `draw` in which the plant has a size on the page.
@@ -349,6 +476,8 @@ const buildVisual = (visual, stage, post) => {
     applyFraming(world, view.cx, view.cy, scale);
     placeVeil(scale);
     if (!labelsShaded) labelsShaded = shadeLabels(m);
+    if (notesStale && notes.length) placeNotes();
+    placeNoteCard(scale);
     liftSvg.replaceChildren();
     liftHtml.replaceChildren();
     const focus = selected || hovered;
@@ -382,6 +511,8 @@ const buildVisual = (visual, stage, post) => {
     // A layer that is switched off hides its packets, and a label that was
     // over one of them gets its own colour back.
     labelsShaded = shadeLabels(m);
+    // A node of a layer that is switched off is hidden, and so is its note.
+    if (notes.length) placeNotes();
   };
 
   // Functions that other parts of the runtime add to be told what the viewer
@@ -503,8 +634,20 @@ const buildVisual = (visual, stage, post) => {
     drag = null;
     if (wasDrag) return;
     const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    // A click on the mark of a note shows its text, or hides it if it is
+    // showing. The app is told, so that it can show the answer the note
+    // comes from.
+    const note = notes.find((one) => one.el === under);
+    if (note) {
+      openMarker = -1;
+      setOpenNote(openNote === note.note.id ? null : note.note.id);
+      draw();
+      post({ cj: 'note', id: note.note.id, open: openNote !== null });
+      return;
+    }
     const markerIndex = markerEls.indexOf(under);
     if (markerIndex >= 0) {
+      openNote = null;
       openMarker = openMarker === markerIndex ? -1 : markerIndex;
       if (openMarker >= 0) placeBubble(openMarker);
       // A "?" marker belongs to a node, so opening it also selects the node.
@@ -514,8 +657,9 @@ const buildVisual = (visual, stage, post) => {
       else draw();
       return;
     }
-    if (under && under.closest && under.closest('.bub')) return;
+    if (under && under.closest && under.closest('.bub, .cj-note-card')) return;
     openMarker = -1;
+    openNote = null;
     const id = nodeAt(ev.clientX, ev.clientY);
     const now = performance.now();
     const twice =
@@ -691,6 +835,85 @@ const buildVisual = (visual, stage, post) => {
         draw();
       }
       return rationaleOn;
+    },
+    // Replaces the notes on the visual. `list` holds the notes, each as
+    // `{ id, n, part, kind, text }`: `n` is the number its mark shows, `part`
+    // the id of the node it is on, and `kind` one of `note`, `flag` and
+    // `emphasis`. A note whose `part` is not the id of a node is left out.
+    // With `on` false the notes are kept and their marks are hidden. Returns
+    // how many notes the visual has now.
+    setNotes(list, on) {
+      notes.forEach((one) => {
+        one.el.remove();
+        if (one.ring) one.ring.remove();
+      });
+      notesOn = on !== false;
+      notes = [];
+      (list || []).forEach((note, i) => {
+        const entry = nodeById[note.part];
+        if (!entry || !entry.els.length) return;
+        const kind =
+          note.kind === 'flag' || note.kind === 'emphasis' ? note.kind : 'note';
+        const n = note.n == null ? i + 1 : note.n;
+        const el = elementFromHtml(
+          '<div class="cj-marker cj-note cj-' +
+            kind +
+            '">' +
+            CJ.esc(n) +
+            '</div>',
+        );
+        const ring =
+          kind === 'emphasis'
+            ? elementFromHtml('<div class="cj-note-ring"></div>')
+            : null;
+        if (ring) m.dimmer.before(ring);
+        m.dimmer.before(el);
+        notes.push({
+          note: {
+            id: String(note.id),
+            n,
+            kind,
+            text: String(note.text == null ? '' : note.text),
+          },
+          entry,
+          el,
+          ring,
+          x: 0,
+          y: 0,
+          shown: false,
+        });
+      });
+      setOpenNote(openNote);
+      placeNotes();
+      draw();
+      return notes.length;
+    },
+    // Shows the text of the note with the id `id`, and moves the camera to
+    // the note's mark when the mark is outside the view. With null, or an id
+    // no note has, the open note is closed.
+    showNote(id) {
+      openMarker = -1;
+      setOpenNote(id);
+      const open = notes.find((one) => one.note.id === openNote);
+      if (open && open.shown) {
+        const scale = view.z * CAMERA_SCALE;
+        const outside =
+          Math.abs(open.x - view.cx) > (VIEW_CX - 60) / scale ||
+          Math.abs(open.y - view.cy) > (VIEW_CY - 60) / scale;
+        if (outside) {
+          view.cx = insideX(open.x);
+          view.cy = insideY(open.y);
+        }
+      }
+      draw();
+    },
+    // Places the marks of the notes again. Code that moves, shows or hides
+    // nodes after the visual was built calls it: a map when it shows another
+    // level, and a step-through when it draws a step.
+    notesMoved() {
+      if (!notes.length) return;
+      placeNotes();
+      draw();
     },
     zoomBy(factor) {
       const rect = m.view.getBoundingClientRect();

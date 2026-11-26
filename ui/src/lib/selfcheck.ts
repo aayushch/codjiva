@@ -627,8 +627,9 @@ async function composeTour(
   const ids = files
     .map(
       (file) =>
-        app.artifacts.find((a) => a.kind === 'visual' && a.subject[0] === file)
-          ?.id,
+        app.artifacts.find(
+          (a) => a.kind === 'visual' && a.subject[0] === file && !a.scope,
+        )?.id,
     )
     .filter((id): id is string => !!id);
   record(

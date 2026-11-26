@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 /// Raised whenever a change to the prompt files could change what agents
 /// produce. It is recorded in every manifest.
-pub const PROMPT_VERSION: &str = "1.9.0";
+pub const PROMPT_VERSION: &str = "1.10.0";
 
 macro_rules! prompt_file {
     ($name:literal) => {
@@ -46,6 +46,9 @@ const USER_FIX_REPORT: &str = prompt_file!("user-fix-report.md");
 const USER_FIX_FEEDBACK: &str = prompt_file!("user-fix-feedback.md");
 const SUGGEST: &str = prompt_file!("suggest.md");
 const USER_SUGGEST: &str = prompt_file!("user-suggest.md");
+const ASK: &str = prompt_file!("ask.md");
+const USER_ASK: &str = prompt_file!("user-ask.md");
+const USER_DISCUSSION: &str = prompt_file!("user-discussion.md");
 
 /// The values a prompt's placeholders are filled with.
 pub type Values = BTreeMap<&'static str, String>;
@@ -140,6 +143,23 @@ pub fn system_suggest() -> &'static str {
 
 pub fn user_suggest(values: &Values) -> String {
     render(USER_SUGGEST, values)
+}
+
+/// The system prompt for a question about code or about a drawing of it. It
+/// stands alone, like [`system_suggest`], because the agent draws nothing.
+pub fn system_ask() -> &'static str {
+    ASK
+}
+
+pub fn user_ask(values: &Values) -> String {
+    render(USER_ASK, values)
+}
+
+/// The paragraph that is added to the user prompt of a job that was started
+/// from a discussion. With a `discussion` value it holds that text. Without
+/// one it refers to the conversation the agent is continuing.
+pub fn user_discussion(values: &Values) -> String {
+    render(USER_DISCUSSION, values)
 }
 
 pub fn user_visualise(values: &Values) -> String {

@@ -28,6 +28,18 @@
 //! The job reports everything it does as [`JobEvent`]s. It never shows a result
 //! that was not built and checked.
 //!
+//! A job can be about a part of one file instead of the whole file. The
+//! request then holds that part as a [`Scope`], and the artifact the job
+//! makes is the one of that scope (see `artifacts::artifact_id_of`).
+//!
+//! A job can be started from a discussion (see [`threads`]). Where the agent
+//! can continue a conversation, the job continues the discussion's, so the
+//! agent knows what was said. Otherwise the job's prompt holds the text of
+//! the discussion.
+//!
+//! [`rebuild`] is not a job. It builds an existing version again with the
+//! runtime of this app, without an agent.
+//!
 //! Any number of jobs may run at the same time, with one exception. Two jobs
 //! never make a version of the same artifact at the same time. The second one
 //! is refused with the error `artifact_busy`. See [`Claim`].
@@ -44,9 +56,10 @@ use crate::compose::{self, ArtifactPorts, Join, Part};
 use crate::error::{AppError, Result};
 use crate::guard::{self, Violation};
 use crate::prompts::{self, Guide, Values, PROMPT_VERSION};
+use crate::scope::{self, Scope};
 use crate::settings::{Effort, EffortSetting};
 use crate::workspace::Workspace;
-use crate::{companions, reference, store, util};
+use crate::{companions, reference, store, threads, util};
 use async_trait::async_trait;
 use codjiva_build::{Diagnostic, Severity, Sources};
 use serde::{Deserialize, Serialize};
@@ -178,6 +191,14 @@ pub struct JobRequest {
     /// `structure` or `map`.
     #[serde(default)]
     pub view: Option<String>,
+    /// The part of the subject file the artifact is about. `None` for an
+    /// artifact of the whole file. A feedback job leaves it empty, because
+    /// the version it changes records its scope.
+    #[serde(default)]
+    pub scope: Option<Scope>,
+    /// The id of the discussion the job was started from, if any.
+    #[serde(default)]
+    pub thread: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -278,13 +299,17 @@ static IN_WORK: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
 /// A version's number is one more than the highest version folder that exists.
 /// Two jobs for the same artifact that started together would both get the
 /// same number and write into the same folder, so the second job is refused.
-struct Claim(PathBuf);
+///
+/// A question in a discussion holds one too, for the artifact the question
+/// is about and for the file of its thread (see `threads::ask`). A question
+/// and a job would continue the same agent conversation at the same time.
+pub(crate) struct Claim(PathBuf);
 
 impl Claim {
     /// Adds the artifact's folder to [`IN_WORK`]. Returns `None` when it is
     /// already there, because another job is making a version of the same
     /// artifact.
-    fn take(artifact_dir: PathBuf) -> Option<Claim> {
+    pub(crate) fn take(artifact_dir: PathBuf) -> Option<Claim> {
         let added = IN_WORK
             .lock()
             .expect("the lock on the artifacts in work is not poisoned")
@@ -817,13 +842,15 @@ fn build_page(
 /// Builds the version's page from the agent's sources, checks the analysis,
 /// and, when a page was built, runs its self-test.
 async fn build_and_check(
-    ctx: &JobContext,
+    ws: &Workspace,
+    validator: &dyn Validator,
+    emit: &(dyn Fn(JobEvent) + Send + Sync),
     plan: &Plan,
     version: u32,
     version_dir: &Path,
 ) -> Result<CheckOutcome> {
     let artifact_id = plan.artifact_id.as_str();
-    (ctx.emit)(JobEvent::Phase {
+    emit(JobEvent::Phase {
         phase: "building".into(),
         detail: None,
         chapter: None,
@@ -831,10 +858,10 @@ async fn build_and_check(
     });
     let mut sources =
         Sources::read_dir(&version_dir.join("src")).unwrap_or_default();
-    let (model, mut problems) = check_model(&ctx.workspace, version_dir);
-    problems.extend(check_rationales(&ctx.workspace, version_dir, plan.film));
+    let (model, mut problems) = check_model(ws, version_dir);
+    problems.extend(check_rationales(ws, version_dir, plan.film));
     problems.extend(check_legend_forms(model.as_ref(), version_dir, plan.film));
-    problems.extend(check_edge_cases(&ctx.workspace, version_dir, plan.film));
+    problems.extend(check_edge_cases(ws, version_dir, plan.film));
     // A step-through is a visual with a `stepper`. Without one the page would
     // be built as a plain visual, which is not what the job was asked for.
     if plan.kind == ArtifactKind::Stepthrough
@@ -859,16 +886,8 @@ async fn build_and_check(
     // a visual, so their references are checked in the same way.
     let view = plan.kind.view_name();
     if let Some(name) = view {
-        problems.extend(check_rationales_in(
-            &ctx.workspace,
-            version_dir,
-            "view.json",
-        ));
-        problems.extend(check_edge_cases_in(
-            &ctx.workspace,
-            version_dir,
-            "view.json",
-        ));
+        problems.extend(check_rationales_in(ws, version_dir, "view.json"));
+        problems.extend(check_edge_cases_in(ws, version_dir, "view.json"));
         let written = sources
             .view_json
             .as_deref()
@@ -951,14 +970,14 @@ async fn build_and_check(
 
     let mut selftest = json!({ "issues": [], "stats": {} });
     if built {
-        (ctx.emit)(JobEvent::Phase {
+        emit(JobEvent::Phase {
             phase: "validating".into(),
             detail: None,
             chapter: None,
             of: None,
         });
-        selftest = ctx.validator.validate(artifact_id, version).await?;
-        problems.extend(check_sim_refs(&ctx.workspace, &selftest));
+        selftest = validator.validate(artifact_id, version).await?;
+        problems.extend(check_sim_refs(ws, &selftest));
     }
     let issues = selftest
         .get("issues")
@@ -1344,6 +1363,100 @@ pub async fn run(ctx: JobContext, request: JobRequest, job_id: String) {
     }
 }
 
+/// Builds the version `version` of an artifact again with the runtime of this
+/// app, as a new version, and returns the number of that new version.
+///
+/// A version keeps the page that was built for it, and with it the runtime
+/// of the app that built it. What a newer runtime can do, such as drawing
+/// notes on a visual, is missing from that page. This builds a new page from
+/// the same sources. No agent runs, so it costs nothing and takes as long as
+/// the self-test.
+///
+/// The new version is a copy of the old one in everything an agent wrote. It
+/// records the same agent, conversation, sources and scope, so it is stale
+/// exactly when the old one is, and feedback about it continues the same
+/// conversation.
+///
+/// The new version is kept only when the page could be built and its checks
+/// find no more errors than the old version has. Otherwise nothing is kept
+/// and the error `rebuild_failed` says why. The error `artifact_busy` is
+/// returned while a job is making a version of the same artifact.
+pub async fn rebuild(
+    ws: &Workspace,
+    validator: &dyn Validator,
+    artifact_id: &str,
+    version: u32,
+) -> Result<u32> {
+    let base = artifacts::read_manifest(ws, artifact_id, version)?;
+    let _claim = Claim::take(artifacts::artifact_dir(ws, artifact_id)?)
+        .ok_or_else(|| {
+            AppError::new(
+                "artifact_busy",
+                "A new version of this is already being made. Wait for that \
+                 job to finish, or cancel it.",
+            )
+        })?;
+    let plan = plan_from(base.clone(), version);
+    let new_version = artifacts::next_version(ws, artifact_id)?;
+    let from = artifacts::version_dir(ws, artifact_id, version)?;
+    let to = artifacts::version_dir(ws, artifact_id, new_version)?;
+    let discard = || {
+        let _ = std::fs::remove_dir_all(&to);
+    };
+    if let Err(error) = copy_version(&from, &to) {
+        discard();
+        return Err(AppError::io("copy the version to build again", error));
+    }
+    let check =
+        match build_and_check(ws, validator, &|_| {}, &plan, new_version, &to)
+            .await
+        {
+            Ok(check) => check,
+            Err(error) => {
+                discard();
+                return Err(error);
+            }
+        };
+    if !check.built || check.errors > base.validation.errors {
+        discard();
+        return Err(AppError::new(
+            "rebuild_failed",
+            if check.built {
+                "The page that the current runtime builds from this version \
+                 does not pass the checks, so the version was left as it is. \
+                 Regenerate it to get one that does."
+            } else {
+                "This version could not be built with the current runtime, \
+                 so it was left as it is. Regenerate it to get one that can."
+            },
+        ));
+    }
+    util::write_json(&to.join("validation.json"), &check.report)?;
+    let manifest = Manifest {
+        version: new_version,
+        title: check.title.unwrap_or(base.title),
+        runtime_version: codjiva_build::RUNTIME_VERSION.to_string(),
+        duration_sec: check.report["duration"].as_f64().or(base.duration_sec),
+        chapters: check.report["chapters"]
+            .as_array()
+            .cloned()
+            .unwrap_or(base.chapters),
+        validation: ValidationRecord {
+            passed: check.errors == 0,
+            iterations: 0,
+            errors: check.errors,
+            warnings: check.warnings,
+        },
+        created_at: util::now_rfc3339(),
+        parent: Some(version),
+        feedback: None,
+        cost_usd: None,
+        ..base
+    };
+    artifacts::commit_version(ws, &manifest)?;
+    Ok(new_version)
+}
+
 /// What a job is going to make, worked out from the request before anything is
 /// written.
 struct Plan {
@@ -1370,6 +1483,31 @@ struct Plan {
     parent: Option<u32>,
     /// For a feedback job: the manifest of the version being changed.
     base: Option<Manifest>,
+    /// The part of the subject file the artifact is about, with its lines
+    /// and their hash as the file is when the job starts. For a feedback
+    /// job it is the scope the changed version recorded.
+    scope: Option<Scope>,
+}
+
+/// What a job that changes or rebuilds the version `base` makes: an artifact
+/// of the same kind, subject and scope, with `version` as its parent.
+fn plan_from(base: Manifest, version: u32) -> Plan {
+    Plan {
+        film: base.kind == ArtifactKind::Film
+            || base.form.as_deref() == Some("film"),
+        parts: Vec::new(),
+        joins: base.joins.clone(),
+        kind: base.kind,
+        guide: Guide::Fix,
+        artifact_id: base.artifact_id.clone(),
+        subject: base.subject.clone(),
+        companions: base.companions.iter().map(|c| c.path.clone()).collect(),
+        instructions: base.instructions.clone(),
+        folder_files: Vec::new(),
+        parent: Some(version),
+        scope: base.scope.clone(),
+        base: Some(base),
+    }
 }
 
 /// Checks the request and decides what the job makes.
@@ -1394,25 +1532,7 @@ fn plan(ws: &Workspace, request: &JobRequest) -> Result<Plan> {
             ));
         }
         let base = artifacts::read_manifest(ws, id, version)?;
-        return Ok(Plan {
-            film: base.kind == ArtifactKind::Film
-                || base.form.as_deref() == Some("film"),
-            parts: Vec::new(),
-            joins: base.joins.clone(),
-            kind: base.kind,
-            guide: Guide::Fix,
-            artifact_id: base.artifact_id.clone(),
-            subject: base.subject.clone(),
-            companions: base
-                .companions
-                .iter()
-                .map(|c| c.path.clone())
-                .collect(),
-            instructions: base.instructions.clone(),
-            folder_files: Vec::new(),
-            parent: Some(version),
-            base: Some(base),
-        });
+        return Ok(plan_from(base, version));
     }
 
     if request.kind == JobKind::Compose {
@@ -1491,6 +1611,12 @@ fn plan(ws: &Workspace, request: &JobRequest) -> Result<Plan> {
                 format!("The folder {dir} holds no code files."),
             ));
         }
+        if request.scope.is_some() {
+            return Err(AppError::new(
+                "bad_request",
+                "A selection of code belongs to one file. Choose a file.",
+            ));
+        }
         if info.too_large {
             return Err(AppError::new(
                 "folder_too_large",
@@ -1521,6 +1647,7 @@ fn plan(ws: &Workspace, request: &JobRequest) -> Result<Plan> {
             instructions: request.instructions.trim().to_string(),
             parent,
             base: None,
+            scope: None,
         });
     }
     for path in request.subject.iter().chain(&request.companions) {
@@ -1534,7 +1661,30 @@ fn plan(ws: &Workspace, request: &JobRequest) -> Result<Plan> {
             ));
         }
     }
-    let artifact_id = artifacts::artifact_id(kind, &request.subject);
+    // The scope is found in the file as it is now. Its lines and their hash
+    // are what the version records, so the version is stale as soon as that
+    // code changes again.
+    let scope = match &request.scope {
+        Some(scope) => {
+            if scope.path != request.subject[0] {
+                return Err(AppError::new(
+                    "bad_request",
+                    "The selection is not in the file the job is about.",
+                ));
+            }
+            let text = ws.read_text(&scope.path)?.text;
+            Some(scope::refreshed(scope, &text).ok_or_else(|| {
+                AppError::new(
+                    "scope_lost",
+                    "The selected code is no longer in the file. Select it \
+                     again.",
+                )
+            })?)
+        }
+        None => None,
+    };
+    let artifact_id =
+        artifacts::artifact_id_of(kind, &request.subject, scope.as_ref());
     let parent = artifacts::read_meta(ws, &artifact_id)
         .ok()
         .map(|meta| meta.current_version);
@@ -1551,6 +1701,7 @@ fn plan(ws: &Workspace, request: &JobRequest) -> Result<Plan> {
         instructions: request.instructions.trim().to_string(),
         parent,
         base: None,
+        scope,
     })
 }
 
@@ -1646,6 +1797,7 @@ fn plan_pipeline(ws: &Workspace, request: &JobRequest) -> Result<Plan> {
         instructions: request.instructions.trim().to_string(),
         parent,
         base: None,
+        scope: None,
     })
 }
 
@@ -1814,6 +1966,20 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Copies what an agent wrote for the version in the folder `from` into the
+/// folder `to` of a new version: the sources, the analysis and the outline
+/// of a film. The built page and the reports are not copied, because the new
+/// version gets its own.
+fn copy_version(from: &Path, to: &Path) -> std::io::Result<()> {
+    copy_tree(&from.join("src"), &to.join("src"))?;
+    for name in ["model.json", "outline.json"] {
+        if from.join(name).is_file() {
+            std::fs::copy(from.join(name), to.join(name))?;
+        }
+    }
+    Ok(())
+}
+
 /// Fills in the prompt values that describe what the user said about a version.
 fn feedback_values(values: &mut Values, feedback: &Feedback) {
     let seconds = |x: f64| format!("{}", (x * 10.0).round() / 10.0);
@@ -1895,6 +2061,13 @@ async fn run_inner(
     }
     values.insert("companions", plan.companions.join(", "));
     values.insert("instructions", plan.instructions.clone());
+    if let Some(scope) = &plan.scope {
+        values.insert(
+            "scopeLines",
+            format!("{}–{}", scope.start_line, scope.end_line),
+        );
+        values.insert("scopeName", scope.symbol.clone().unwrap_or_default());
+    }
 
     let mut user_prompt = match request.kind {
         JobKind::Compose => {
@@ -1946,8 +2119,11 @@ async fn run_inner(
             }
             // A still visual of the same file has the analysis the
             // step-through can start from.
-            let visual_id =
-                artifacts::artifact_id(ArtifactKind::Visual, &plan.subject);
+            let visual_id = artifacts::artifact_id_of(
+                ArtifactKind::Visual,
+                &plan.subject,
+                plan.scope.as_ref(),
+            );
             if let Ok(meta) = artifacts::read_meta(ws, &visual_id) {
                 values.insert(
                     "visual",
@@ -1989,8 +2165,11 @@ async fn run_inner(
             }
             // A still visual of the same file gives the film its plant to start
             // from.
-            let visual_id =
-                artifacts::artifact_id(ArtifactKind::Visual, &plan.subject);
+            let visual_id = artifacts::artifact_id_of(
+                ArtifactKind::Visual,
+                &plan.subject,
+                plan.scope.as_ref(),
+            );
             if let Ok(meta) = artifacts::read_meta(ws, &visual_id) {
                 values.insert(
                     "visual",
@@ -2027,20 +2206,7 @@ async fn run_inner(
                 &artifact_id,
                 plan.parent.unwrap_or(1),
             )?;
-            let copied =
-                copy_tree(&from.join("src"), &paths.version_dir.join("src"))
-                    .and_then(|()| {
-                        for name in ["model.json", "outline.json"] {
-                            if from.join(name).is_file() {
-                                std::fs::copy(
-                                    from.join(name),
-                                    paths.version_dir.join(name),
-                                )?;
-                            }
-                        }
-                        Ok(())
-                    });
-            if let Err(error) = copied {
+            if let Err(error) = copy_version(&from, &paths.version_dir) {
                 discard();
                 return Err(AppError::io("copy the version to change", error));
             }
@@ -2081,11 +2247,34 @@ async fn run_inner(
     // A feedback job continues the conversation that made the version, when the
     // same agent made it and can continue a conversation. The agent then still
     // knows why it drew things as it did.
-    let mut session: Option<String> = plan
+    let of_base: Option<String> = plan
         .base
         .as_ref()
         .filter(|base| base.agent.kind == agent.id && agent.supports_resume)
         .and_then(|base| base.agent.session_id.clone());
+    // A job that was started from a discussion continues the discussion's
+    // conversation where it can, so the agent knows what was said. Its
+    // prompt then only refers to that conversation. Where it cannot, the
+    // prompt holds the text of the discussion.
+    let thread = request
+        .thread
+        .as_deref()
+        .and_then(|id| threads::read(ws, id).ok());
+    let of_thread = thread
+        .as_ref()
+        .and_then(|thread| threads::session_for(thread, &agent));
+    let discussion = |with_text: bool| {
+        let mut values: Values = BTreeMap::new();
+        if let Some(thread) = thread.as_ref().filter(|_| with_text) {
+            values.insert("discussion", threads::transcript(thread));
+        }
+        prompts::user_discussion(&values)
+    };
+    let prompt_without_discussion = user_prompt.clone();
+    if thread.is_some() {
+        user_prompt.push_str(&discussion(of_thread.is_none()));
+    }
+    let mut session: Option<String> = of_thread.clone().or(of_base);
     let mut continues_earlier_session = session.is_some();
     let mut model_used: Option<String> = None;
     // `iteration` is the number of fix rounds made so far. `uncounted` is how
@@ -2170,6 +2359,10 @@ async fn run_inner(
         if failed && continues_earlier_session {
             continues_earlier_session = false;
             session = None;
+            if of_thread.is_some() {
+                user_prompt =
+                    prompt_without_discussion.clone() + &discussion(true);
+            }
             (ctx.emit)(JobEvent::Log {
                 level: LogLevel::Warn,
                 text: "The earlier conversation could not be continued, \
@@ -2227,7 +2420,9 @@ async fn run_inner(
             });
         }
         let check = match build_and_check(
-            ctx,
+            ws,
+            ctx.validator.as_ref(),
+            ctx.emit.as_ref(),
             &plan,
             version,
             &paths.version_dir,
@@ -2401,8 +2596,16 @@ async fn run_inner(
             None => plan.parts.iter().map(|(part, _)| part.clone()).collect(),
         },
         joins: plan.joins.clone(),
+        scope: plan.scope.clone(),
     };
     artifacts::commit_version(ws, &manifest)?;
+    // The discussion goes on from the conversation that made this version.
+    // A failure to record that only costs the next question its memory of
+    // the job, so it does not fail the job.
+    if let (Some(thread), Some(session)) = (&thread, &manifest.agent.session_id)
+    {
+        let _ = threads::set_session(ws, &thread.id, &agent.id, session);
+    }
     Ok(Some(JobEvent::Result {
         artifact_id,
         version,
@@ -2606,6 +2809,23 @@ mod tests {
         reports: Vec<Value>,
         max_fix: u32,
     ) -> Vec<JobEvent> {
+        let request = JobRequest {
+            kind: JobKind::Visualise,
+            subject: vec!["src/handler.go".into()],
+            instructions: "Show the queue".into(),
+            ..JobRequest::default()
+        };
+        run_request(setup, request, reports, max_fix).await
+    }
+
+    /// Runs the job `request` with the recorded session of `setup`, and
+    /// returns everything the job reported.
+    async fn run_request(
+        setup: &Setup,
+        request: JobRequest,
+        reports: Vec<Value>,
+        max_fix: u32,
+    ) -> Vec<JobEvent> {
         let events = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&events);
         let ctx = JobContext {
@@ -2625,15 +2845,20 @@ mod tests {
             max_fix_iterations: max_fix,
             agent_customizations: false,
         };
-        let request = JobRequest {
-            kind: JobKind::Visualise,
-            subject: vec!["src/handler.go".into()],
-            instructions: "Show the queue".into(),
-            ..JobRequest::default()
-        };
         run(ctx, request, new_job_id()).await;
         let out = events.lock().unwrap().clone();
         out
+    }
+
+    /// The text of the first user prompt of the only job of the workspace.
+    fn first_prompt(setup: &Setup) -> String {
+        let job = std::fs::read_dir(setup.ws.dot_dir().join("jobs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        std::fs::read_to_string(job.join("user-1.md")).unwrap()
     }
 
     fn ok_report() -> Value {
@@ -2735,6 +2960,200 @@ mod tests {
         assert!(
             jobs.join("reference/film/plant.js").exists()
                 && jobs.join("schemas/visual.schema.json").exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_job_for_a_part_of_a_file_makes_an_artifact_of_that_part() {
+        let s = setup(GOOD, &[]);
+        let picked =
+            scope::for_selection(&s.ws, "src/handler.go", 3, 5, &[]).unwrap();
+        assert!(picked.exact);
+        let request = JobRequest {
+            kind: JobKind::Visualise,
+            subject: vec!["src/handler.go".into()],
+            scope: picked.symbol,
+            ..JobRequest::default()
+        };
+        let events =
+            run_request(&s, request.clone(), vec![ok_report()], 3).await;
+        let Some(JobEvent::Result { artifact_id, .. }) = events.last().cloned()
+        else {
+            panic!("{events:?}")
+        };
+        assert_ne!(
+            artifact_id,
+            artifacts::artifact_id(ArtifactKind::Visual, &request.subject)
+        );
+        assert!(artifact_id.contains("-submit-"), "{artifact_id}");
+        let manifest =
+            artifacts::read_manifest(&s.ws, &artifact_id, 1).unwrap();
+        let recorded = manifest.scope.unwrap();
+        assert_eq!(recorded.symbol.as_deref(), Some("Submit"));
+        assert_eq!((recorded.start_line, recorded.end_line), (3, 5));
+        let prompt = first_prompt(&s);
+        assert!(
+            prompt.contains(
+                "Draw only a part of that file: lines 3–5, the definition \
+                 `Submit`."
+            ),
+            "{prompt}"
+        );
+        assert!(!prompt.contains("{{"));
+
+        // A line outside the part changes: the version is not stale. Then
+        // the part changes: it is.
+        let file = s.ws.root().join("src/handler.go");
+        let code = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(&file, format!("// orders\n{code}")).unwrap();
+        assert!(!artifacts::list(&s.ws)[0].stale);
+        std::fs::write(&file, code.replace("queue()", "queue(1)")).unwrap();
+        assert!(artifacts::list(&s.ws)[0].stale);
+
+        // A second job for the same part adds a version to the same
+        // artifact, and records the part as it is now.
+        let events =
+            run_request(&s, request.clone(), vec![ok_report()], 3).await;
+        assert!(matches!(
+            events.last(),
+            Some(JobEvent::Result { artifact_id: again, version: 2, .. })
+                if *again == artifact_id
+        ));
+        assert!(!artifacts::list(&s.ws)[0].stale);
+
+        // A selection that is no longer in the file is refused.
+        let mut gone = request;
+        gone.scope.as_mut().unwrap().symbol = Some("Removed".into());
+        let events = run_request(&s, gone, vec![ok_report()], 3).await;
+        assert!(matches!(
+            events.last(),
+            Some(JobEvent::Failed { code, .. }) if code == "scope_lost"
+        ));
+    }
+
+    /// Saves a discussion with one question and one answer about the file
+    /// `src/handler.go`. `session` is the conversation the discussion would
+    /// continue with the agent `replay`. Returns the discussion's id.
+    fn saved_thread(setup: &Setup, session: Option<&str>) -> String {
+        let message = |role, text: &str| threads::Message {
+            role,
+            text: text.into(),
+            created_at: "2026-11-26T10:00:00Z".into(),
+            author: String::new(),
+            model: None,
+            about: None,
+            refs: Vec::new(),
+            notes: Vec::new(),
+        };
+        let thread = threads::Thread {
+            schema_version: threads::SCHEMA_VERSION,
+            id: "t1-0".into(),
+            title: "Why is the order queued?".into(),
+            path: "src/handler.go".into(),
+            scope: None,
+            artifact_id: Some("visual-x".into()),
+            created_at: "2026-11-26T10:00:00Z".into(),
+            updated_at: "2026-11-26T10:00:00Z".into(),
+            session: session.map(|id| threads::Session {
+                agent: "replay".into(),
+                session_id: id.into(),
+            }),
+            messages: vec![
+                message(threads::Role::User, "Why is the order queued?"),
+                message(threads::Role::Agent, "So that Submit returns fast."),
+            ],
+        };
+        util::write_json(
+            &threads::threads_dir(&setup.ws).join("t1-0.json"),
+            &thread,
+        )
+        .unwrap();
+        thread.id
+    }
+
+    #[tokio::test]
+    async fn a_job_from_a_discussion_gets_its_text_or_continues_its_conversation(
+    ) {
+        // The discussion has no conversation to continue, so the prompt
+        // holds its text.
+        let s = setup(GOOD, &[]);
+        let thread = saved_thread(&s, None);
+        let request = JobRequest {
+            kind: JobKind::Visualise,
+            subject: vec!["src/handler.go".into()],
+            thread: Some(thread.clone()),
+            ..JobRequest::default()
+        };
+        let events =
+            run_request(&s, request.clone(), vec![ok_report()], 3).await;
+        assert!(matches!(events.last(), Some(JobEvent::Result { .. })));
+        let prompt = first_prompt(&s);
+        assert!(prompt.contains("This job follows a discussion between"));
+        assert!(prompt.contains(
+            "User: Why is the order queued?\n\nAgent: So that Submit returns \
+             fast."
+        ));
+        // The next question of the discussion continues the conversation
+        // that made the version.
+        let after = threads::read(&s.ws, &thread).unwrap();
+        assert_eq!(after.session.unwrap().session_id, "sess-1");
+
+        // The discussion has a conversation, so the prompt only refers to
+        // it.
+        let s = setup(GOOD, &[]);
+        saved_thread(&s, Some("earlier"));
+        let events = run_request(&s, request, vec![ok_report()], 3).await;
+        assert!(matches!(events.last(), Some(JobEvent::Result { .. })));
+        let prompt = first_prompt(&s);
+        assert!(prompt.contains("This job follows our discussion above."));
+        assert!(!prompt.contains("Why is the order queued?"));
+    }
+
+    #[tokio::test]
+    async fn a_version_is_built_again_without_an_agent() {
+        let s = setup(GOOD, &[]);
+        let events = run_job(&s, vec![ok_report()], 3).await;
+        let Some(JobEvent::Result { artifact_id, .. }) = events.last().cloned()
+        else {
+            panic!("{events:?}")
+        };
+        let passing = ScriptedValidator {
+            reports: Mutex::new(vec![ok_report()]),
+        };
+        let made = rebuild(&s.ws, &passing, &artifact_id, 1).await.unwrap();
+        assert_eq!(made, 2);
+        let old = artifacts::read_manifest(&s.ws, &artifact_id, 1).unwrap();
+        let new = artifacts::read_manifest(&s.ws, &artifact_id, 2).unwrap();
+        assert_eq!(new.parent, Some(1));
+        assert_eq!(new.runtime_version, codjiva_build::RUNTIME_VERSION);
+        assert_eq!(new.agent, old.agent);
+        assert_eq!(new.sources, old.sources);
+        assert_eq!(new.instructions, old.instructions);
+        assert_eq!((new.cost_usd, new.feedback.as_deref()), (None, None));
+        assert_eq!(artifacts::list(&s.ws)[0].current_version, 2);
+        let dir = artifacts::version_dir(&s.ws, &artifact_id, 2).unwrap();
+        assert!(dir.join("index.html").is_file());
+        assert!(dir.join("src/plant.js").is_file());
+        assert!(dir.join("model.json").is_file());
+        assert!(dir.join("validation.json").is_file());
+
+        // A page that no longer passes its checks is not kept.
+        let failing = ScriptedValidator {
+            reports: Mutex::new(vec![failing_report()]),
+        };
+        let error =
+            rebuild(&s.ws, &failing, &artifact_id, 2).await.unwrap_err();
+        assert_eq!(error.code, "rebuild_failed");
+        assert!(!artifacts::version_dir(&s.ws, &artifact_id, 3)
+            .unwrap()
+            .exists());
+        assert_eq!(artifacts::list(&s.ws)[0].current_version, 2);
+        assert_eq!(
+            rebuild(&s.ws, &passing, &artifact_id, 9)
+                .await
+                .unwrap_err()
+                .code,
+            "not_found"
         );
     }
 

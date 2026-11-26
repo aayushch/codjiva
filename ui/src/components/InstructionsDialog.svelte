@@ -1,5 +1,6 @@
 <script lang="ts">
   import { VIEWS } from '$lib/artifacts';
+  import { scopeTitle } from '$lib/discuss';
   import { app } from '$lib/state/app.svelte';
   import { nameOf } from '$lib/tree';
   import JobEstimate from './JobEstimate.svelte';
@@ -72,8 +73,18 @@
   // The job as it would start now, without the instructions, for the line
   // that says how long the visual usually takes to make.
   const planned = $derived(
-    ask ? { kind: ask.kind, view: ask.view, subject: [ask.subject] } : null,
+    ask
+      ? {
+          kind: ask.kind,
+          view: ask.view,
+          subject: [ask.subject],
+          scope: ask.scope,
+        }
+      : null,
   );
+  // For a visual of a part of the file: what that part is called, such as
+  // "Queue.Push" or "lines 4–9".
+  const part = $derived(ask?.scope ? scopeTitle(ask.scope) : '');
 
   function add(chip: string) {
     const sentence = 'Emphasise ' + chip + '.';
@@ -87,6 +98,8 @@
       view: ask.view,
       subject: [ask.subject],
       instructions: text.trim(),
+      scope: ask.scope,
+      thread: ask.thread,
     });
   }
 
@@ -121,7 +134,7 @@
         {:else}
           {ask.regenerate ? 'Regenerate the blueprint of' : 'Visualise'}
         {/if}
-        {fileName}
+        {part ? `${part} in ${fileName}` : fileName}
       </h2>
       <p class="lead">
         {#if view}
@@ -133,6 +146,10 @@
           that restates the code. You can then run the code on any input, one
           step at a time. Say which input or which behaviour matters most, or
           leave this empty and let the agent choose.
+        {:else if part && !ask.regenerate}
+          The agent draws how the selected code works. It reads the rest of the
+          file only to see what enters and leaves the selection. Say what the
+          blueprint should show, or leave this empty and let the agent choose.
         {:else if ask.regenerate}
           A new version will be made from the code as it is now. Change the
           instructions if the last one missed the point.

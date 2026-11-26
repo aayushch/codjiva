@@ -49,7 +49,7 @@ const formatTime = (x) => {
   return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 };
 
-CJ.version = '1.4.0';
+CJ.version = '1.5.0';
 
 CJ.boot = async (data) => {
   const params = new URLSearchParams(window.location.search);
@@ -325,6 +325,9 @@ CJ.boot = async (data) => {
       else if (msg.cj === 'fit') visual.fit();
       else if (msg.cj === 'zoom') visual.zoomBy(msg.factor || 1);
       else if (msg.cj === 'select') visual.select(msg.nodeId || null, true);
+      else if (msg.cj === 'notes') visual.setNotes(msg.notes, msg.on);
+      else if (msg.cj === 'note')
+        visual.showNote(msg.id == null ? null : msg.id);
       else if (msg.cj === 'step' && visual.stepper)
         visual.stepper.go(msg.index);
       else if (msg.cj === 'input' && visual.stepper)
@@ -351,6 +354,7 @@ CJ.boot = async (data) => {
         rationale: visual.hasRationale,
         stepper: !!visual.stepper,
         view: data.view ? data.view.view : null,
+        notes: true,
         runtime: CJ.version,
         theme: theme(),
       });
@@ -432,8 +436,66 @@ CJ.boot = async (data) => {
     });
   };
 
+  // Notes. The app can put notes on a film that is already built: it sends
+  // them in a `notes` message, each as `{ id, n, time, kind, text }`. A note
+  // is shown as a card in the top right corner of the stage from its `time`,
+  // in real seconds of the film, for NOTE_SECONDS seconds. Several notes
+  // that are due at the same moment are shown one under the other. The
+  // scenes of the film are not changed.
+  //
+  // `shownNotes` holds the ids of the notes whose cards are in the page, so
+  // that the cards are written again only when that set changes.
+  const NOTE_SECONDS = 7;
+  let filmNotes = [];
+  let filmNotesOn = true;
+  let shownNotes = '';
+  const noteBox = document.createElement('div');
+  noteBox.className = 'cj-film-notes';
+  stage.append(noteBox);
+  const drawNotes = (x) => {
+    const due = filmNotesOn
+      ? filmNotes.filter(
+          (note) => x >= note.time - 0.05 && x < note.time + NOTE_SECONDS,
+        )
+      : [];
+    const ids = due.map((note) => note.id).join(' ');
+    if (ids === shownNotes) return;
+    shownNotes = ids;
+    noteBox.innerHTML = due
+      .map(
+        (note) =>
+          '<div class="cj-film-note' +
+          (note.kind === 'flag' ? ' cj-flag' : '') +
+          '"><span class="k">' +
+          (note.kind === 'flag' ? 'FLAG ' : 'NOTE ') +
+          CJ.esc(note.n) +
+          '</span>' +
+          CJ.esc(note.text) +
+          '</div>',
+      )
+      .join('');
+  };
+  // Replaces the notes of the film. A note without a `time` or without a
+  // text is left out. With `on` false the notes are kept and no card is
+  // shown.
+  const setFilmNotes = (list, on) => {
+    filmNotesOn = on !== false;
+    filmNotes = (list || [])
+      .filter((note) => note && note.text && Number.isFinite(Number(note.time)))
+      .map((note, i) => ({
+        id: String(note.id),
+        n: note.n == null ? i + 1 : note.n,
+        time: Number(note.time),
+        kind: note.kind === 'flag' ? 'flag' : 'note',
+        text: String(note.text),
+      }));
+    shownNotes = null;
+    drawNotes(t);
+  };
+
   const draw = (x) => {
     const i = film.draw(x);
+    drawNotes(x);
     if (i !== shownChapter) {
       shownChapter = i;
       chapterEl.textContent =
@@ -621,6 +683,7 @@ CJ.boot = async (data) => {
       title: data.film.title,
       duration: total,
       chapters: film.chapters(),
+      notes: true,
       runtime: CJ.version,
       theme: theme(),
     });
@@ -643,6 +706,7 @@ CJ.boot = async (data) => {
     else if (msg.cj === 'mute') setMuted(!!msg.on);
     else if (msg.cj === 'speed') setRate(msg.x);
     else if (msg.cj === 'chapter') chapterStep(msg.dir > 0 ? 1 : -1);
+    else if (msg.cj === 'notes') setFilmNotes(msg.notes, msg.on);
     else if (msg.cj === 'pick') {
       pause();
       setPicking(msg.on !== false);
@@ -665,6 +729,7 @@ CJ.boot = async (data) => {
       pause();
       seek(x);
     },
+    setNotes: setFilmNotes,
     selfTest: runSelfTest,
   };
   document.body.classList.add('ready');

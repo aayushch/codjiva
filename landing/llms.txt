@@ -1,6 +1,6 @@
 # Codjiva
 
-> Codjiva is a free, open-source desktop app that shows what code does instead of showing the code. It opens a folder like an IDE. For a file you pick, the coding agent you already use reads the code and draws it as a blueprint of machines, pipes, tanks and limits, as a short narrated film that follows one unit of work through the file, or as one of four more views for code that is not a flow of work: a step-through of its states, its data shapes, the exchange between its parties, or a data structure in memory. The agent can also say which of these views fits a file. Licence: Apache 2.0. Platforms: macOS, Windows, Linux.
+> Codjiva is a free, open-source desktop app that shows what code does instead of showing the code. It opens a folder like an IDE. For a file you pick, the coding agent you already use reads the code and draws it as a blueprint of machines, pipes, tanks and limits, as a short narrated film that follows one unit of work through the file, or as one of four more views for code that is not a flow of work: a step-through of its states, its data shapes, the exchange between its parties, or a data structure in memory. The agent can also say which of these views fits a file, and it answers questions about what it drew. Licence: Apache 2.0. Platforms: macOS, Windows, Linux.
 
 Codjiva contains no AI model. It runs a coding agent installed on the computer (Claude Code, Cursor Agent, Codex CLI, Gemini CLI, Antigravity, Pi), or calls a model provider with the user's own API key (Anthropic, OpenAI, Google Gemini, or any server that speaks the OpenAI chat format). It has no servers, no accounts and no telemetry.
 
@@ -22,6 +22,10 @@ Two more things are made of more than one file:
 
 Which view fits a file: on request, the agent reads the file and ranks the six views, with one sentence of reason for each. The first is marked as suggested. The answer takes a few seconds and is kept until the file changes. It only suggests, and the user can make any of the six.
 
+Asking: beside every blueprint, film and view there is an Ask tab. A question goes to the agent that drew the picture and continues the conversation in which it was drawn. The answer is text that names the lines of code it relies on, as links that Codjiva has checked against the files. An answer can also put numbered notes on parts of the picture, without making the picture again. What a discussion found can be turned into a new version of the picture.
+
+A part of a file: in the source view the user can select one function, one type or any lines, and then start a discussion about only that code or make any of the six views of only that code. A mark in the margin shows which code has a discussion or a picture. A part that is a definition is found again by its name when the file changes, and its picture is marked stale only when that definition changes.
+
 ## How a job works
 
 1. The user picks a file and can say what the picture should show.
@@ -29,14 +33,17 @@ Which view fits a file: on request, the agent reads the file and ranks the six v
 3. Codjiva builds those sources into one self-contained HTML page and tests it in a hidden frame: overlapping labels, text that overflows its box, scenes that are not deterministic, state that jumps between chapters. Failures go back to the agent to fix, up to a set number of rounds.
 4. The result is shown in a sandboxed frame without network access. Each version is kept. When a source file changes, the artifact is marked stale; nothing is regenerated automatically.
 5. Feedback: the user writes what should change, optionally pinned to a moment of the film and to an element they point at. A new version is made with only that change.
+6. A question is not a job. It is one turn of the agent, which may write no file, and it adds no version.
 
 ## Facts
 
 - Artifacts are plain HTML files under `<workspace>/.codjiva/`. An exported film opens offline in any browser, with its own player.
 - Companion files for a film are suggested from imports, tests and usages. An ignore list (patterns like `.gitignore` lines, for example `vendor/`) keeps third-party code out of the suggestions.
+- Discussions are plain JSON files under `<workspace>/.codjiva/threads/`. The app has no accounts, so each question carries the `user.name` of the user's git configuration as a label. A team shares discussions exactly when it tracks `.codjiva/` in git.
+- A picture keeps the runtime it was built with. A picture built before notes existed can be built again with the current runtime from the same sources, without an agent.
 - API keys are stored in the operating system's credential store, never in a file.
 - Tested end to end with Claude Code, Cursor Agent and Codex CLI. The other agents and the API-key providers are implemented but not yet confirmed against the real services.
-- The window is laid out like an IDE: a file explorer and a library of artifacts on the left, an inspector on the right and a job panel at the bottom. Each panel can be resized, closed and reopened by dragging its edge, and the layout is remembered. Back and Forward move through the files, tabs and pipelines the user looked at, and a film continues where it was left.
+- The window is laid out like an IDE: a file explorer and a library of artifacts on the left, an inspector on the right, with the tabs About and Ask, and a job panel at the bottom. Each panel can be resized, closed and reopened by dragging its edge, and the layout is remembered. Back and Forward move through the files, tabs and pipelines the user looked at, and a film continues where it was left.
 - A file that has any view made of it has a dot in the explorer, and the folders above it are tinted.
 - Where the code shows why it is built the way it is, a part of a blueprint or a bubble of a film carries a rationale: the reason, whether the code states it or the agent inferred it, and the line that shows it. A rationale is shown only when the viewer asks for it.
 - The window and everything the app draws follow a light or a dark theme.

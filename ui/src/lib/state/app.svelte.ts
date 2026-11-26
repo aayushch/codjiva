@@ -23,6 +23,7 @@ import {
   type Outline,
   type PickedElement,
   type RecentWorkspace,
+  type Scope,
   type Settings,
   type TreeEntry,
   type ViewName,
@@ -87,6 +88,14 @@ export const SIDEBAR_MAX = 480;
 export const INSPECTOR_WIDTH = 320;
 export const INSPECTOR_MIN = 240;
 export const INSPECTOR_MAX = 560;
+// The width the panel beside the source view starts with. That panel can hold
+// a visual, so it has no greatest width of its own: App.svelte lets it grow
+// until EDITOR_MIN pixels are left for the code.
+export const SOURCE_PANEL_WIDTH = 380;
+// The least and the greatest share of the height of that panel that its upper
+// section can have, in percent.
+export const SOURCE_SPLIT_MIN = 15;
+export const SOURCE_SPLIT_MAX = 85;
 // The least height of the library while its list is showing, and the height
 // that is always left for the file tree above it.
 export const LIBRARY_MIN = 96;
@@ -108,6 +117,10 @@ export type InstructionsAsk = {
   subject: string;
   initial: string;
   regenerate: boolean;
+  // The part of the file the job is about, for a visual of a selection, and
+  // the id of the discussion the job was started from.
+  scope?: Scope;
+  thread?: string;
 };
 
 // What the Animate dialog starts from: the file, and for a regeneration the
@@ -117,6 +130,10 @@ export type AnimateAsk = {
   initial: string;
   companions: string[];
   regenerate: boolean;
+  // The part of the file the film is about, for a film of a selection, and
+  // the id of the discussion the job was started from.
+  scope?: Scope;
+  thread?: string;
 };
 
 // Where the film on screen is: the time in real seconds, the chapter's index
@@ -281,24 +298,31 @@ class AppState {
   // Every artifact of the open workspace.
   artifacts = $state<ArtifactSummary[]>([]);
   // The visual and the film of the selected file, where they have been made.
+  // An artifact with a `scope` is about a part of a file and is none of
+  // these. It is shown in the panel beside the source view (see `scope`).
   visualArtifact = $derived(
     this.selected
       ? (this.artifacts.find(
-          (a) => a.kind === 'visual' && a.subject[0] === this.selected,
+          (a) =>
+            a.kind === 'visual' && a.subject[0] === this.selected && !a.scope,
         ) ?? null)
       : null,
   );
   filmArtifact = $derived(
     this.selected
       ? (this.artifacts.find(
-          (a) => a.kind === 'film' && a.subject[0] === this.selected,
+          (a) =>
+            a.kind === 'film' && a.subject[0] === this.selected && !a.scope,
         ) ?? null)
       : null,
   );
   stepsArtifact = $derived(
     this.selected
       ? (this.artifacts.find(
-          (a) => a.kind === 'stepthrough' && a.subject[0] === this.selected,
+          (a) =>
+            a.kind === 'stepthrough' &&
+            a.subject[0] === this.selected &&
+            !a.scope,
         ) ?? null)
       : null,
   );
@@ -307,7 +331,7 @@ class AppState {
   viewArtifact(view: ViewName): ArtifactSummary | null {
     return (
       this.artifacts.find(
-        (a) => a.kind === view && a.subject[0] === this.selected,
+        (a) => a.kind === view && a.subject[0] === this.selected && !a.scope,
       ) ?? null
     );
   }
@@ -316,7 +340,7 @@ class AppState {
   artifactOfKind(kind: FileKind): ArtifactSummary | null {
     return (
       this.artifacts.find(
-        (a) => a.kind === kind && a.subject[0] === this.selected,
+        (a) => a.kind === kind && a.subject[0] === this.selected && !a.scope,
       ) ?? null
     );
   }
@@ -385,19 +409,37 @@ class AppState {
       ? this.selected.slice(PIPELINE_PREFIX.length)
       : null,
   );
-  // The artifact on screen: the selected pipeline, or for a file its film on
-  // the Film tab, its step-through on the Step-through tab and its visual
-  // otherwise.
+  // The part of the selected file that is open in the panel beside the
+  // source view, or null. The panel shows the discussion about that part and
+  // the visuals that were made of it. `openScope` sets it.
+  scope = $state<Scope | null>(null);
+  // The id of the visual of `scope` that the panel shows, or null while it
+  // shows none.
+  scopeArtifactId = $state<string | null>(null);
+  // How many times the panel was asked to put the keyboard focus in its
+  // question box. The box takes the focus whenever this number changes.
+  scopeFocus = $state(0);
+  // The id of a visual of a part of a file that fills the editor area in
+  // place of the source view, or null. The panel beside the source view has
+  // a button that sets it, for a visual that is too large for the panel.
+  // While it is set, the visual is shown as the visual of a file is: with
+  // the inspector on its right and its controls in the toolbar.
+  spotlight = $state<string | null>(null);
+  // The artifact on screen: the visual in `spotlight`, the selected pipeline,
+  // or for a file its film on the Film tab, its step-through on the
+  // Step-through tab and its visual otherwise.
   currentArtifact = $derived(
-    this.selectedPipelineId
-      ? (this.artifacts.find((a) => a.id === this.selectedPipelineId) ?? null)
-      : this.tab === 'film'
-        ? this.filmArtifact
-        : this.tab === 'steps'
-          ? this.stepsArtifact
-          : isView(this.tab)
-            ? this.viewArtifact(this.tab)
-            : this.visualArtifact,
+    this.spotlight
+      ? (this.artifacts.find((a) => a.id === this.spotlight) ?? null)
+      : this.selectedPipelineId
+        ? (this.artifacts.find((a) => a.id === this.selectedPipelineId) ?? null)
+        : this.tab === 'film'
+          ? this.filmArtifact
+          : this.tab === 'steps'
+            ? this.stepsArtifact
+            : isView(this.tab)
+              ? this.viewArtifact(this.tab)
+              : this.visualArtifact,
   );
   // The artifacts ticked in the library for a pipeline, in the order they were
   // ticked.
@@ -500,6 +542,15 @@ class AppState {
   sidebarOpen = $state(true);
   inspectorOpen = $state(true);
   inspectorWidth = $state(INSPECTOR_WIDTH);
+  // Which of the inspector's two tabs is showing beside a visual: what the
+  // visual and its parts are, or the discussion about it.
+  inspectorTab = $state<'about' | 'ask'>('about');
+  // The panel beside the source view: its width, the share of its height
+  // that its upper section has, in percent, and whether the discussion is
+  // the upper section in place of the references.
+  sourcePanelWidth = $state(SOURCE_PANEL_WIDTH);
+  sourceSplit = $state(40);
+  sourceSwapped = $state(false);
   // An artifact of the selected file is on screen: the open tab is Blueprint
   // or Film, the file has an artifact of that kind, and its details are loaded.
   // The inspector describes that artifact, so it can only show while this is
@@ -508,7 +559,7 @@ class AppState {
     !this.example &&
       !!this.currentArtifact &&
       !!this.detail &&
-      this.tab !== 'source' &&
+      (this.tab !== 'source' || !!this.spotlight) &&
       this.shownVersion != null &&
       this.detail.manifest.artifactId === this.currentArtifact.id,
   );
@@ -518,6 +569,7 @@ class AppState {
   // name while none is selected.
   sourceShown = $derived(
     !this.example &&
+      !this.spotlight &&
       this.tab === 'source' &&
       !!this.selected &&
       !this.selectedIsFolder &&
@@ -586,9 +638,18 @@ class AppState {
             (a) => a.id === file.path.slice(PIPELINE_PREFIX.length),
           ),
       );
+      // A visual of a part of a file is shown beside its code and is not
+      // composed, so it is left out of the joins.
       const withPorts = this.artifacts
-        .filter((a) => a.kind !== 'pipeline' && a.ports.length > 0)
+        .filter((a) => a.kind !== 'pipeline' && a.ports.length > 0 && !a.scope)
         .map((a) => a.id);
+      // The visual in the panel beside the source view, or in the editor
+      // area in its place, may have been deleted.
+      const there = (id: string | null) =>
+        this.artifacts.some((a) => a.id === id);
+      if (this.scopeArtifactId && !there(this.scopeArtifactId))
+        this.scopeArtifactId = null;
+      if (this.spotlight && !there(this.spotlight)) this.spotlight = null;
       this.connections =
         withPorts.length >= 2
           ? (await api.composePropose(withPorts)).joins
@@ -618,6 +679,9 @@ class AppState {
     if (this.moves === 0) {
       this.leavePlace();
       this.cameFrom = this.selected;
+      // Going anywhere else ends the showing of a visual of a part of a file
+      // in the editor area.
+      this.spotlight = null;
     }
     this.moves++;
     try {
@@ -769,8 +833,105 @@ class AppState {
     this.pickedVersion = null;
     this.sourceLine = null;
     this.sourceSpan = null;
+    this.spotlight = null;
+    this.closeScope();
     this.clearSymbol();
     this.clearFeedbackContext();
+  }
+
+  // The panel beside the source view, and the visuals of a part of a file.
+
+  // Opens the part `scope` of the selected file in the panel beside the
+  // source view, and opens that panel. The panel shows the visual of the part
+  // with the id `artifactId`, or the first visual the part has when none is
+  // named. With `focus`, the question box of the panel takes the keyboard
+  // focus, for a user who is about to ask.
+  openScope(scope: Scope, artifactId: string | null = null, focus = false) {
+    const same = this.scope?.id === scope.id && this.scope.path === scope.path;
+    this.scope = scope;
+    this.inspectorOpen = true;
+    const made = this.scopeArtifacts(scope);
+    const wanted = made.find((a) => a.id === artifactId);
+    const kept = same ? made.find((a) => a.id === this.scopeArtifactId) : null;
+    this.scopeArtifactId = (wanted ?? kept ?? made[0])?.id ?? null;
+    if (focus) this.scopeFocus++;
+  }
+
+  // Leaves no part of the file open in the panel beside the source view.
+  closeScope() {
+    this.scope = null;
+    this.scopeArtifactId = null;
+  }
+
+  // The visuals that were made of the part `scope` of its file.
+  scopeArtifacts(scope: Scope): ArtifactSummary[] {
+    return this.artifacts.filter(
+      (a) => a.scope?.id === scope.id && a.subject[0] === scope.path,
+    );
+  }
+
+  // Shows the visual of a part of a file with the id `id` in the editor
+  // area, in place of the source view. `closeSpotlight` shows the source
+  // view again.
+  async openSpotlight(id: string) {
+    if (!this.artifacts.some((a) => a.id === id)) return;
+    this.spotlight = id;
+    this.pickedVersion = null;
+    this.inspectorTab = 'about';
+    await this.loadDetail();
+  }
+
+  async closeSpotlight() {
+    if (!this.spotlight) return;
+    this.spotlight = null;
+    this.pickedVersion = null;
+    await this.loadDetail();
+  }
+
+  // Opens the dialog that starts a visual of the part `scope` of the
+  // selected file: the Animate dialog for a film, and the instructions step
+  // for every other kind. If the part has a visual of that kind already, the
+  // dialog starts from its instructions. `thread` is the id of the
+  // discussion about the part, when there is one, so that the agent knows
+  // what was said.
+  async askScoped(scope: Scope, kind: FileKind, thread?: string) {
+    const existing = this.scopeArtifacts(scope).find((a) => a.kind === kind);
+    let initial = '';
+    let companions: string[] = [];
+    if (existing) {
+      try {
+        const made = (await api.artifactDetail(existing.id)).manifest;
+        initial = made.instructions;
+        companions = made.companions.map((c) => c.path);
+      } catch {
+        // The dialog then starts empty, as it does for a first version.
+      }
+    }
+    const common = {
+      subject: scope.path,
+      initial,
+      regenerate: !!existing,
+      scope,
+      thread,
+    };
+    this.withStore(() => {
+      if (kind === 'film') {
+        this.animateAsk = { ...common, companions };
+        this.dialog = 'animate';
+      } else {
+        this.instructionsAsk = {
+          ...common,
+          kind:
+            kind === 'visual'
+              ? 'visualise'
+              : kind === 'stepthrough'
+                ? 'stepthrough'
+                : 'view',
+          view: isView(kind) ? kind : undefined,
+        };
+        this.dialog = 'instructions';
+      }
+    });
   }
 
   // Shows a context menu with the given commands at the point of the window
@@ -998,8 +1159,21 @@ class AppState {
 
   // Selects an artifact's file and shows the artifact: the Film tab for a film,
   // the Blueprint tab for a visual.
+  //
+  // A visual of a part of a file is shown beside its code: the source view
+  // goes to the first line of the part, and the panel on its right opens on
+  // that visual.
   async openArtifact(artifact: ArtifactSummary) {
     if (artifact.kind === 'pipeline') return this.selectPipeline(artifact.id);
+    if (artifact.scope) {
+      const scope = artifact.scope;
+      await this.selectFile(
+        scope.path,
+        artifact.scopeNow?.startLine ?? scope.startLine,
+      );
+      if (this.selected === scope.path) this.openScope(scope, artifact.id);
+      return;
+    }
     await this.move(async () => {
       await this.selectFile(artifact.subject[0]);
       await this.setTab(tabOf(artifact.kind));
@@ -1011,6 +1185,7 @@ class AppState {
   async selectPipeline(id: string) {
     await this.move(async () => {
       this.example = null;
+      this.closeScope();
       this.selected = PIPELINE_PREFIX + id;
       this.tab = 'visual';
       this.sourceLine = null;
@@ -1081,6 +1256,13 @@ class AppState {
     }
   }
 
+  // The part of the file that the visual in the editor area is about, while
+  // `spotlight` is set. A job that is started from the toolbar then makes a
+  // visual of the same part.
+  private get spotlightScope(): Scope | undefined {
+    return this.spotlight ? this.currentArtifact?.scope : undefined;
+  }
+
   // Opens the instructions step for the selected file. `regenerate` starts from
   // the instructions of the version on screen. `kind` is the job the step
   // starts: a visual, a step-through, or a view, which `view` then names.
@@ -1094,6 +1276,7 @@ class AppState {
     const initial = regenerate
       ? (this.detail?.manifest.instructions ?? '')
       : '';
+    const scope = this.spotlightScope;
     this.withStore(() => {
       this.instructionsAsk = {
         kind,
@@ -1101,6 +1284,7 @@ class AppState {
         subject,
         initial,
         regenerate,
+        scope,
       };
       this.dialog = 'instructions';
     });
@@ -1115,12 +1299,14 @@ class AppState {
       regenerate && this.detail?.manifest.kind === 'film'
         ? this.detail.manifest
         : null;
+    const scope = this.spotlightScope;
     this.withStore(() => {
       this.animateAsk = {
         subject,
         initial: from?.instructions ?? '',
         companions: from?.companions.map((c) => c.path) ?? [],
         regenerate,
+        scope,
       };
       this.dialog = 'animate';
     });
@@ -1250,11 +1436,17 @@ class AppState {
   );
   // True when the artifact that the job in the job panel made is not the one
   // on screen. The job panel then offers a button that opens it.
+  //
+  // A visual of a part of a file counts as on screen while it fills the
+  // editor area, and while the panel beside the source view shows it.
   jobResultElsewhere = $derived(
     !!this.jobArtifact &&
-      (this.example !== null ||
-        this.tab === 'source' ||
-        this.currentArtifact?.id !== this.jobArtifact.id),
+      (this.jobArtifact.scope
+        ? this.spotlight !== this.jobArtifact.id &&
+          !(this.sourceShown && this.scopeArtifactId === this.jobArtifact.id)
+        : this.example !== null ||
+          this.tab === 'source' ||
+          this.currentArtifact?.id !== this.jobArtifact.id),
   );
 
   // After the job whose key is `key` made a version: reads the artifacts again
@@ -1281,6 +1473,18 @@ class AppState {
       return this.selectPipeline(made.id);
     }
     if (this.selected !== job.subject) return;
+    // A visual of a part of a file is shown where the user asked for it. If
+    // it fills the editor area, its new version is shown there. Otherwise
+    // the panel beside the source view opens on it, when that view is on
+    // screen.
+    if (made?.scope) {
+      if (this.spotlight === made.id) {
+        this.pickedVersion = null;
+        await this.loadDetail();
+      } else if (this.tab === 'source' && !this.spotlight)
+        this.openScope(made.scope, made.id);
+      return;
+    }
     await this.move(async () => {
       this.tab = tabOf(made?.kind);
       this.pickedVersion = null;
@@ -1328,7 +1532,10 @@ class AppState {
   // new version. What the user was looking at is attached: the moment of the
   // film, the selected part, the element they pointed at, and a picture of the
   // frame where the app can take one.
-  async sendFeedback(text: string) {
+  //
+  // `thread` is the id of a discussion, when the feedback follows from one.
+  // The agent then knows what was said in it.
+  async sendFeedback(text: string, thread?: string) {
     const artifact = this.currentArtifact;
     const version = this.shownVersion;
     if (!artifact || version == null || !text.trim()) return;
@@ -1371,6 +1578,7 @@ class AppState {
         artifactId: artifact.id,
         baseVersion: version,
         feedback,
+        thread,
       },
       artifact.kind === 'pipeline'
         ? PIPELINE_PREFIX + artifact.id
@@ -1511,6 +1719,8 @@ class AppState {
       this.filmTimes.clear();
       this.sourceLine = null;
       this.sourceSpan = null;
+      this.spotlight = null;
+      this.closeScope();
       this.clearSymbol();
       await this.loadDir('');
       await this.reloadArtifacts();
@@ -1767,6 +1977,7 @@ class AppState {
         this.expanded[dir] = true;
       }
       this.example = null;
+      if (this.scope && this.scope.path !== relPath) this.closeScope();
       this.selected = relPath;
       this.sourceLine = line ?? null;
       this.sourceSpan = span ?? null;
@@ -1830,6 +2041,7 @@ class AppState {
         this.expanded[parent] = true;
       }
       this.example = null;
+      this.closeScope();
       this.selected = dir + '/';
       this.tab = 'visual';
       this.sourceLine = null;
@@ -2001,6 +2213,15 @@ class AppState {
     this.libraryOpen = layout.libraryOpen;
     this.libraryHeight = layout.libraryHeight;
     this.stepPanelHeight = layout.stepPanelHeight;
+    this.sourcePanelWidth = Math.max(
+      INSPECTOR_MIN,
+      layout.sourcePanelWidth ?? SOURCE_PANEL_WIDTH,
+    );
+    this.sourceSplit = Math.min(
+      SOURCE_SPLIT_MAX,
+      Math.max(SOURCE_SPLIT_MIN, layout.sourceSplit ?? 40),
+    );
+    this.sourceSwapped = !!layout.sourceSwapped;
   }
 
   // Writes the panels' sizes and open states to the settings, if they differ
@@ -2019,6 +2240,9 @@ class AppState {
       libraryOpen: this.libraryOpen,
       libraryHeight: whole(this.libraryHeight),
       stepPanelHeight: whole(this.stepPanelHeight),
+      sourcePanelWidth: Math.round(this.sourcePanelWidth),
+      sourceSplit: Math.round(this.sourceSplit),
+      sourceSwapped: this.sourceSwapped,
     };
     if (JSON.stringify(layout) === JSON.stringify(this.settings.layout)) return;
     await this.saveSettings({ ...this.settings, layout });

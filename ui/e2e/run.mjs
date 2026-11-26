@@ -3698,6 +3698,609 @@ check(
   `${tabsBeforeReopening} -> ${(await tabNames()).join()}`,
 );
 
+// The text of an element with every run of white space as one space. The
+// sentences of the interface are written over several lines in its source,
+// and where a line breaks is not what a check is about.
+const words = async (locator) =>
+  (await locator.textContent()).replace(/\s+/g, ' ').trim();
+
+// ---- asking about a visual, and notes on it
+// The Ask tab of the inspector holds the discussion about the visual on
+// screen. An answer names places in the code, which are links when they
+// exist, and can put notes on parts of the visual. The page inside the frame
+// draws a mark for each note.
+{
+  await page.keyboard.press(`${mod}+p`);
+  await page.getByPlaceholder('Go to file…').fill('orders/handler.go');
+  await page.locator('.quick-row').first().waitFor();
+  await page.keyboard.press('Enter');
+  await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
+  await showKind('Blueprint');
+  // Earlier checks may have left the file without a blueprint, or the panel
+  // on the right closed. Both are put right here.
+  await page.locator('.main .canvas').first().waitFor();
+  await page.waitForTimeout(300);
+  if ((await page.locator('.main .canvas iframe').count()) === 0) {
+    await page.locator('.empty .pick').first().click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Visualise', exact: true })
+      .click();
+    await page
+      .locator('.dock .log', {
+        hasText: 'Done. The visual passed every check.',
+      })
+      .waitFor({ timeout: 30000 });
+    await page.locator('.main .canvas iframe').waitFor();
+  }
+  if ((await page.locator('.insp-edge.closed').count()) === 1)
+    await page
+      .locator('.titlebar')
+      .getByRole('button', { name: 'Inspector' })
+      .click();
+  await page.locator('.insp-tabs').waitFor();
+  const stage = page.frameLocator('.main .canvas iframe');
+  await stage.locator('.cj-node').first().waitFor();
+  const askTab = page.locator('.insp-tabs .itab', { hasText: 'Ask' });
+  const ask = page.locator('.inspector .ask');
+  const question = ask.getByLabel('Question');
+  const askButton = ask.getByRole('button', { name: 'Ask', exact: true });
+  await askTab.click();
+  check(
+    /The agent that drew it answers/.test(await words(ask)) &&
+      (await askButton.isDisabled()) &&
+      (await page.locator('.inspector .feedback').count()) === 0,
+    'the Ask tab starts with a hint and takes the place of the About tab',
+  );
+
+  await page.evaluate(() => (window.__mockAskDelay = 600));
+  await question.fill('What does Submit do?');
+  await askButton.click();
+  await ask.locator('.ask-a.waiting').waitFor();
+  check(
+    /Mock Agent · continues the conversation/.test(
+      await ask.locator('.ask-a.waiting .ask-who').textContent(),
+    ) &&
+      (await question.inputValue()) === '' &&
+      (await askButton.isDisabled()),
+    'a question that waits for its answer names the agent and empties the box',
+  );
+  await ask.locator('.ask-a:not(.waiting)').waitFor();
+  await page.evaluate(() => (window.__mockAskDelay = 0));
+  const asked = await page.evaluate(() => window.__mockLastAsk);
+  check(
+    asked.text === 'What does Submit do?' &&
+      /^visual-/.test(asked.about.artifactId) &&
+      asked.about.version >= 1 &&
+      asked.path === 'internal/orders/handler.go' &&
+      asked.scope == null,
+    'a question about a visual says which visual and version is on screen',
+    JSON.stringify(asked),
+  );
+  const answer = ask.locator('.ask-a').first();
+  check(
+    /queues the order/.test(await answer.textContent()) &&
+      (await answer.locator('li').count()) === 2 &&
+      (await answer.locator('button.ref').allTextContents()).join() ===
+        'internal/orders/handler.go:20' &&
+      (await answer.locator('code').allTextContents()).includes(
+        'internal/orders/handler.go:9000',
+      ),
+    'an answer is shown with its list, and only a place that exists is a link',
+    await answer.innerHTML(),
+  );
+  check(
+    (await ask.locator('.ask-q .ask-who').textContent()).includes(
+      'Mock User',
+    ) &&
+      /What does Submit do\?/.test(
+        await ask.locator('.ask-title').textContent(),
+      ),
+    'a question is listed with the name of who asked, and names its discussion',
+  );
+  check(
+    (await askTab.locator('.count').textContent()) === '1',
+    'the Ask tab counts the discussions of the visual',
+  );
+
+  // The note of the answer.
+  const note = ask.locator('.ask-note');
+  check(
+    (await note.count()) === 1 &&
+      (await note.locator('.n').textContent()) === '1' &&
+      (await note.locator('.where').textContent()) === 'Submit()' &&
+      /is where the order comes in/.test(
+        await note.locator('.t').textContent(),
+      ),
+    'a note of an answer is listed with its number, its part and its text',
+    await note.first().textContent(),
+  );
+  await stage.locator('.cj-note').first().waitFor();
+  check(
+    (await stage.locator('.cj-note').count()) === 1 &&
+      (await stage.locator('.cj-note').textContent()) === '1' &&
+      !(await stage.locator('.cj-note-card').isVisible()),
+    'the visual draws a numbered mark for the note without being built again',
+  );
+  await note.click();
+  await stage.locator('.cj-note-card').waitFor({ state: 'visible' });
+  check(
+    /NOTE 1Submit\(\) is where the order comes in\./.test(
+      await stage.locator('.cj-note-card').textContent(),
+    ) && (await ask.locator('.ask-note.on').count()) === 1,
+    'a click on a note in the answer opens its text on the visual',
+  );
+  await shot('16-ask-note');
+
+  // A second question in the same discussion, which also flags a part.
+  await question.fill('Is there a flag worth raising?');
+  await question.press(`${mod}+Enter`);
+  await ask.locator('.ask-note.flag').waitFor();
+  const second = await page.evaluate(() => window.__mockLastAsk);
+  check(
+    !!second.threadId &&
+      (await ask.locator('.ask-q').count()) === 2 &&
+      (await ask.locator('.ask-note .n').allTextContents()).join() ===
+        '1,2,3' &&
+      (await stage.locator('.cj-note').count()) === 3 &&
+      (await stage.locator('.cj-note.cj-flag').count()) === 1,
+    'a second question goes into the same discussion, and its notes are numbered on',
+    JSON.stringify(second),
+  );
+
+  // The notes can be switched off, here and on the About tab.
+  const notesSwitch = ask.locator('.ask-notes .layer');
+  check(
+    /Notes on the blueprint · 3/.test(await words(notesSwitch)) &&
+      (await notesSwitch.getAttribute('aria-checked')) === 'true' &&
+      (await ask.locator('.ask-old').count()) === 0,
+    'the discussion says how many notes the visual has',
+    await notesSwitch.textContent(),
+  );
+  await notesSwitch.click();
+  await stage.locator('.cj-note').first().waitFor({ state: 'hidden' });
+  await page.locator('.insp-tabs .itab', { hasText: 'About' }).click();
+  const layerSwitch = page.locator('.inspector .layer', { hasText: 'Notes' });
+  check(
+    (await layerSwitch.getAttribute('aria-checked')) === 'false' &&
+      (await page.locator('.inspector .feedback').count()) === 1,
+    'the About tab has the same switch among the layers, and is off too',
+  );
+  await layerSwitch.click();
+  await stage.locator('.cj-note').first().waitFor({ state: 'visible' });
+  check(true, 'switching the notes on shows the marks again');
+
+  // A click on a mark of the visual opens the Ask tab.
+  await stage.locator('.cj-note').nth(1).click();
+  await ask.waitFor();
+  check(
+    (await ask.locator('.ask-note.on .n').textContent()) === '2',
+    'a click on a mark on the visual shows the answer the note comes from',
+  );
+
+  // A question is sent with the part that is selected.
+  await stage.locator('.cj-node').first().click({ force: true });
+  await ask.locator('.ask-box .pill').waitFor();
+  const selectedPart = await ask.locator('.ask-box .pill').textContent();
+  await ask.getByRole('button', { name: 'New', exact: true }).click();
+  check(
+    (await ask.locator('.ask-q').count()) === 0 &&
+      (await ask.locator('select[aria-label="Discussion"]').inputValue()) ===
+        '',
+    '"New" starts an empty discussion and keeps the earlier one in the list',
+  );
+  await question.fill('And this part?');
+  await askButton.click();
+  await ask.locator('.ask-a:not(.waiting)').waitFor();
+  const third = await page.evaluate(() => window.__mockLastAsk);
+  check(
+    third.threadId == null &&
+      !!third.about.part &&
+      (await askTab.locator('.count').textContent()) === '2' &&
+      (await ask.locator('select[aria-label="Discussion"] option').count()) ===
+        2,
+    'a question in a new discussion is sent with the selected part',
+    `${selectedPart} ${JSON.stringify(third.about)}`,
+  );
+
+  // A question that fails keeps the text, and adds nothing.
+  await question.fill('Please fail here');
+  await askButton.click();
+  await page.locator('.toast.error', { hasText: 'Not logged in' }).waitFor();
+  check(
+    (await question.inputValue()) === 'Please fail here' &&
+      (await ask.locator('.ask-q').count()) === 1,
+    'a question that fails is put back in the box and adds no message',
+  );
+  await question.fill('');
+
+  // Deleting a discussion takes two clicks, and removes its notes.
+  const marksBefore = await stage.locator('.cj-note').count();
+  const deleteButton = ask.getByRole('button', { name: /^Delete/ });
+  await deleteButton.click();
+  check(
+    (await deleteButton.textContent()) === 'Delete?' &&
+      (await askTab.locator('.count').textContent()) === '2',
+    'the first click on Delete only asks',
+  );
+  await deleteButton.click();
+  await page.locator('.insp-tabs .itab .count', { hasText: '1' }).waitFor();
+  await stage
+    .locator('.cj-note')
+    .nth(marksBefore - 1)
+    .waitFor({ state: 'detached' });
+  check(
+    (await ask.locator('.ask-q').count()) === 2 &&
+      (await stage.locator('.cj-note').count()) === 3,
+    'the second click deletes the discussion with its notes, and the other one is shown',
+    `${await stage.locator('.cj-note').count()} marks, ${marksBefore} before`,
+  );
+
+  // The feedback job that is started from a discussion names the
+  // discussion, so that the agent knows what was said.
+  await ask
+    .getByRole('button', { name: 'Change the blueprint from this…' })
+    .click();
+  await page
+    .locator('.dock .kicker', { hasText: 'Blueprint feedback · handler.go' })
+    .waitFor();
+  const applied = await page.evaluate(() => window.__mockLastRequest);
+  check(
+    applied.kind === 'feedback' &&
+      !!applied.thread &&
+      /what our discussion found/.test(applied.feedback.text) &&
+      (await askButton.isDisabled()),
+    'changing the visual from a discussion starts a feedback job that names the discussion',
+    JSON.stringify(applied),
+  );
+  await page
+    .locator('.dock .log', { hasText: 'Done. The visual passed every check.' })
+    .waitFor({ timeout: 30000 });
+  await page.locator('.insp-tabs').waitFor();
+}
+
+// ---- discussing and visualising selected code
+// In the source view the user selects lines. A small bar offers to discuss
+// them or to make a visual of them. Both open in the lower section of the
+// panel on the right, whose upper section lists the references of a name.
+{
+  await page.locator('.tab.source-tab').click();
+  const panel = page.locator('.inspector.source-panel');
+  await panel.waitFor();
+  check(
+    (await panel.locator('.sp-section').count()) === 2 &&
+      /Click a symbol/.test(await words(panel.locator('.symbol-empty'))) &&
+      /Select code in the file to discuss it/.test(
+        await words(panel.locator('.scope-list')),
+      ) &&
+      (await panel.locator('.sp-split').count()) === 1,
+    'beside the code the panel has a section for references and one for discussions',
+  );
+
+  // Selects the lines `from` to `to` with the pointer, from the first
+  // character of the first line to the end of the last.
+  // The first line is brought near the top of the view before, so that the
+  // pointer stays away from the lower edge, where a drag scrolls the code.
+  const selectLines = async (from, to) => {
+    await page
+      .locator('.source')
+      .evaluate((view, line) => (view.scrollTop = (line - 3) * 20), from);
+    await page.waitForTimeout(100);
+    const first = await page
+      .locator(`.source-line[data-line="${from}"] .source-text`)
+      .boundingBox();
+    const last = await page
+      .locator(`.source-line[data-line="${to}"]`)
+      .boundingBox();
+    // A click in the empty room at the end of a line removes an earlier
+    // selection. A press on selected text would drag that text and select
+    // nothing new.
+    await page.mouse.click(last.x + last.width - 12, first.y + 10);
+    await page.mouse.move(first.x + 1, first.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(first.x + 60, first.y + 12, { steps: 3 });
+    await page.mouse.move(last.x + last.width - 30, last.y + 10, { steps: 6 });
+    await page.mouse.up();
+  };
+  const bar = page.locator('.select-bar');
+
+  // A whole function is named by its name.
+  await selectLines(20, 32);
+  await bar.waitFor();
+  check(
+    (await bar.locator('.what').textContent()) === 'Handler.Submit' &&
+      (await bar.locator('.seg').count()) === 0,
+    'selecting a whole function offers to discuss the function by its name',
+    await bar.textContent(),
+  );
+  // Lines inside it offer the lines or the function around them.
+  await selectLines(21, 23);
+  await bar.locator('.seg').waitFor();
+  check(
+    (await bar.locator('.seg button').allTextContents()).join('|') ===
+      'lines 21–23|Handler.Submit' &&
+      (await bar.locator('.seg button.on').textContent()) === 'lines 21–23',
+    'selecting lines inside a function offers the lines or the whole function',
+    await bar.textContent(),
+  );
+  await shot('17-select-bar');
+  // A word that is selected, to copy it, brings no bar up.
+  await page
+    .locator('.source-line[data-line="27"] .source-text')
+    .dblclick({ position: { x: 40, y: 10 } });
+  await page.waitForTimeout(150);
+  check((await bar.count()) === 0, 'a selected word brings no bar up');
+
+  await selectLines(21, 23);
+  await bar.getByRole('button', { name: 'Discuss' }).click();
+  const scopeSection = panel.locator('.sp-section', {
+    has: page.locator('.sp-body.scope'),
+  });
+  const ask = scopeSection.locator('.ask');
+  await ask.waitFor();
+  check(
+    (await scopeSection.locator('.sp-what').textContent()) === 'lines 21–23' &&
+      (await bar.count()) === 0 &&
+      (await ask
+        .getByLabel('Question')
+        .evaluate((el) => el === document.activeElement)) &&
+      (await page.locator('.source-line.in-scope').count()) === 3 &&
+      /Lines 21–23/.test(await words(scopeSection.locator('.scope-where'))),
+    'Discuss opens the lines in the panel, tints them, and is ready for a question',
+  );
+  await ask.getByLabel('Question').fill('Why is the order checked first?');
+  await ask.getByRole('button', { name: 'Ask', exact: true }).click();
+  await ask.locator('.ask-a:not(.waiting)').waitFor();
+  const asked = await page.evaluate(() => window.__mockLastAsk);
+  const mark = page.locator('.source-line[data-line="21"] .scope-mark');
+  await mark.waitFor();
+  check(
+    asked.scope?.id === 'l21_23' &&
+      asked.about.artifactId == null &&
+      /Lines 21 to 23 queues/.test(await ask.locator('.ask-a').textContent()) &&
+      (await ask.locator('.ask-note').count()) === 0 &&
+      (await page.locator('.scope-mark').count()) === 1 &&
+      !(await mark.evaluate((el) => el.classList.contains('visual'))) &&
+      (await mark.getAttribute('data-tip')) === 'lines 21–23 · discussion',
+    'a question about selected code is about those lines, and the lines get a mark',
+    JSON.stringify(asked),
+  );
+
+  // A click on a name fills the upper section and leaves the lower one.
+  const flushName = await page
+    .locator('.source-line[data-line="29"] .source-text')
+    .evaluate((el) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const at = node.data.indexOf('Flush');
+        if (at < 0) continue;
+        const range = new Range();
+        range.setStart(node, at);
+        range.setEnd(node, at + 5);
+        const box = range.getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      }
+      return null;
+    });
+  await page.mouse.click(flushName.x, flushName.y);
+  await panel.locator('.symbol-panel h3', { hasText: 'Flush' }).waitFor();
+  check(
+    (await ask.locator('.ask-q').count()) === 1 &&
+      (await scopeSection.locator('.sp-what').textContent()) ===
+        'lines 21–23' &&
+      (await panel.locator('.sp-head .sp-what').allTextContents()).join('|') ===
+        'Flush|lines 21–23',
+    'the references of a clicked name are shown above the discussion, which stays',
+  );
+  await shot('18-source-panel');
+
+  // The line between the two sections can be dragged, and they can be
+  // swapped.
+  const split = await panel.locator('.sp-split .splitter').boundingBox();
+  const refsBefore = (await panel.locator('.sp-section').first().boundingBox())
+    .height;
+  await page.mouse.move(split.x + 100, split.y + 3);
+  await page.mouse.down();
+  await page.mouse.move(split.x + 100, split.y + 123, { steps: 4 });
+  await page.mouse.up();
+  const refsAfter = (await panel.locator('.sp-section').first().boundingBox())
+    .height;
+  check(
+    Math.abs(refsAfter - refsBefore - 120) < 4,
+    'dragging the line between the two sections gives the upper one more room',
+    `${refsBefore} -> ${refsAfter}`,
+  );
+  await panel.getByRole('button', { name: 'Swap the two sections' }).click();
+  check(
+    (await panel.locator('.sp-head .sp-what').allTextContents()).join('|') ===
+      'lines 21–23|Flush',
+    'the two sections can be swapped',
+  );
+  await panel.getByRole('button', { name: 'Swap the two sections' }).click();
+  await page.waitForFunction(
+    () => window.__mockSettings().layout.sourceSplit > 40,
+  );
+  check(
+    (await page.evaluate(
+      () => window.__mockSettings().layout.sourceSwapped,
+    )) === false,
+    'the share of the two sections is kept with the layout',
+  );
+
+  // A visual of the selected lines. The mock records the runtime the test
+  // names, so that this visual looks as if an older app had built it.
+  await page.evaluate(() => (window.__mockRuntime = '1.4.0'));
+  await scopeSection.locator('.scope-kinds .chip.make').click();
+  await menuCommand('Blueprint').click();
+  await page
+    .getByRole('dialog')
+    .getByText('Visualise lines 21–23 in handler.go')
+    .waitFor();
+  check(
+    /draws how the selected code works/.test(
+      await words(page.locator('.dialog .lead')),
+    ),
+    'the dialog for a visual of selected code names the lines and says what is drawn',
+  );
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Visualise', exact: true })
+    .click();
+  await page
+    .locator('.dock .kicker', {
+      hasText: 'Visualise · handler.go › lines 21–23',
+    })
+    .waitFor();
+  const request = await page.evaluate(() => window.__mockLastRequest);
+  check(
+    request.scope?.id === 'l21_23' &&
+      /^t-mock-/.test(request.thread ?? '') &&
+      request.subject.join() === 'internal/orders/handler.go',
+    'the job is for those lines of the file and names the discussion about them',
+    JSON.stringify(request),
+  );
+  await page
+    .locator('.dock .log', { hasText: 'Done. The visual passed every check.' })
+    .waitFor({ timeout: 30000 });
+  await page.evaluate(() => (window.__mockRuntime = undefined));
+  const chip = scopeSection.locator('.scope-kinds .chip.on');
+  await chip.waitFor();
+  const scoped = page.frameLocator('.scope-frame iframe');
+  await scoped.locator('.cj-node').first().waitFor();
+  check(
+    (await chip.textContent()).trim() === 'Blueprint · v1' &&
+      (await page.locator('.main .canvas iframe').count()) === 0 &&
+      (await mark.evaluate((el) => el.classList.contains('visual'))) &&
+      (await mark.getAttribute('data-tip')) ===
+        'lines 21–23 · discussion · Blueprint',
+    'the visual of the lines is shown in the panel beside the code, and the mark says so',
+  );
+  const libraryItem = page.locator('.lib-item', {
+    has: page.locator('.lib-part'),
+  });
+  check(
+    (await libraryItem.count()) === 1 &&
+      (await libraryItem.locator('.lib-part').textContent()) ===
+        'handler.go › lines 21–23' &&
+      (await libraryItem.locator('.lib-tick').count()) === 0,
+    'the library names the file and the lines of such a visual',
+  );
+  await shot('19-scoped-visual');
+
+  // The blueprint of the whole file is still the one on the Blueprint tab.
+  await showKind('Blueprint');
+  await page.locator('.insp-tabs').waitFor();
+  check(
+    !/lines 21–23/.test(await page.locator('.toolbar .crumb').textContent()) &&
+      (await page.locator('.toolbar .select option').count()) >= 2,
+    'the Blueprint tab of the file still shows the blueprint of the whole file',
+  );
+  await page.locator('.tab.source-tab').click();
+  await scoped.locator('.cj-node').first().waitFor();
+
+  // A question with the visual on screen puts a note on it. The visual was
+  // built by an older runtime, so the panel offers to build it again.
+  await ask.getByLabel('Question').fill('Show me where it starts');
+  await ask.getByRole('button', { name: 'Ask', exact: true }).click();
+  await ask.locator('.ask-note').waitFor();
+  const old = ask.locator('.ask-old');
+  await old.waitFor();
+  check(
+    /built before notes could be drawn on it/.test(await words(old)),
+    'a visual built before notes existed offers to be built again',
+  );
+  await old.getByRole('button', { name: 'Update it' }).click();
+  await scopeSection
+    .locator('.scope-kinds .chip.on', { hasText: 'Blueprint · v2' })
+    .waitFor();
+  await page.locator('.toast', { hasText: 'version 2' }).waitFor();
+  await scoped.locator('.cj-note').first().waitFor();
+  check(
+    (await ask.locator('.ask-old').count()) === 0 &&
+      (await scoped.locator('.cj-note').count()) === 1,
+    'building it again makes a new version that shows the note',
+  );
+
+  // The panel beside the code can be much wider than the inspector.
+  const edge = await page.locator('.insp-edge .splitter').boundingBox();
+  await page.mouse.move(edge.x + 3, edge.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(edge.x - 500, edge.y + 200, { steps: 5 });
+  await page.mouse.up();
+  const wide = (await panel.boundingBox()).width;
+  check(
+    wide > 800 && (await page.locator('.source').boundingBox()).width >= 150,
+    'the panel beside the code can be dragged far wider than the inspector',
+    `${wide}`,
+  );
+  await shot('20-scoped-visual-wide');
+
+  // Maximise shows the visual in place of the code, as a file's visual is
+  // shown, and "Back to the code" returns.
+  await panel.getByRole('button', { name: 'Maximise the visual' }).click();
+  await page.locator('.toolbar .back-to-code').waitFor();
+  await page.locator('.main .canvas iframe').waitFor();
+  const inspectorWidth = (await page.locator('.inspector').boundingBox()).width;
+  check(
+    /handler\.go › lines 21–23/.test(
+      await page.locator('.toolbar .crumb').textContent(),
+    ) &&
+      (await page.locator('.source').count()) === 0 &&
+      (await page.locator('.inspector.source-panel').count()) === 0 &&
+      inspectorWidth <= 560 &&
+      (await page.locator('.toolbar .select option').count()) === 2 &&
+      (await page.locator('.insp-tabs .itab .count').textContent()) === '1',
+    'maximise shows the visual with its controls and its inspector in place of the code',
+    `${inspectorWidth}`,
+  );
+  await shot('21-scoped-visual-maximised');
+  await page.locator('.toolbar .back-to-code').click();
+  await panel.waitFor();
+  check(
+    (await page.locator('.source').count()) === 1 &&
+      Math.abs((await panel.boundingBox()).width - wide) < 2 &&
+      (await scopeSection.locator('.scope-kinds .chip.on').count()) === 1,
+    '"Back to the code" shows the code again with the visual beside it',
+  );
+
+  // Closing the open code lists what the file has, and the mark opens it
+  // again.
+  await panel.getByRole('button', { name: 'Close the discussion' }).click();
+  const listed = panel.locator('.scope-list .scope-row');
+  check(
+    (await listed.count()) === 1 &&
+      /lines 21–23/.test(await words(listed)) &&
+      /1 discussion · blueprint/.test(await words(listed)) &&
+      (await page.locator('.source-line.in-scope').count()) === 0,
+    'with nothing open, the panel lists the code that has a discussion or a visual',
+    await listed.first().textContent(),
+  );
+  await mark.click();
+  await scopeSection.locator('.scope-kinds .chip.on').waitFor();
+  check(
+    (await page.locator('.source-line.in-scope').count()) === 3 &&
+      (await ask.locator('.ask-q').count()) === 2,
+    'a click on the mark in front of the code opens its discussion and visual again',
+  );
+
+  // The library opens such a visual beside its code too.
+  await showKind('Blueprint');
+  await page.locator('.insp-tabs').waitFor();
+  await libraryItem.click();
+  await panel.waitFor();
+  await scopeSection.locator('.scope-kinds .chip.on').waitFor();
+  check(
+    (await page.locator('.source-line.ref').getAttribute('data-line')) === '21',
+    'the library opens a visual of selected code beside that code',
+  );
+  // Leave the panel at a usual width for whatever runs after this.
+  const wideEdge = await page.locator('.insp-edge .splitter').boundingBox();
+  await page.mouse.move(wideEdge.x + 3, wideEdge.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(wideEdge.x + 480, wideEdge.y + 200, { steps: 5 });
+  await page.mouse.up();
+}
+
 check(errors.length === 0, 'the page logged no errors', errors.join(' | '));
 await browser.close();
 server.close();

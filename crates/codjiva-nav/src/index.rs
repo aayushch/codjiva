@@ -206,6 +206,56 @@ pub fn definitions_of(path: &str, text: String) -> Vec<IndexedDef> {
     facts_of(path, text).defs
 }
 
+/// One definition of a file with the lines it covers, for anchoring a
+/// selection of code to the definition it belongs to. `first_line` and
+/// `last_line` are counted from 1 and include the whole definition, with its
+/// body.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Extent {
+    pub name: String,
+    pub container: Option<String>,
+    pub kind: Kind,
+    pub first_line: u32,
+    pub last_line: u32,
+}
+
+/// The definitions of the file at `path` with the content `text`, each with
+/// the lines it covers, in the order of the file.
+///
+/// Definitions inside function bodies are left out, and so are prototypes,
+/// which have no body to cover. A file whose language has no parser gives an
+/// empty list, because the end of a definition is then not known.
+pub fn extents_of(path: &str, text: String) -> Vec<Extent> {
+    let Some(grammar) = grammar_of(path) else {
+        return Vec::new();
+    };
+    if looks_minified(&text) {
+        return Vec::new();
+    }
+    let Some(syntax) = syntax::parse(grammar, text) else {
+        return Vec::new();
+    };
+    let lines = Lines::new(&syntax.text);
+    syntax
+        .definitions()
+        .defs
+        .into_iter()
+        .filter(|def| !def.nested && !def.declaration)
+        .map(|def| {
+            // The last byte of the definition decides its last line. The
+            // byte after it can already be on the next line.
+            let last = def.range.end.saturating_sub(1).max(def.range.start);
+            Extent {
+                name: def.name,
+                container: def.container,
+                kind: def.kind,
+                first_line: lines.row_of(def.range.start) as u32 + 1,
+                last_line: lines.row_of(last) as u32 + 1,
+            }
+        })
+        .collect()
+}
+
 /// A definition in the compact form the index stores. `name`, `container`
 /// and `of_type` are numbers that stand for strings, see [`Names`].
 #[derive(Clone, Copy)]
@@ -903,6 +953,31 @@ mod tests {
             .collect();
         places.sort();
         places
+    }
+
+    #[test]
+    fn extents_give_the_lines_of_each_definition_with_its_body() {
+        let text = "package a\n\ntype Meter struct {\n\ttotal int\n}\n\nfunc \
+                    (m *Meter) Add(n int) {\n\tm.total += n\n}\n\nfunc \
+                    Read() int { return 1 }\n";
+        let found: Vec<(String, Option<String>, u32, u32)> =
+            extents_of("a/meter.go", text.to_string())
+                .into_iter()
+                .filter(|one| one.kind != Kind::Field)
+                .map(|one| {
+                    (one.name, one.container, one.first_line, one.last_line)
+                })
+                .collect();
+        assert_eq!(
+            found,
+            [
+                ("Meter".to_string(), None, 3, 5),
+                ("Add".to_string(), Some("Meter".to_string()), 7, 9),
+                ("Read".to_string(), None, 11, 11),
+            ]
+        );
+        // A language without a parser has no extents.
+        assert!(extents_of("notes.txt", "func Read()".to_string()).is_empty());
     }
 
     #[test]
