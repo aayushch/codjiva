@@ -451,14 +451,6 @@ img {
   font-size: 14px;
   color: var(--ink);
 }
-.mode ul {
-  margin: 12px 0 0;
-  padding-left: 18px;
-  font-size: 13px;
-  color: var(--muted);
-  display: grid;
-  gap: 4px;
-}
 .mode .n {
   color: var(--main);
   font-weight: 700;

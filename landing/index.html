@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Codjiva — See what your code does, not just what it says</title>
-<meta name="description" content="Codjiva is a free, open-source desktop app that draws what a source file does: an explorable blueprint, a narrated film of how work moves through it, and four more views for state machines, data shapes, exchanges and data structures. You can ask the agent about what it drew, and it marks the answer on the picture. It works with a coding agent installed on your computer, or with an API key.">
+<meta name="description" content="Codjiva is a free, open-source desktop app that draws what a source file does: an explorable blueprint, a narrated film, and four more views. The coding agent you already use draws them and answers your questions about them.">
 <meta property="og:title" content="Codjiva — see what your code does">
-<meta property="og:description" content="Open a folder, pick a file, and watch one request move through it. Blueprints, narrated films and four more views of your code, drawn by the coding agent you already use, which also answers your questions about them. Free, open source, local.">
+<meta property="og:description" content="Open a folder, pick a file, and watch one request move through it. Drawn by the coding agent you already use. Free, open source, local.">
 <meta property="og:url" content="https://aayushch.github.io/codjiva/">
 <meta property="og:image" content="https://aayushch.github.io/codjiva/images/app-film.png">
 <meta property="og:type" content="website">
@@ -32,7 +32,7 @@
   "@type": "SoftwareApplication",
   "name": "Codjiva",
   "url": "https://aayushch.github.io/codjiva/",
-  "description": "A desktop app that shows what code does. A coding agent reads a source file and draws it as an explorable blueprint, as a narrated film that follows one unit of work through the file, or as one of four more views: its states to step through, its data shapes, the exchange between its parties, or a data structure in memory. The same agent answers questions about a view and puts numbered notes on its parts, and a view can be made of one function or type of a file.",
+  "description": "A desktop app that shows what code does. A coding agent reads a source file and draws it as an explorable blueprint, as a narrated film, or as one of four more views, and answers questions about what it drew.",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS, Windows, Linux",
   "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -52,9 +52,8 @@
 		</a>
 		<div class="navlinks">
 			<a href="#demo">Live example</a>
-			<a href="#ask">Ask</a>
+			<a href="#modes">What it makes</a>
 			<a href="#how">How it works</a>
-			<a href="#app">The app</a>
 			<a href="#agents">Agents</a>
 			<a href="#download">Download</a>
 		</div>
@@ -80,7 +79,7 @@
 		<div>
 			<span class="eyebrow">A desktop app for understanding code</span>
 			<h1>See what your code does.<br><span class="accent">Not just what it says.</span></h1>
-			<p class="lead">Codjiva opens a folder like an IDE. But where an IDE shows you the text of a file, Codjiva shows you a blueprint of it: the machines, the pipes between them, the limits, and a short narrated film that follows one request from the way in to the way out. A parser, a set of types, a protocol or a data structure gets a view of its own. The coding agent you already use reads the code and draws it, and can say which view fits a file. When the picture raises a question, you ask the agent that drew it.</p>
+			<p class="lead">Codjiva opens a folder like an IDE, but shows a blueprint of a file where an IDE shows its text, and a short narrated film that follows one request through it. The coding agent you already use draws it, and answers your questions about it.</p>
 			<div class="actions">
 				<a class="btn primary" data-dl-link href="https://github.com/aayushch/codjiva/releases/latest" target="_blank" rel="noopener">
 					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -108,7 +107,7 @@
 <section class="section wrap" id="demo">
 	<span class="eyebrow">Live example · not a recording</span>
 	<h2>An example film. Press play.</h2>
-	<p class="lead">This film was made from <a href="https://github.com/aayushch/codjiva/blob/main/fixtures/go-orders/internal/orders/handler.go" target="_blank" rel="noopener">one Go file</a>, a made-up order handler with a batch, a rate limiter and a soft and a hard memory limit. The page below is the single HTML file the app saved for it, with its own player. The other tabs show the other kinds of view, each of the same made-up program.</p>
+	<p class="lead">Made from <a href="https://github.com/aayushch/codjiva/blob/main/fixtures/go-orders/internal/orders/handler.go" target="_blank" rel="noopener">one Go file</a>, a made-up order handler. This is the single HTML file the app saved for it. The other tabs show the other views of the same program.</p>
 	<div class="demo-head">
 		<div class="tabs" role="tablist" aria-label="Examples">
 			<button type="button" class="tab" role="tab" aria-selected="true" data-demo="film">Film</button>
@@ -139,167 +138,44 @@
 <section class="section wrap" id="modes">
 	<span class="eyebrow">What it makes</span>
 	<h2>Six views of a file, a map of a folder, and the pipeline between files.</h2>
-	<p class="lead">A blueprint suits most code that does work in steps. The other views are for code that a blueprint explains badly: a state machine, a set of types, an exchange, a data structure. Blueprints, films and pipelines are drawn with the same small set of parts, so a tank always means a shared limit and a press always means an ordered step.</p>
 	<div class="modes">
-		<div class="mode">
-			<span class="n">01 · BLUEPRINT</span>
-			<h3>A still blueprint you can explore</h3>
-			<p>One file, or a whole folder, as a plant of machines and pipes.</p>
-			<ul>
-				<li>Click a part for its role and the line of code it stands for</li>
-				<li>Numbered markers explain the points that matter</li>
-				<li>A rationale where the code shows why it is built that way, with the line that says so</li>
-				<li>Switch data flow, control, error paths and labels on and off</li>
-			</ul>
-		</div>
-		<div class="mode">
-			<span class="n">02 · FILM</span>
-			<h3>A narrated film of one unit of work</h3>
-			<p>One order, request or log line, followed from the way in to the way out.</p>
-			<ul>
-				<li>Chapters for the normal path, each limit, and what happens when a limit is hit</li>
-				<li>Slows down by itself while an explanation is on screen</li>
-				<li>Plays from 0.75× to 4×, with sound if you want it</li>
-			</ul>
-		</div>
-		<div class="mode">
-			<span class="n">03 · STEP-THROUGH</span>
-			<h3>The states of the code, run on your input</h3>
-			<p>For a parser, a state machine, a validator, or any code whose behaviour depends on its input.</p>
-			<ul>
-				<li>Type an input of your own, or pick an example the agent chose</li>
-				<li>Step forwards and backwards, one transition at a time</li>
-				<li>Every variable and output is in view at each step</li>
-			</ul>
-		</div>
-		<div class="mode">
-			<span class="n">04 · SCHEMA</span>
-			<h3>The data shapes of a file</h3>
-			<p>For a file that mostly declares types: models, messages, configuration.</p>
-			<ul>
-				<li>Every type with its fields, and how the types refer to each other</li>
-				<li>Which code reads and writes each field</li>
-			</ul>
-		</div>
-		<div class="mode">
-			<span class="n">05 · LANES</span>
-			<h3>Who talks to whom, in time order</h3>
-			<p>For a protocol, a client and a server, or callbacks between components.</p>
-			<ul>
-				<li>Each party is a lane, and the exchange plays one message at a time</li>
-				<li>A scenario for each way the exchange can go</li>
-			</ul>
-		</div>
-		<div class="mode">
-			<span class="n">06 · STRUCTURE</span>
-			<h3>A data structure as it is in memory</h3>
-			<p>For a file that implements a container or an index: a queue, a tree, a cache.</p>
-			<ul>
-				<li>Type a sequence of operations</li>
-				<li>Step through what each one does to the structure</li>
-			</ul>
-		</div>
-		<div class="mode">
-			<span class="n">A FOLDER · MAP</span>
-			<h3>A folder, level by level</h3>
-			<p>How the code of a folder is organised and how its parts use each other.</p>
-			<ul>
-				<li>Open a box to see what is inside it, down to single functions</li>
-				<li>Each file links to everything that was made of it</li>
-			</ul>
-		</div>
-		<div class="mode">
-			<span class="n">SEVERAL FILES · COMPOSE</span>
-			<h3>Several files joined into one pipeline</h3>
-			<p>Tick two or more blueprints or films. Codjiva proposes where one hands work to the next.</p>
-			<ul>
-				<li>Joins are found from the calls and names the files share</li>
-				<li>A still picture, or a film that crosses the join</li>
-				<li>Marked stale when a file of any part changes</li>
-			</ul>
-		</div>
-		<div class="mode">
-			<span class="n">NOT SURE WHICH · ASK</span>
-			<h3>Your agent says which view fits</h3>
-			<p>Click “Which view fits this file?” and the agent reads the file and ranks the six views.</p>
-			<ul>
-				<li>One sentence of reason for each view, naming things in the file</li>
-				<li>The first is marked as suggested on the file's card and in the Visuals menu</li>
-				<li>Takes a few seconds, and is kept until the file changes</li>
-				<li>It only suggests. You can make any of the six</li>
-			</ul>
-		</div>
+		<div class="mode"><span class="n">01 · BLUEPRINT</span><h3>A still blueprint you can explore</h3><p>A file or a folder as machines and pipes. Click a part to see its code.</p></div>
+		<div class="mode"><span class="n">02 · FILM</span><h3>A narrated film of one unit of work</h3><p>One order, request or log line, from the way in to the way out.</p></div>
+		<div class="mode"><span class="n">03 · STEP-THROUGH</span><h3>The states of the code, run on your input</h3><p>For a parser, a state machine or a validator.</p></div>
+		<div class="mode"><span class="n">04 · SCHEMA</span><h3>The data shapes of a file</h3><p>Types, their fields, and the code that reads and writes them.</p></div>
+		<div class="mode"><span class="n">05 · LANES</span><h3>Who talks to whom, in time order</h3><p>For a protocol, a client and a server, or callbacks.</p></div>
+		<div class="mode"><span class="n">06 · STRUCTURE</span><h3>A data structure as it is in memory</h3><p>Type operations on a queue, a tree or a cache, and step through them.</p></div>
+		<div class="mode"><span class="n">A FOLDER · MAP</span><h3>A folder, level by level</h3><p>Down to single functions.</p></div>
+		<div class="mode"><span class="n">SEVERAL FILES · COMPOSE</span><h3>Several files joined into one pipeline</h3><p>Joined where one file hands work to the next.</p></div>
+		<div class="mode"><span class="n">NOT SURE WHICH</span><h3>Your agent says which view fits</h3><p>It ranks the six for a file, with a reason for each.</p></div>
 	</div>
 </section>
 
 <section class="section wrap" id="ask">
 	<span class="eyebrow">Ask about it</span>
-	<h2>Ask the agent that drew it. The answer is marked on the picture.</h2>
-	<p class="lead">A picture raises questions: where can this fail, why is the batch kept here, who else calls this. Beside every blueprint, film and view there is an Ask tab. And when a whole file is too much, select one function and work with only that.</p>
+	<h2>Ask the agent that drew it.</h2>
 	<div class="facts">
-		<div class="fact"><b>The same agent, the same conversation</b><span>Your question continues the conversation in which the picture was drawn, so the agent has already read the code. An answer usually takes seconds, not the minutes of a new picture.</span></div>
-		<div class="fact"><b>Answers that point at the code</b><span>An answer names the lines it relies on. Codjiva checks each one against your files and makes it a link only when the file and the line exist.</span></div>
-		<div class="fact"><b>Notes on the picture</b><span>An answer can put numbered notes on the parts it is about, or flag one to be careful with. The picture is not made again for this, and one switch hides the notes.</span></div>
-		<div class="fact"><b>Select code, then discuss or draw it</b><span>Select a function, a type or any lines in the source. Start a discussion about only that code, or make any of the six views of it.</span></div>
-		<div class="fact"><b>Code and picture side by side</b><span>The discussion and the picture of the selected code stand beside the source, above or below the references of a name. One button gives the picture the whole editor area.</span></div>
-		<div class="fact"><b>Marks that follow the code</b><span>A mark in the margin shows which code has a discussion or a picture. It stays with a function when the function moves, and the picture is marked stale only when that function changes.</span></div>
+		<div class="fact"><b>Answers cite the code</b><span>Every line an answer names is checked and linked.</span></div>
+		<div class="fact"><b>Notes on the picture</b><span>An answer marks the parts it is about. Nothing is redrawn.</span></div>
+		<div class="fact"><b>One function, not the whole file</b><span>Select code to discuss or draw only that.</span></div>
 	</div>
 </section>
 
 <section class="section wrap" id="how">
 	<span class="eyebrow">How it works</span>
 	<h2>Your agent reads the code. Codjiva checks the drawing.</h2>
-	<p class="lead">Codjiva has no model of its own. It gives your coding agent a drawing kit and a set of rules, lets it read your file, and then tests what comes back before you see it.</p>
+	<p class="lead">Codjiva has no model of its own. Your agent draws with Codjiva's parts, and Codjiva tests the result before you see it.</p>
 	<div class="two">
 		<ol class="steps single">
-			<li><div><b>Open a folder and pick a file</b><span>Its card offers the six views, and your agent can say which one fits. Say what the picture should show, or leave that empty. For a film, Codjiva suggests companion files from the imports, the tests and the files that use this one. You tick the ones that matter, and can ignore folders such as <code>vendor/</code> for good.</span></div></li>
-			<li><div><b>The agent draws with Codjiva's parts</b><span>For a film it writes a few small source files: the plant, one scene per chapter, and a list of timings and explanations. For a schema, lanes, structure or map view it writes only the data, and Codjiva lays the view out. It may write only inside <code>.codjiva/</code>. A write guard checks every other file and can put back anything that changed.</span></div></li>
-			<li><div><b>Codjiva builds and tests the result</b><span>The sources become one HTML page. A hidden frame plays it and looks for labels that overlap, text that does not fit, scenes that change between two runs, and state that jumps between chapters. Problems go back to the agent to fix.</span></div></li>
-			<li><div><b>Watch, then say what should change</b><span>Pause the film, point at the thing you mean, and write one sentence. A new version is made with only that change. Earlier versions are kept. A question needs no new version: the agent answers it, and what a discussion found can become the next version.</span></div></li>
-		</ol>
+				<li><div><b>Open a folder and pick a file</b><span>Choose a view and say what it should show, or leave that empty.</span></div></li>
+				<li><div><b>The agent draws with Codjiva's parts</b><span>It may write only inside <code>.codjiva/</code>. A write guard checks every other file.</span></div></li>
+				<li><div><b>Codjiva builds and tests the result</b><span>Overlapping labels, text that does not fit and scenes that change between runs go back to the agent.</span></div></li>
+				<li><div><b>Watch, then say what should change</b><span>Point at the thing you mean and write one sentence. Earlier versions are kept.</span></div></li>
+			</ol>
 		<figure class="shot themed">
 			<img class="dark" src="images/animate-dialog.png" width="1600" height="960" loading="lazy" alt="The Animate dialog. It lists suggested companion files with the reason for each, a field for what the film should show, and a choice of length.">
 			<img class="light" src="images/animate-dialog-light.png" width="1600" height="960" loading="lazy" alt="The Animate dialog in the light theme. It lists suggested companion files with the reason for each, a field for what the film should show, and a choice of length.">
 			<figcaption>Before a film is made: which other files the agent reads, what the film should show, and how long it should be.</figcaption>
-		</figure>
-	</div>
-</section>
-
-<section class="section wrap" id="app">
-	<span class="eyebrow">The app</span>
-	<h2>The window is laid out like an IDE.</h2>
-	<p class="lead">The explorer, the tabs and the panels are where an IDE has them. The middle shows the view you chose of the selected file, and its source at the click of a button.</p>
-	<div class="facts">
-		<div class="fact"><b>Three panels you can move</b><span>The explorer on the left, the inspector on the right and the job panel at the bottom. Drag an edge to resize a panel, drag it to the side of the window to close it, and pull it back out when you want it. The layout is remembered.</span></div>
-		<div class="fact"><b>Back and Forward</b><span>Follow a link from a film to the line of code it is about, then go back. The film continues at the second you left it.</span></div>
-		<div class="fact"><b>See where the pictures are</b><span>A file that has any view made of it has a dot in the explorer, and every folder above it is tinted, so a closed folder still shows the way. The library lists everything that was made.</span></div>
-		<div class="fact"><b>Watch the agent work</b><span>The job panel shows each step, every file the agent reads, what the write guard found and what the job cost. When the film is ready, it opens by itself.</span></div>
-		<div class="fact"><b>Versions and actions in the toolbar</b><span>The toolbar holds the Visuals menu, which switches between the views of a file, the version list, and the actions on a version: make it again, export it as one HTML file, open it in the browser, show its files.</span></div>
-		<div class="fact"><b>Light and dark</b><span>The window follows your system, or your own choice, and everything it draws is in the same theme.</span></div>
-	</div>
-</section>
-
-<section class="section wrap">
-	<span class="eyebrow">What it does to your project</span>
-	<h2>It reads your code. It writes one folder.</h2>
-	<div class="facts">
-		<div class="fact"><b>One folder, plain files</b><span>Everything is saved under <code>.codjiva/</code> in the folder you opened, your discussions too. A film is a single HTML file that opens offline in any browser.</span></div>
-		<div class="fact"><b>Your code is never changed</b><span>Agents are confined to that folder. After every job the write guard compares the rest of the workspace with how it was.</span></div>
-		<div class="fact"><b>Films have no network access</b><span>Every picture and film runs in a sandboxed frame that has no access to the network, your files or the app.</span></div>
-		<div class="fact"><b>No account, no telemetry</b><span>Codjiva has no server. Your code goes only to the agent or provider you chose, under your own account with them. The app's only other request asks GitHub whether a newer version exists, and you can switch that off.</span></div>
-		<div class="fact"><b>It tells you when a picture is old</b><span>Each version records a hash of the files it was made from. Change a file and the picture is marked stale. Nothing is regenerated automatically.</span></div>
-		<div class="fact"><b>Keys stay in the keychain</b><span>If you use an API key, it is kept in your system's credential store, never in a file.</span></div>
-	</div>
-	<div class="two">
-		<figure class="shot themed">
-			<img class="dark" src="images/app-visual.png" width="1440" height="900" loading="lazy" alt="A still blueprint in the Codjiva window. The Submit machine is selected, and the panel on the right shows its role, a link to its line of code, and the modes and limits of the file.">
-			<img class="light" src="images/app-visual-light.png" width="1440" height="900" loading="lazy" alt="A still blueprint in the Codjiva window, in the light theme. The Submit machine is selected, and the panel on the right shows its role, a link to its line of code, and the modes and limits of the file.">
-			<figcaption>A blueprint. Click a machine to see its role and jump to the line of code.</figcaption>
-		</figure>
-		<figure class="shot themed">
-			<img class="dark" src="images/settings-ignore.png" width="1600" height="960" loading="lazy" alt="The Settings dialog, in sections. The Companion files section holds a list of patterns for files and folders that are never suggested.">
-			<img class="light" src="images/settings-ignore-light.png" width="1600" height="960" loading="lazy" alt="The Settings dialog in the light theme, in sections. The Companion files section holds a list of patterns for files and folders that are never suggested.">
-			<figcaption>Settings, with the list of folders that are never suggested as companions.</figcaption>
 		</figure>
 	</div>
 </section>

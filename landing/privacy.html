@@ -41,7 +41,7 @@
 
 <main class="wrap doc">
 	<h1>Privacy Policy</h1>
-	<p class="updated">Last updated: 26 November 2026</p>
+	<p class="updated">Last updated: 27 November 2026</p>
 	<p>This policy covers the Codjiva desktop app (macOS, Windows and Linux) and this website. Codjiva is free, open-source software. Its source code is public at <a href="https://github.com/aayushch/codjiva">github.com/aayushch/codjiva</a>, so every statement below can be checked against the code.</p>
 	<p class="short"><b>In short:</b> Codjiva has no servers and no accounts, and it collects no analytics, telemetry or crash reports. To offer updates, it asks GitHub which release is the newest. What it makes is stored only on your computer, in the folder you opened. Your code is read by the coding agent you chose, or sent to the model provider whose API key you entered, under your own account with them.</p>
 
@@ -51,6 +51,7 @@
 		<li><b>In your system's settings folder for the app:</b> your settings, the list of folders you opened recently, and how long your earlier jobs took. The app uses those times to tell you how long the next job will take. They are numbers with the name of the agent and the model, without file names or code.</li>
 		<li><b>In your system's credential store</b> (Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux): any API key you enter. Keys are never written to a file.</li>
 	</ul>
+	<p>Outside the <code>.codjiva</code> folder, Codjiva changes nothing in the folder you open, except one line in <code>.gitignore</code> if you agree to it. After every job it checks whether the agent changed any other file, and lists what it finds.</p>
 	<p>None of this is sent to the Codjiva project or to any server operated for Codjiva. There is no such server.</p>
 
 	<h2>2. The coding agent or provider you use</h2>
