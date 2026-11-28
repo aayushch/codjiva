@@ -267,7 +267,7 @@ const selfTestCases = [
       edit(
         dir,
         'film.json',
-        '{ "kind": "batch", "html": "The batch · <code>[]Order</code> written by one <code>WriteBatch</code>" }',
+        '{ "kind": "batch", "label": "The batch", "html": "The batch · <code>[]Order</code> written by one <code>WriteBatch</code>" }',
         '{ "kind": "primary", "html": "again" }',
       ),
     expect: (issues) =>

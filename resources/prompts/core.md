@@ -134,8 +134,13 @@ Rules for packets:
   them apart. If they would, give one of them another kind, or do not draw the less important one as a packet.
 - **At most 3 forms and 6 legend rows** in one visual or film. Draw as packets only the things the story
   follows. Show everything else with a label, a gauge or a sentence in a bubble.
-- **The legend** has one row for each form and kind you drew: `{ "kind", "form", "html" }`. Leave `form` out
-  for a crate. A row names one thing. Never join two things with "or" in one row.
+- **The legend** has one row for each form and kind you drew: `{ "kind", "form", "label", "html" }`. Leave
+  `form` out for a crate. A row names one thing. Never join two things with "or" in one row.
+  - `label` is the name of the thing in one to three words, at most 24 characters: `An order`, `The batch`.
+    A strip beside the picture shows it next to the packet for as long as the film or visual is open.
+  - `html` starts with the same name and then says what the thing is in the code:
+    `An order · <code>Order</code>, marked by <code>price</code>`. The viewer reads it on the legend card of
+    a film, and when they point at the packet in the strip.
 - **A tag** (`opts.tag`, at most 3 characters) shows a value the story is about, such as the `3` of
   `count = 3`, or tells packets of one look apart, such as `A` and `B`. Most packets have no tag.
 - **Never draw a moving thing by hand.** A thing that moves is a `CJ.packet`, a `CJ.cursor`, a `CJ.warning` or

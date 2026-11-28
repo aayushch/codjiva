@@ -70,6 +70,12 @@
             ],
             "description": "the shape of the packet; a crate when omitted. Not allowed with the kinds batch and tally."
           },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 24,
+            "description": "the name of the thing in one to three words; the legend strip shows it beside the packet"
+          },
           "html": {
             "type": "string"
           }

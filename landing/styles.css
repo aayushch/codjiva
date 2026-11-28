@@ -66,12 +66,24 @@
 * {
   box-sizing: border-box;
 }
+/* The pages ask for the whole screen with `viewport-fit=cover`, so the
+   background reaches the edges of the screen on a phone that keeps a part of
+   the screen for its own controls, such as the clock, the battery and the
+   buttons of the browser. The `--safe-*` values are the widths of those
+   parts, and 0 on a screen that has none. `body` keeps its content out of
+   the parts at the left and the right. `.nav` and `.footer` reach into them
+   with their backgrounds only. */
 html {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   scroll-behavior: smooth;
-  scroll-padding-top: 72px;
+  scroll-padding-top: calc(72px + var(--safe-top));
 }
 body {
   margin: 0;
+  padding: 0 var(--safe-right) 0 var(--safe-left);
   background-color: var(--ground);
   color: var(--ink);
   font: 15px/1.6 var(--font);
@@ -134,6 +146,8 @@ img {
   position: sticky;
   top: 0;
   z-index: 20;
+  margin: 0 calc(-1 * var(--safe-right)) 0 calc(-1 * var(--safe-left));
+  padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
   background: color-mix(in srgb, var(--bar) 92%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
@@ -646,7 +660,8 @@ pre .c {
 
 /* ---------- footer, and the text pages ---------- */
 .footer {
-  margin-top: 96px;
+  margin: 96px calc(-1 * var(--safe-right)) 0 calc(-1 * var(--safe-left));
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--bar) 92%, transparent);
 }

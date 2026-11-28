@@ -17,6 +17,11 @@ import type {
 // before this cannot show notes until it is built again.
 export const NOTES_RUNTIME = '1.5.0';
 
+// The first version of the runtime that shows the legend of a film or a
+// visual as a strip beside the picture. A version of an artifact that was
+// built before this shows no legend strip until it is built again.
+export const LEGEND_RUNTIME = '1.6.0';
+
 // True when the version number `version` is lower than `wanted`. Both are
 // written as numbers with dots between them, such as 1.4.0. A part that is
 // missing or is not a number counts as 0.

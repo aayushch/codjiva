@@ -686,6 +686,53 @@ await visual.locator('.v-flush.cj-selected').waitFor();
 check(true, 'a transition in the inspector selects the part it leads to');
 await page.mouse.click(gate.x + gate.width / 2, gate.y + gate.height / 2);
 await page.locator('.inspector h3', { hasText: 'Submit()' }).waitFor();
+// The legend strip: the packets the visual draws, each with its short name.
+// It lies in the lower left corner of the visual, beside the zoom buttons,
+// and the inspector has no switch for it.
+const visualKeys = await visual
+  .locator('#legendbar .cj-key-label')
+  .allTextContents();
+const visualStrip = await visual.locator('#legendbar').boundingBox();
+const zoomButtons = await page.locator('.zoomctl').boundingBox();
+const canvasBox = await page.locator('.canvas').boundingBox();
+check(
+  visualKeys.join() ===
+    'Order,Priority order,Verdict,Order ID,Shed order,Batch',
+  'a visual shows its legend as a strip of packets with their names',
+  visualKeys.join(),
+);
+check(
+  visualStrip.x >= canvasBox.x &&
+    visualStrip.x + visualStrip.width < zoomButtons.x &&
+    visualStrip.y + visualStrip.height <= canvasBox.y + canvasBox.height &&
+    Math.abs(
+      visualStrip.y +
+        visualStrip.height / 2 -
+        (zoomButtons.y + zoomButtons.height / 2),
+    ) < 6,
+  'the legend strip of a visual is on the line of the zoom buttons, to their left',
+  JSON.stringify({ visualStrip, zoomButtons }),
+);
+check(
+  !(await page.locator('.inspector .layer').allTextContents()).some((name) =>
+    /legend/i.test(name),
+  ),
+  'the layers of the inspector have no switch for the legend',
+);
+await visual.locator('#legendbar .cj-key').first().hover();
+check(
+  (await visual
+    .locator('#legendbar .cj-key')
+    .first()
+    .locator('.cj-key-card')
+    .evaluate((card) => getComputedStyle(card).visibility)) === 'visible' &&
+    /will be queued or deferred/.test(
+      await visual.locator('#legendbar .cj-key-card').first().textContent(),
+    ),
+  'the pointer over a packet of the legend strip shows what the packet is',
+);
+await shot('03e-visual-legend');
+await page.mouse.move(gate.x + gate.width / 2, gate.y + gate.height / 2);
 await shot('03d-visual');
 check(
   await visual.locator('.v-pipe10').isVisible(),
@@ -1048,6 +1095,212 @@ check(
   (await page.locator('.companions .check input:checked').count()) === 2,
   'ignoring a file keeps the ticks of the others',
 );
+// The ticked companion files are listed first. A file whose tick is taken
+// off moves to directly under the ticked files, and back when it is ticked
+// again. The rows slide to their new places.
+const companionNames = () =>
+  page
+    .locator('.companions .check span')
+    .evaluateAll((spans) =>
+      spans.map((span) => span.firstChild.textContent.trim().split('/').pop()),
+    );
+const companionsAtRest = () =>
+  page.waitForFunction(() =>
+    document
+      .querySelector('.companions')
+      .getAnimations({ subtree: true })
+      .every((animation) => animation.playState !== 'running'),
+  );
+await page.evaluate(() => {
+  window.__rowsMoved = new Set();
+  const animate = Element.prototype.animate;
+  Element.prototype.animate = function (...args) {
+    const moved = (Array.isArray(args[0]) ? args[0] : []).some((frame) =>
+      /translateY\((?!0px)/.test(frame.transform ?? ''),
+    );
+    if (moved && this.classList.contains('companion'))
+      window.__rowsMoved.add(
+        this.querySelector('.check span').firstChild.textContent.trim(),
+      );
+    return animate.apply(this, args);
+  };
+});
+const namesAtStart = (await companionNames()).join();
+const firstCompanion = page.locator('.companions .companion').first();
+await firstCompanion.locator('input').uncheck();
+await companionsAtRest();
+const namesUnticked = (await companionNames()).join();
+const rowsMoved = await page.evaluate(() => window.__rowsMoved.size);
+await page
+  .locator('.companions .companion', { hasText: 'handler_test.go' })
+  .locator('input')
+  .check();
+await companionsAtRest();
+check(
+  namesAtStart === 'handler_test.go,store.go,limiter.go' &&
+    namesUnticked === 'store.go,handler_test.go,limiter.go' &&
+    (await companionNames()).join() === namesAtStart,
+  'the ticked companion files are listed first, and a file moves when its tick changes',
+  `${namesAtStart} | ${namesUnticked} | ${await companionNames()}`,
+);
+check(
+  rowsMoved === 2,
+  'the rows of the companion files slide to their new places',
+  String(rowsMoved),
+);
+// The files that match the search are listed over the dialog, below the
+// search field. The dialog keeps its place and its size, nothing covers the
+// list, and the list scrolls when it has more files than fit.
+// The folder gets six more files for this, so that more files match than
+// fit in the list. They are deleted again below.
+const spareFiles = [1, 2, 3, 4, 5, 6].map((n) => `spare/e${n}.txt`);
+await page.evaluate((paths) => {
+  for (const path of paths) window.__mockSetFile(path, '');
+}, spareFiles);
+const animateBox = () => page.locator('.dialog.animate').boundingBox();
+const animateBefore = JSON.stringify(await animateBox());
+await page.getByLabel('Add a companion file').fill('e');
+await page.locator('.hit').first().waitFor();
+const hitList = await page.locator('.hits').evaluate((list) => {
+  const box = list.getBoundingClientRect();
+  const field = document
+    .querySelector('[aria-label="Add a companion file"]')
+    .getBoundingClientRect();
+  const shows = (x, y) => list.contains(document.elementFromPoint(x, y));
+  return {
+    files: list.children.length,
+    scrolls: list.scrollHeight > list.clientHeight,
+    inWindow: box.top >= 0 && box.bottom <= window.innerHeight,
+    uncovered:
+      shows(box.left + 4, box.top + 4) &&
+      shows(box.left + box.width / 2, box.top + box.height / 2) &&
+      shows(box.right - 24, box.bottom - 4),
+    underField:
+      box.top >= field.bottom &&
+      box.top - field.bottom < 8 &&
+      Math.abs(box.left - field.left) < 1 &&
+      Math.abs(box.width - field.width) < 1,
+  };
+});
+check(
+  JSON.stringify(await animateBox()) === animateBefore,
+  'the list of matching files leaves the dialog as large as it was',
+  `${animateBefore} ${JSON.stringify(await animateBox())}`,
+);
+check(
+  hitList.inWindow && hitList.uncovered && hitList.underField,
+  'the list of matching files is below the search field, inside the window, with nothing over it',
+  JSON.stringify(hitList),
+);
+check(
+  hitList.files > 8 && hitList.scrolls,
+  'the list of matching files scrolls when it has more files than fit',
+  JSON.stringify(hitList),
+);
+await shot('09b-companion-search');
+// Scrolling the list to its end keeps it open, and the last file can be
+// reached.
+await page.locator('.hits').evaluate((list) => {
+  list.scrollTop = list.scrollHeight;
+});
+await page.waitForFunction(
+  () => document.querySelector('.hits')?.scrollTop > 0,
+);
+const lastHit = await page.locator('.hits').evaluate((list) => {
+  const box = list.getBoundingClientRect();
+  const last = list.lastElementChild.getBoundingClientRect();
+  return last.bottom <= box.bottom + 1 && last.top >= box.top;
+});
+check(lastHit, 'the last matching file can be scrolled into view');
+// Escape closes the list and leaves the dialog open.
+await page.keyboard.press('Escape');
+await page.locator('.hits').waitFor({ state: 'detached' });
+check(
+  (await page.locator('.dialog.animate').count()) === 1 &&
+    JSON.stringify(await animateBox()) === animateBefore,
+  'Escape closes the list of matching files and not the dialog',
+);
+// The arrow keys move through the list of matching files, the list scrolls
+// to keep the file they are on in view, and Enter adds that file. The list
+// of companion files is made lower and scrolled to its end for this, so that
+// the row of the added file, which is the first of the list, is out of view
+// until the list is scrolled to it.
+await page.locator('.companions').evaluate((list) => {
+  list.style.maxHeight = '100px';
+  list.scrollTop = list.scrollHeight;
+  // The list of matching files closes when the companion files are
+  // scrolled, so the scroll is let finish before the search starts.
+  return new Promise((done) =>
+    requestAnimationFrame(() => requestAnimationFrame(done)),
+  );
+});
+await page.getByLabel('Add a companion file').fill('e');
+await page.locator('.hit.on').waitFor();
+const hitNames = await page.locator('.hit').allTextContents();
+const markedHit = async () =>
+  (await page.locator('.hit.on').allTextContents()).join();
+const startsOnFirst = (await markedHit()) === hitNames[0];
+for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowDown');
+const onTwelfth = (await markedHit()) === hitNames[12];
+const twelfthInView = await page.locator('.hits').evaluate((list) => {
+  const box = list.getBoundingClientRect();
+  const row = list.querySelector('.hit.on').getBoundingClientRect();
+  return row.top >= box.top - 1 && row.bottom <= box.bottom + 1;
+});
+// Back up to ledger.py, the fifth file of the list.
+for (let i = 0; i < 8; i++) await page.keyboard.press('ArrowUp');
+const onFifth = (await markedHit()) === hitNames[4];
+check(
+  startsOnFirst && onTwelfth && onFifth && hitNames[4].endsWith('ledger.py'),
+  'the arrow keys move through the list of matching files',
+  `${startsOnFirst} ${onTwelfth} ${onFifth} ${hitNames.join()}`,
+);
+check(
+  twelfthInView,
+  'the list of matching files scrolls to the file the arrow keys are on',
+);
+await page.keyboard.press('Enter');
+await page.locator('.hits').waitFor({ state: 'detached' });
+check(
+  (await page
+    .locator('.companions .check', { hasText: 'ledger.py' })
+    .locator('input')
+    .isChecked()) &&
+    (await page.getByLabel('Add a companion file').inputValue()) === '' &&
+    (await page.locator('.dialog.animate').count()) === 1,
+  'Enter adds the file the arrow keys are on and empties the search field',
+);
+// The row of the added file is scrolled into view and highlighted, and the
+// highlight is taken off after it faded out.
+const addedRow = await page.locator('.companions').evaluate((list) => {
+  const row = list.querySelector('.companion.added');
+  if (!row) return null;
+  const box = list.getBoundingClientRect();
+  const at = row.getBoundingClientRect();
+  return {
+    name: row.querySelector('.check span').firstChild.textContent.trim(),
+    inView: at.top >= box.top - 1 && at.bottom <= box.bottom + 1,
+    first: row === list.querySelector('.companion'),
+    scrolled: list.scrollTop === 0,
+  };
+});
+check(
+  addedRow?.name.endsWith('ledger.py') &&
+    addedRow.first &&
+    addedRow.inView &&
+    addedRow.scrolled,
+  'an added file is listed with the ticked files, scrolled into view and highlighted',
+  JSON.stringify(addedRow),
+);
+await shot('09g-companion-added');
+await page.locator('.companion.added').waitFor({ state: 'detached' });
+check(true, 'the highlight of an added file is taken off after it faded out');
+await page.locator('.companions').evaluate((list) => {
+  list.style.maxHeight = '';
+});
+await page.evaluate((paths) => {
+  for (const path of paths) window.__mockDeleteFile(path);
+}, spareFiles);
 await page.getByLabel('Add a companion file').fill('ledger');
 await page.locator('.hit').first().click();
 check(
@@ -3048,6 +3301,24 @@ await page
   .locator('.player .chap', { hasText: '3 / 4' })
   .waitFor({ timeout: 5000 });
 check(true, 'clicking the scrubber seeks to another chapter');
+// The legend strip of a film is a row under the picture, directly above the
+// bar of the player, and it is there in every chapter.
+const filmKeys = await page
+  .frameLocator('.canvas iframe')
+  .locator('#legendbar .cj-key-label')
+  .allTextContents();
+const filmStrip = await page
+  .frameLocator('.canvas iframe')
+  .locator('#legendbar')
+  .boundingBox();
+const playerBar = await page.locator('.player').boundingBox();
+check(
+  filmKeys.join() === 'An order,The batch' &&
+    Math.abs(filmStrip.y + filmStrip.height - playerBar.y) < 2 &&
+    Math.abs(filmStrip.width - playerBar.width) < 2,
+  'a film shows its legend as a row above the bar of the player, in every chapter',
+  JSON.stringify({ filmKeys, filmStrip, playerBar }),
+);
 await page.waitForTimeout(300);
 await shot('07-film');
 await page.locator('.player select').selectOption('1.25');

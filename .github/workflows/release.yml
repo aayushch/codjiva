@@ -5,6 +5,11 @@ name: Release
 # that the app's own updater reads. Publish the draft to ship it. Installed copies of the app then
 # offer the new version.
 #
+# The `build` jobs attach the installers and a `.sig` file with the signature of each. The
+# `updater-file` job then writes latest.json once, from those files. It runs after every build job
+# has succeeded. When a build job fails, `updater-file` is skipped and the draft has no
+# latest.json. "Re-run failed jobs" then runs the failed build again and `updater-file` after it.
+#
 # The updater bundles are signed with the key whose public half is in
 # ui/src-tauri/tauri.conf.json. The build fails without these two repository secrets:
 #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
@@ -91,6 +96,28 @@ jobs:
           releaseBody: 'Installers for macOS (.dmg), Windows (.exe, .msi) and Linux (.AppImage, .deb, .rpm) are attached below.'
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
+          # The build jobs run at the same time, and latest.json is one file for all platforms.
+          # The `updater-file` job below writes it, so that no two jobs change it at once.
+          includeUpdaterJson: false
           projectPath: ui
           args: --target ${{ matrix.target }}
+
+  # Writes latest.json from the files the build jobs attached and attaches it to the draft
+  # release. `needs: build` makes it wait for all four build jobs, and it runs only when all of
+  # them succeeded. The script stops with an error when a file it expects is not attached.
+  updater-file:
+    name: Write latest.json
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Write latest.json and attach it to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/updater-json.mjs "$GITHUB_REF_NAME"

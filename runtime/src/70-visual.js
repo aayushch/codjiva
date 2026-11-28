@@ -17,7 +17,7 @@ hover highlight, click to select, layer toggles and numbered markers. You only d
 | `nodes` | The clickable parts: `{ id, label, role, refs: [{ path, line, end }], select: [names] }`. `select` lists the unprefixed names of the elements that highlight together; give each clickable machine one wrapping element. Whatever is drawn inside a selected element, such as the labels on a machine, is highlighted with it. A plate inside a machine can be a node of its own: a click on it selects it, and a click beside it selects the machine. A node also carries the detail that the app shows when the viewer selects it (see "Node detail"). |
 | `layers` | `{ data: [...], control: [...], errors: [...], labels: [...] }`. Each entry is an unprefixed element name, a name ending in `*` (matches `pipe1`, `pipe2`, ...), or a class selector starting with `.` (such as `.pl` and `.plt` for all labels and plates). |
 | `markers` | 3 to 8 points of interest: `{ x, y, n, bubble: { kicker, html, tail, alarm } }`. `n` is the number shown, in reading order along the flow. Clicking a marker opens its bubble beside it. |
-| `legend` | Optional rows `{ kind, form, html }`, one for each combination of packet kind and form the plant draws. Leave `form` out for a crate. A row names one thing. At most 6 rows, and at most 3 different forms. |
+| `legend` | Optional rows `{ kind, form, label, html }`, one for each combination of packet kind and form the plant draws. Leave `form` out for a crate. A row names one thing. `label` is the name of the thing in one to three words, at most 24 characters, such as `Order`. `html` is the name and what the thing is, such as `Order · <code>Order</code> that will be queued or deferred`. At most 6 rows, and at most 3 different forms. A strip at the lower edge of the picture shows each row's packet with its `label`, and the `html` of a row while the pointer is over it. |
 
 A node may also have a `rationale`: why the code does what the node stands for (see Rationale).
 
@@ -810,15 +810,6 @@ const buildVisual = (visual, stage, post) => {
   });
   m.view.addEventListener('gestureend', (ev) => ev.preventDefault());
 
-  // The legend card is hidden until the viewer asks for it, from the control
-  // bar of a standalone visual or from the app.
-  let legend = null;
-  if (Array.isArray(visual.legend) && visual.legend.length) {
-    legend = elementFromHtml(legendMarkup({ legend: visual.legend }));
-    legend.style.display = 'none';
-    m.ground.append(legend);
-  }
-
   draw();
 
   handle = {
@@ -857,15 +848,9 @@ const buildVisual = (visual, stage, post) => {
     select,
     setLayers,
     layers: () => Object.assign({}, layerOn),
-    hasLegend: !!legend,
-    // Shows or hides the legend card. Called with no argument it switches the
-    // card over.
-    setLegend(on) {
-      if (!legend) return false;
-      const show = on == null ? legend.style.display === 'none' : !!on;
-      legend.style.display = show ? '' : 'none';
-      return show;
-    },
+    // True when visual.json has a legend. The player then shows the legend
+    // strip (see CJ.boot).
+    hasLegend: Array.isArray(visual.legend) && visual.legend.length > 0,
     hasRationale: whyNodes.length > 0,
     // Shows or hides the "?" markers of the nodes that have a rationale.
     // Called with no argument it switches them over. Hiding them also closes

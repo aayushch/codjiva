@@ -1,7 +1,12 @@
 <script lang="ts">
   import { isStepped, kindWord, showsFilm } from '$lib/artifacts';
   import { formatBytes, formatTime } from '$lib/tree';
-  import type { ShownNote, Target } from '$lib/discuss';
+  import {
+    LEGEND_RUNTIME,
+    olderThan,
+    type ShownNote,
+    type Target,
+  } from '$lib/discuss';
   import { app } from '$lib/state/app.svelte';
   import { discuss } from '$lib/state/discuss.svelte';
   import AskPanel from './AskPanel.svelte';
@@ -126,6 +131,13 @@
     artifact != null && app.shownVersion === artifact.currentVersion,
   );
   const isFilm = $derived(showsFilm(artifact));
+  // True when the version on screen has a legend and was built before the
+  // runtime showed the legend as a strip beside the picture. The inspector
+  // then offers to build the version again, which needs no agent.
+  const legendTooOld = $derived(
+    !!detail?.definition?.legend?.length &&
+      olderThan(detail.manifest.runtimeVersion, LEGEND_RUNTIME),
+  );
   const isPipeline = $derived(artifact?.kind === 'pipeline');
   const word = $derived(
     isPipeline ? 'pipeline' : isFilm ? 'film' : kindWord(artifact),
@@ -429,6 +441,21 @@
               Click a part to see what it does and where it is in the code.
             </p>
           {/if}
+          {#if legendTooOld && artifact}
+            {@const current = artifact}
+            <p class="ask-old">
+              This {word} was built before the legend was shown beside the picture.
+              <button
+                class="btn small"
+                disabled={discuss.updating !== null}
+                onclick={() => discuss.update(current, detail.manifest.version)}
+                >{discuss.updating === current.id
+                  ? 'Updating…'
+                  : 'Update it'}</button
+              >
+              No agent is needed.
+            </p>
+          {/if}
           {#if detail.manifest.instructions}
             <div class="kicker">Instructions</div>
             <p>{detail.manifest.instructions}</p>
@@ -573,7 +600,7 @@
           {/each}
         {/if}
 
-        {#if (!isFilm && (Object.keys(app.layers).length || detail.definition?.legend?.length || hasNodeRationale)) || notes.length}
+        {#if (!isFilm && (Object.keys(app.layers).length || hasNodeRationale)) || notes.length}
           <div class="kicker">Layers</div>
           {#each Object.keys(app.layers) as layer}
             <button
@@ -586,19 +613,6 @@
               ></span>{LAYER_NAMES[layer] ?? layer}
             </button>
           {/each}
-          {#if detail.definition?.legend?.length}
-            <button
-              class="layer"
-              role="switch"
-              aria-checked={app.legendOn}
-              onclick={() => {
-                app.legendOn = !app.legendOn;
-                app.frameSend?.({ cj: 'legend', on: app.legendOn });
-              }}
-            >
-              <span class="switch" class:on={app.legendOn}></span>Legend
-            </button>
-          {/if}
           {#if hasNodeRationale}
             <button
               class="layer"

@@ -238,9 +238,10 @@ class DiscussState {
   }
 
   // Builds the version `version` of `artifact` again with the runtime of
-  // this app, so that it can show notes. The new version is then the one on
-  // show. Nothing changes when the new page does not pass its checks, and
-  // the user is told why.
+  // this app. A version that an older runtime built cannot show notes, and
+  // has no legend strip. The new version is then the one on show. Nothing
+  // changes when the new page does not pass its checks, and the user is
+  // told why.
   async update(artifact: ArtifactSummary, version: number) {
     if (this.updating) return;
     this.updating = artifact.id;

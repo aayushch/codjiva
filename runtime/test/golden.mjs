@@ -80,6 +80,14 @@ const port = await open(
   built,
   () => document.body.classList.contains('ready') && !!window.__cj,
 );
+// The hand-made page has no legend strip, so the strip of the built page is
+// taken out before the frames are compared. The stage is then fitted to the
+// frame again.
+await port.page.evaluate(() => {
+  const strip = document.getElementById('legendbar');
+  if (strip) strip.remove();
+  window.dispatchEvent(new Event('resize'));
+});
 
 // Draws the frame at time t and waits until the page has painted it.
 const settle = (page) =>

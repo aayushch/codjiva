@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "title": "How an order moves through the orders Handler",
   "legend": [
-    { "kind": "primary", "html": "An order · <code>Order</code>, marked by <code>validateLines</code>, <code>price</code>, <code>stamp</code>" },
-    { "kind": "batch", "html": "The batch · <code>[]Order</code> written by one <code>WriteBatch</code>" }
+    { "kind": "primary", "label": "An order", "html": "An order · <code>Order</code>, marked by <code>validateLines</code>, <code>price</code>, <code>stamp</code>" },
+    { "kind": "batch", "label": "The batch", "html": "The batch · <code>[]Order</code> written by one <code>WriteBatch</code>" }
   ],
   "legendHold": 3.4,
   "speed": { "base": 0.6, "slow": 0.1, "ramp": 0.5 },

@@ -4,12 +4,12 @@
   "camera": { "cx": 960, "cy": 560, "z": 1 },
   "state": { "level": 0.58, "lamps": [1, 0], "mode": [0, 1, 0], "gauge": 0.72, "press": [0, 0, 0], "wires": [1, 0, 0] },
   "legend": [
-    { "kind": "primary", "html": "Order · <code>Order</code> that will be queued or deferred" },
-    { "kind": "secondary", "html": "Priority order · <code>KindPriority</code>, written at once" },
-    { "kind": "secondary", "form": "value", "html": "Verdict · the answer of <code>Limiter.Allow</code> for this customer" },
-    { "kind": "secondary", "form": "key", "html": "Order ID · remembered in <code>h.seen</code>" },
-    { "kind": "transient", "html": "Shed order · counted, never stored" },
-    { "kind": "batch", "html": "Batch · the <code>[]Order</code> given to <code>WriteBatch</code>" }
+    { "kind": "primary", "label": "Order", "html": "Order · <code>Order</code> that will be queued or deferred" },
+    { "kind": "secondary", "label": "Priority order", "html": "Priority order · <code>KindPriority</code>, written at once" },
+    { "kind": "secondary", "form": "value", "label": "Verdict", "html": "Verdict · the answer of <code>Limiter.Allow</code> for this customer" },
+    { "kind": "secondary", "form": "key", "label": "Order ID", "html": "Order ID · remembered in <code>h.seen</code>" },
+    { "kind": "transient", "label": "Shed order", "html": "Shed order · counted, never stored" },
+    { "kind": "batch", "label": "Batch", "html": "Batch · the <code>[]Order</code> given to <code>WriteBatch</code>" }
   ],
   "layers": {
     "data": ["pipe*", "belt", "gbin", "gdbin", "drum", "pk*", "mp", "arr*"],

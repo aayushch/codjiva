@@ -7,7 +7,7 @@ use crate::scan;
 /// The version of the runtime API. It is written into every artifact and every
 /// manifest, so an artifact can be rebuilt later with a newer runtime that
 /// still understands its sources.
-pub const RUNTIME_VERSION: &str = "1.5.1";
+pub const RUNTIME_VERSION: &str = "1.6.0";
 
 macro_rules! runtime_file {
     ($name:literal) => {

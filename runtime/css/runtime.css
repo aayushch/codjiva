@@ -265,8 +265,109 @@ html.embed #app {
   pointer-events: none;
 }
 
-/* ---------- legend card (start of a film; on request in a visual) ----------
-   */
+/* ---------- legend strip ----------
+   One row of keys: the packets a film or a visual draws, each with its short
+   name. 90-player.js puts it under the frame of a film, as a row of the page,
+   and over the lower left corner of the frame of a visual, with the class
+   `over`. The right end of that corner is kept free, because the app has its
+   zoom buttons there. */
+#legendbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 6px 16px;
+  background: var(--shell-bar);
+  border-top: 1px solid var(--shell-border-soft);
+  font-size: 12px;
+  color: var(--shell-text-2);
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#legendbar.over {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  max-width: calc(100% - 160px);
+  padding: 3px 10px;
+  border: 1px solid var(--shell-border-soft);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--shell-bar) 92%, transparent);
+}
+/* One key. The keys share the width of the strip. When the strip is too
+   narrow for every name, the names are cut with dots and the packets stay. */
+.cj-key {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 30px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-s);
+}
+.cj-key:focus-visible {
+  outline: 2px solid var(--main);
+  outline-offset: 3px;
+}
+.cj-key > svg,
+.cj-key-card > svg {
+  flex: none;
+}
+.cj-key-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cj-key:hover .cj-key-label,
+.cj-key:focus-visible .cj-key-label {
+  color: var(--second);
+}
+/* The card above a key, with the whole text of the key's legend row. It is
+   in the page while hidden, so that 60-film.js can measure it and move it
+   left when it would reach past the right edge of the page. */
+.cj-key-card {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(460px, calc(100vw - 16px));
+  padding: 8px 14px;
+  background: var(--shell-bar);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--second);
+  visibility: hidden;
+  pointer-events: none;
+}
+.cj-key:hover .cj-key-card,
+.cj-key:focus-visible .cj-key-card {
+  visibility: visible;
+}
+.cj-key-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.cj-key-card code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--chip);
+  color: var(--second);
+  white-space: nowrap;
+}
+
+/* ---------- legend card (at the start of a film) ---------- */
 .words {
   position: absolute;
   margin: 0;

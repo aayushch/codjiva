@@ -54,6 +54,12 @@ export function copySources(srcDir, name) {
 // Opens a built artifact in a new page, embedded-style (no control bar) at
 // exactly stage size, and waits until the runtime is ready. Returns the page
 // and the errors it logged.
+//
+// An embedded film with a legend has the legend strip as a row under its
+// frame. The page is made taller by the height of that row, so that the
+// frame is as tall as the stage and the stage is drawn at its own size. A
+// page that is not embedded has its control bar as well, and is left as it
+// is.
 export async function openArtifact(browser, file, query = '?embed=1') {
   const context = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
@@ -71,6 +77,24 @@ export async function openArtifact(browser, file, query = '?embed=1') {
     null,
     { timeout: 30000 },
   );
+  const stripHeight = await page.evaluate(() => {
+    const strip = document.querySelector('#legendbar:not(.over)');
+    return strip && document.body.classList.contains('embed')
+      ? Math.ceil(strip.getBoundingClientRect().height)
+      : 0;
+  });
+  if (stripHeight) {
+    await page.setViewportSize({ width: 1920, height: 1080 + stripHeight });
+    // The runtime fits the stage to the frame when the page is told of its
+    // new size, which is a moment after the size changed.
+    await page.waitForFunction(
+      () =>
+        Math.abs(
+          document.getElementById('stage').getBoundingClientRect().height -
+            1080,
+        ) < 0.5,
+    );
+  }
   return { page, errors, context };
 }
 

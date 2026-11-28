@@ -139,30 +139,76 @@ for (const [name, engine] of [
     JSON.stringify(changed),
   );
 
+  // The legend strip of a visual: one key for each row of the legend, in
+  // the lower left corner of the frame. A row with a `label` is named by it.
+  // A row without one is named by the start of its `html`.
   const legend = await page.evaluate(() => {
-    window.__cj.visual.setLegend(true);
+    const strip = document.getElementById('legendbar');
     const rows = Array.from(
-      document.querySelectorAll('.cj-legend-row [data-cj="packet"]'),
+      strip.querySelectorAll('.cj-key > svg [data-cj="packet"]'),
     ).map(
       (el) => el.getAttribute('data-form') + ' ' + el.getAttribute('data-kind'),
     );
-    const card = document.querySelector('.cj-legend').getBoundingClientRect();
-    const stage = document.getElementById('stage').getBoundingClientRect();
+    const box = strip.getBoundingClientRect();
+    const frame = document.getElementById('frame').getBoundingClientRect();
     return {
       rows,
-      inside: card.top >= stage.top && card.bottom <= stage.bottom,
+      labels: Array.from(strip.querySelectorAll('.cj-key-label')).map(
+        (label) => label.textContent,
+      ),
+      cut: Array.from(strip.querySelectorAll('.cj-key-label')).some(
+        (label) => label.scrollWidth > label.clientWidth + 1,
+      ),
+      inside:
+        box.left >= frame.left &&
+        box.right <= frame.right &&
+        box.top >= frame.top &&
+        box.bottom <= frame.bottom,
+      cards: strip.querySelectorAll('.cj-key-card').length,
+      cardsShown: Array.from(strip.querySelectorAll('.cj-key-card')).filter(
+        (card) => getComputedStyle(card).visibility === 'visible',
+      ).length,
     };
   });
   check(
     legend.rows.join() ===
       'element primary,element secondary,element transient,' +
-        'record secondary,record transient,value primary' && legend.inside,
-    `${name}: the legend draws each row in its form, and six rows fit`,
+        'record secondary,record transient,value primary' &&
+      legend.inside &&
+      !legend.cut,
+    `${name}: the legend strip draws each row in its form, and six rows fit`,
     JSON.stringify(legend),
+  );
+  check(
+    legend.labels.join() ===
+      'A menu item,The More item,A passing item,A table row,A copied row,A number',
+    `${name}: a key is named by its label, or by the start of its text`,
+    legend.labels.join(),
+  );
+  // The card of a key is shown while the pointer is over the key, and it
+  // has the whole text of the row.
+  const lastKey = page.locator('#legendbar .cj-key').last();
+  await lastKey.hover();
+  const card = await lastKey.locator('.cj-key-card').evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    return {
+      shown: getComputedStyle(el).visibility === 'visible',
+      text: el.textContent,
+      inside: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0,
+    };
+  });
+  check(
+    legend.cards === 6 &&
+      legend.cardsShown === 0 &&
+      card.shown &&
+      card.inside &&
+      card.text === 'A number · count, with its value written on it',
+    `${name}: the card of a key shows the whole row while the pointer is on it`,
+    JSON.stringify({ legend, card }),
   );
   if (name === 'chromium')
     await page.screenshot({ path: path.join(out, 'parts-sheet-legend.png') });
-  await page.evaluate(() => window.__cj.visual.setLegend(false));
+  await page.mouse.move(960, 300);
 
   const report = await runSelfTest(page);
   const unexpected = report.issues.filter(

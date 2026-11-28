@@ -244,7 +244,7 @@ normally, and 0.1 while a bubble is up. So a scene's real length is about `animL
 | Field | Meaning |
 |-------|---------|
 | `title` | The film's title. |
-| `legend` | One row `{ kind, form, html }` for each combination of packet kind and form the film draws. Leave `form` out for a crate. A row names one thing. At most 6 rows, and at most 3 different forms. The legend card covers a dimmed plant at the start of the first scene, then lifts away. Keep a row to about 60 characters. A longer row wraps onto a second line. Start the first scene's own motion after animation second 4. |
+| `legend` | One row `{ kind, form, label, html }` for each combination of packet kind and form the film draws. Leave `form` out for a crate. A row names one thing. `label` is the name of the thing in one to three words, at most 24 characters, such as `An order`. `html` is the name and what the thing is, such as `An order · <code>Order</code>, marked by <code>price</code>`. At most 6 rows, and at most 3 different forms. The legend card shows the `html` of every row. It covers a dimmed plant at the start of the first scene, then lifts away. Keep `html` to about 60 characters. A longer row wraps onto a second line. Start the first scene's own motion after animation second 4. For the whole film, a strip under the picture shows each row's packet with its `label`, and the `html` of a row while the pointer is over it. |
 | `scenes` | The chapters, in order. 4 to 8. |
 | `thumbT` | The real time, in seconds, of the frame to use as the thumbnail. |
 
@@ -676,6 +676,72 @@ const legendMarkup = (film) => {
     rows +
     '</div>'
   );
+};
+
+// The short name of a legend row, which the legend strip shows beside the
+// row's packet. It is the row's `label`. A row without a `label` is named by
+// the text of its `html` before the first " · ". A row without a `label`
+// whose `html` has no " · " is named by the whole text of its `html`.
+const legendLabel = (row) => {
+  if (row.label) return String(row.label);
+  const text = elementFromHtml(
+    '<span>' + cleanInline(row.html) + '</span>',
+  ).textContent;
+  return text.split(' · ')[0].trim();
+};
+
+// Builds the legend strip of a film or a visual: one row of keys, a key for
+// each row of `rows`, the `legend` of film.json or visual.json. A key shows
+// the packet of its row, drawn small, and the row's short name. While the
+// pointer is over a key, or the key has the keyboard focus, a card above the
+// key shows the packet again with the `html` of the row.
+//
+// The strip is outside the stage, so it keeps its size when the stage is
+// scaled, and it is on screen at every moment of a film. The player puts it
+// in the page (see CJ.boot).
+const legendStrip = (rows) => {
+  const strip = document.createElement('div');
+  strip.id = 'legendbar';
+  strip.setAttribute('role', 'list');
+  strip.setAttribute('aria-label', 'Legend');
+  rows.forEach((row, i) => {
+    const icon = (width, height) =>
+      '<svg width="' +
+      width +
+      '" height="' +
+      height +
+      '" viewBox="-36 -26 72 52" aria-hidden="true">' +
+      CJ.packet(row.kind, 'cj-key-icon' + i, { form: row.form }) +
+      '</svg>';
+    const key = elementFromHtml(
+      '<div class="cj-key" role="listitem" tabindex="0">' +
+        icon(30, 22) +
+        '<span class="cj-key-label"></span>' +
+        '<div class="cj-key-card" role="tooltip">' +
+        icon(54, 39) +
+        '<p>' +
+        cleanInline(row.html) +
+        '</p></div></div>',
+    );
+    key.querySelector('.cj-key-label').textContent = legendLabel(row);
+    // The card starts at the left edge of its key. A card that would then
+    // reach past the right edge of the page is moved left until it fits.
+    const placeCard = () => {
+      const card = key.querySelector('.cj-key-card');
+      card.style.left = '0px';
+      const past = card.getBoundingClientRect().right - (window.innerWidth - 8);
+      if (past > 0) card.style.left = -past + 'px';
+    };
+    key.addEventListener('pointerenter', placeCard);
+    key.addEventListener('focus', placeCard);
+    strip.append(key);
+  });
+  // A press or a click on the strip is not passed on to the frame under it,
+  // where it would drag the plant of a visual or select one of its parts.
+  ['pointerdown', 'click'].forEach((type) =>
+    strip.addEventListener(type, (ev) => ev.stopPropagation()),
+  );
+  return strip;
 };
 
 // Builds every scene of a film inside `stage` and returns the object the player

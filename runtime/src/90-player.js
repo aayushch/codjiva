@@ -49,7 +49,7 @@ const formatTime = (x) => {
   return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 };
 
-CJ.version = '1.5.1';
+CJ.version = '1.6.0';
 
 CJ.boot = async (data) => {
   const params = new URLSearchParams(window.location.search);
@@ -141,6 +141,26 @@ CJ.boot = async (data) => {
     $('loading').textContent =
       'This artifact could not be drawn: ' + String((e && e.message) || e);
     return;
+  }
+
+  // The legend strip: the packets a film or a visual draws, each with its
+  // short name. It is in the page for as long as the artifact is open, so
+  // the viewer can look up a packet at any moment.
+  //   - Under a film it is a row of its own between the frame and the control
+  //     bar. Embedded in the app, where the control bar is hidden, it is the
+  //     last row of the page, directly above the app's own player bar.
+  //   - Over a visual it lies in the lower left corner of the frame. The app
+  //     has its zoom buttons in the lower right corner.
+  // An artifact without a legend has no strip. Neither has the single frame
+  // that `?poster=1` draws.
+  const legendRows = (isFilm ? data.film.legend : data.visual.legend) || [];
+  if (legendRows.length && params.get('poster') !== '1') {
+    const strip = legendStrip(legendRows);
+    if (isFilm) $('app').insertBefore(strip, controls);
+    else {
+      strip.classList.add('over');
+      frame.append(strip);
+    }
   }
 
   const runSelfTest = (opts) =>
@@ -290,15 +310,6 @@ CJ.boot = async (data) => {
       });
       layerBox.append(button);
     });
-    if (visual.hasLegend) {
-      const button = document.createElement('button');
-      button.className = 'text';
-      button.textContent = 'legend';
-      button.addEventListener('click', () =>
-        button.classList.toggle('on', visual.setLegend()),
-      );
-      layerBox.append(button);
-    }
     if (visual.hasRationale) {
       const button = document.createElement('button');
       button.className = 'text';
@@ -319,8 +330,7 @@ CJ.boot = async (data) => {
       } else if (msg.cj === 'theme') {
         setTheme(msg.mode);
         post({ cj: 'theme', mode: theme() });
-      } else if (msg.cj === 'legend') visual.setLegend(msg.on);
-      else if (msg.cj === 'rationale') visual.setRationale(msg.on);
+      } else if (msg.cj === 'rationale') visual.setRationale(msg.on);
       else if (msg.cj === 'layers') visual.setLayers(msg.on || {});
       else if (msg.cj === 'fit') visual.fit();
       else if (msg.cj === 'zoom') visual.zoomBy(msg.factor || 1);

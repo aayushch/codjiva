@@ -483,7 +483,6 @@ class AppState {
   // The inspector describes it while the user has clicked no node.
   stepNode = $state<string | null>(null);
   layers = $state<Record<string, boolean>>({});
-  legendOn = $state(false);
   // True while the visual on screen shows the "?" markers of the parts that
   // have a rationale.
   rationaleOn = $state(false);
@@ -1401,7 +1400,6 @@ class AppState {
       this.detail = detail;
       this.selectedNode = null;
       this.stepNode = null;
-      this.legendOn = false;
       this.rationaleOn = false;
       this.layers = Object.fromEntries(
         Object.keys(detail.definition?.layers ?? {}).map((layer) => [
