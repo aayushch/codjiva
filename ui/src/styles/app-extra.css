@@ -2837,9 +2837,6 @@ iframe {
   -webkit-user-select: none;
   cursor: default;
 }
-.source-blame.committed:hover {
-  color: var(--muted);
-}
 /* The card with the whole commit, shown while the pointer is over that text
    or over the card. It is placed in the window, not in the code, so the
    edges of the source view do not cut it off. */
