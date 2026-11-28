@@ -28,8 +28,8 @@
   // message and reports nothing. Its strip is always STRIP_DEFAULT tall.
   //
   // Notes. `artifactId` is the id of the artifact the page shows, or null
-  // for a page that is not an artifact of the workspace, such as the bundled
-  // example. The notes that answers of discussions put on that artifact are
+  // for a page that is not an artifact of the workspace, which has no notes.
+  // The notes that answers of discussions put on that artifact are
   // sent to the page in a `notes` message when the page is ready, and again
   // whenever the notes change or are switched on or off. The page draws a
   // mark for each. When the user clicks a mark, the page reports it in a

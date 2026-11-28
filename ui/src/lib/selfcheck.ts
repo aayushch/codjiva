@@ -1,16 +1,17 @@
 // The interface's side of the app's self-check mode (see
 // ui/src-tauri/src/selfcheck.rs).
 //
-// It tours the real window: opens a folder, selects a file, shows its source,
-// follows a name in that source to its definition, plays the example film
-// inside the sandboxed frame and opens the example visual. Each step is
-// recorded as a named check, with a screenshot, and the report is handed back
-// to the app, which then quits.
+// It tours the real window: opens a folder, selects a file, shows its source
+// and follows a name in that source to its definition. When the run is given
+// a job to do, it also shows what the job made inside the sandboxed frame.
+// Each step is recorded as a named check, with a screenshot, and the report
+// is handed back to the app, which then quits.
 
 import { invoke } from '@tauri-apps/api/core';
 import { tick } from 'svelte';
 import { api, type NavLookup } from './ipc';
 import { app } from './state/app.svelte';
+import { diffs } from './state/diffs.svelte';
 
 // A skipped check could not be carried out in this environment. It does not
 // fail the tour.
@@ -41,8 +42,8 @@ const text = (selector: string) =>
 // the checks, to tell apart the places the tour runs them from.
 //
 // The source view must scroll by itself. The window as a whole must not
-// scroll, and the bar under the source must stay in the window. When the view
-// is scrolled to its end, the last line of the file must be at its bottom.
+// scroll, and the source view must end inside the window. When the view is
+// scrolled to its end, the last line of the file must be at its bottom.
 async function sourceScrollChecks(
   prefix: string,
   record: (name: string, ok: boolean, detail?: string) => void,
@@ -53,7 +54,6 @@ async function sourceScrollChecks(
   const numbers = source.querySelectorAll('.source-num');
   const lastLine = source.querySelector('.source-line:last-child');
   const page = document.scrollingElement!;
-  const bar = document.querySelector('.source-bar')!;
   const measured = {
     lines: app.fileInfo?.lines ?? 0,
     lastNumber: Number(numbers[numbers.length - 1]?.textContent),
@@ -66,14 +66,14 @@ async function sourceScrollChecks(
     pageHeight: page.scrollHeight,
     pageScrolled: Math.round(page.scrollTop),
     windowHeight: window.innerHeight,
-    barBottom: Math.round(bar.getBoundingClientRect().bottom),
+    sourceBottom: Math.round(source.getBoundingClientRect().bottom),
   };
   record(
     prefix +
       'the source scrolls inside its own view and the window does not scroll',
     measured.pageHeight <= measured.windowHeight &&
       measured.pageScrolled === 0 &&
-      measured.barBottom <= measured.windowHeight &&
+      measured.sourceBottom <= measured.windowHeight &&
       measured.sourceHeight < measured.windowHeight,
     JSON.stringify(measured),
   );
@@ -88,6 +88,167 @@ async function sourceScrollChecks(
         measured.gapAfterLastLine < 20,
       JSON.stringify(measured),
     );
+}
+
+// Shows a picture, a page and a Markdown document of the workspace, if it
+// has any.
+//   - An image file must be shown as its picture, with its size in pixels.
+//   - An HTML file that is opened with the Preview command must be shown in
+//     a frame that may do nothing. The frame's page cannot be read from
+//     here, so the screenshot is what shows that the page was laid out.
+//   - A Markdown file that is opened with the Preview command must be shown
+//     in the same kind of frame, as a page that was built from it.
+// A workspace without such a file skips the check for it.
+async function renderedTour(
+  record: (name: string, ok: boolean, detail?: string) => void,
+  skip: (name: string, detail: string) => void,
+  shot: (name: string) => Promise<void>,
+) {
+  const first = async (ending: string) =>
+    (await api.filesSearch(ending, 40).catch(() => [])).find((hit) =>
+      hit.relPath.toLowerCase().endsWith(ending),
+    )?.relPath;
+  const picture = await first('.png');
+  if (!picture) skip('an image file is shown as its picture', 'no .png file');
+  else {
+    await app.selectFile(picture);
+    await app.setTab('source');
+    const about = await until(
+      () => (/\d+ × \d+ px/.test(text('.preview-about')) ? true : null),
+      8000,
+    );
+    record(
+      'an image file is shown as its picture',
+      !!about,
+      `${picture}: ${text('.preview-about') || text('.source-note')}`,
+    );
+    await shot('05-picture');
+  }
+  const page = await first('.html');
+  if (!page) skip('an HTML file is shown as a page', 'no .html file');
+  else {
+    await app.openPreview(page);
+    const frame = await until(
+      () => document.querySelector<HTMLIFrameElement>('.preview-frame'),
+      8000,
+    );
+    await sleep(800);
+    record(
+      'an HTML file is shown as a page, in a frame that runs no scripts',
+      frame?.getAttribute('sandbox') === '',
+      page,
+    );
+    await shot('06-page');
+    app.togglePreview();
+  }
+  const markdown = await first('.md');
+  if (!markdown) skip('a Markdown file is shown as a document', 'no .md file');
+  else {
+    await app.openPreview(markdown);
+    const frame = await until(
+      () => document.querySelector<HTMLIFrameElement>('.preview-frame.themed'),
+      8000,
+    );
+    await sleep(800);
+    const built = frame?.getAttribute('srcdoc') ?? '';
+    record(
+      'a Markdown file is shown as a document, in a frame that runs no scripts',
+      frame?.getAttribute('sandbox') === '' && built.includes('<body>'),
+      `${markdown}: ${built.length} characters${text('.source-note') && ' · ' + text('.source-note')}`,
+    );
+    await shot('07-markdown');
+    app.togglePreview();
+  }
+}
+
+// Checks that the file tree shows what git says about the workspace. Git is
+// asked for the changed files. The row at the root of the tree that is, or
+// that contains, the first changed file must then have the `data-git`
+// attribute, which gives the row its colour. A workspace that is not inside
+// a git repository, or that has no changes, skips the check.
+async function gitTour(
+  record: (name: string, ok: boolean, detail?: string) => void,
+  skip: (name: string, detail: string) => void,
+  shot: (name: string) => Promise<void>,
+) {
+  const name = 'the file tree shows what git says about a changed file';
+  const entries = await api.gitStatus().catch(() => null);
+  if (!entries) return skip(name, 'the folder is not inside a git repository');
+  if (!entries.length) return skip(name, 'git reports no changes');
+  await app.refreshGit();
+  const top = entries[0].path.replace(/\/$/, '').split('/')[0];
+  const row = await until(
+    () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>('.tree .row[data-git]'),
+      ).find((row) => row.querySelector('.name')?.textContent === top) ?? null,
+    5000,
+  );
+  record(
+    name,
+    !!row,
+    `${entries.length} changes; ${top}: ${row?.dataset.git ?? 'no mark'}`,
+  );
+  await shot('08-git');
+}
+
+// Shows the changes of a file of the workspace that git reports as modified.
+//   - The diff view must show lines that were added or removed, for what is
+//     not committed.
+//   - In two columns it must have a column for each version.
+//   - "Older" must then show the newest commit of the file, named by the
+//     start of its hash.
+// A workspace that is not inside a git repository, or that has no modified
+// file, skips the check.
+async function diffTour(
+  record: (name: string, ok: boolean, detail?: string) => void,
+  skip: (name: string, detail: string) => void,
+  shot: (name: string) => Promise<void>,
+) {
+  const name = 'the changes of a modified file are shown';
+  const entries = await api.gitStatus().catch(() => null);
+  const modified = entries?.find((entry) => entry.status === 'modified');
+  if (!modified) return skip(name, 'git reports no modified file');
+  const split = app.diffSplit;
+  app.diffSplit = false;
+  await app.openDiff(modified.path);
+  const changed = await until(
+    () => document.querySelector('.diff-line.added, .diff-line.removed'),
+    8000,
+  );
+  record(
+    name,
+    !!changed && text('.commit-button').includes('Uncommitted changes'),
+    `${modified.path}: ${text('.diff-counts') || text('.source-note')}`,
+  );
+  await shot('09-diff');
+  app.diffSplit = true;
+  const columns = await until(
+    () => (document.querySelectorAll('.diff-pane').length === 2 ? true : null),
+    4000,
+  );
+  record('the changes are shown in two columns', !!columns);
+  await sleep(300);
+  await shot('09b-diff-split');
+  app.diffSplit = split;
+  if (!diffs.hasOlder)
+    skip('Older shows the commit before', 'the file has no commit');
+  else {
+    const commit = diffs.changes[diffs.index + 1].commit ?? '';
+    diffs.older();
+    const shown = await until(
+      () => (text('.diff-what').includes(commit.slice(0, 7)) ? true : null),
+      8000,
+    );
+    await until(() =>
+      document.querySelector('.diff-panes:not(.reading) .diff-line')
+        ? true
+        : null,
+    );
+    record('Older shows the commit before', !!shown, text('.diff-what'));
+    await shot('09c-diff-commit');
+  }
+  app.toggleDiff();
 }
 
 // Tries code navigation in the source view that is on screen.
@@ -236,6 +397,22 @@ async function navigationTour(
       marked > 0,
       `${marked} marks`,
     );
+  // The click also asks git for the last change of the clicked line. A file
+  // that git does not track has none, and the check is skipped for it.
+  const lastChange = await api.gitBlame(path, lookup.line).catch(() => null);
+  if (!lastChange)
+    skip(
+      'navigation: the last change of the clicked line is shown',
+      'git knows nothing about this line',
+    );
+  else {
+    const shown = await until(() => text('.source-blame') || null, 5000);
+    record(
+      'navigation: the last change of the clicked line is shown',
+      !!shown,
+      shown ?? 'no text after the line',
+    );
+  }
   await shot('04-source-name');
 
   click(true);
@@ -570,6 +747,37 @@ async function animateTour(
     !!document.querySelector('.player:not(.waiting)') && chapters.length >= 2,
     `${chapters.length} chapters, ${Math.round(app.detail?.manifest.durationSec ?? 0)} s: ${chapters.map((c) => c.name).join(' | ')}`,
   );
+  // The film is served by the app's own URL scheme into a frame that may
+  // only run scripts, and the bar below the film controls it by messages.
+  const frame = document.querySelector<HTMLIFrameElement>('.canvas iframe');
+  record(
+    'film: the artifact frame allows scripts and nothing else',
+    frame?.getAttribute('sandbox') === 'allow-scripts',
+    frame?.getAttribute('sandbox') ?? 'no frame',
+  );
+  record(
+    "film: the artifact frame is served by the app's own scheme",
+    /^(codjiva:|http:\/\/codjiva\.localhost)/.test(frame?.src ?? ''),
+    frame?.src,
+  );
+  // A film advances once per drawn frame, so it cannot play in a window that
+  // is hidden behind others. The check is left out then.
+  if (document.visibilityState === 'visible') {
+    document.querySelector<HTMLButtonElement>('.player .ibtn')?.click();
+    const moved = await until(
+      () =>
+        !text('.player .time').startsWith('0:00')
+          ? text('.player .time')
+          : null,
+      8000,
+    );
+    record(
+      'film: the film plays when asked through the host bar',
+      !!moved,
+      text('.player .time'),
+    );
+    document.querySelector<HTMLButtonElement>('.player .ibtn')?.click();
+  }
   app.dockOpen = false;
   await tick();
   // One picture from the middle of every chapter, where its bubbles and motion
@@ -772,6 +980,16 @@ async function runSelfCheck(config: SelfCheckConfig): Promise<void> {
       'the app font is loaded',
       document.fonts.check('13px "JetBrains Mono"'),
     );
+    // The app starts with the folder that was open when it last stopped.
+    // It starts on the welcome screen when no folder was open then.
+    const last = await api.workspaceLast().catch(() => null);
+    record(
+      'the app starts with the folder that was open last, or with the welcome screen',
+      last
+        ? app.workspace?.root === last
+        : !app.workspace && !!document.querySelector('.welcome'),
+      last ?? 'no folder was open',
+    );
     await shot('01-welcome');
 
     if (config.workspace) {
@@ -837,6 +1055,24 @@ async function runSelfCheck(config: SelfCheckConfig): Promise<void> {
         await sourceScrollChecks('', record);
         await shot('03b-source-end');
         await navigationTour(
+          record,
+          (name, detail) =>
+            checks.push({ name, ok: false, skipped: true, detail }),
+          shot,
+        );
+        await renderedTour(
+          record,
+          (name, detail) =>
+            checks.push({ name, ok: false, skipped: true, detail }),
+          shot,
+        );
+        await gitTour(
+          record,
+          (name, detail) =>
+            checks.push({ name, ok: false, skipped: true, detail }),
+          shot,
+        );
+        await diffTour(
           record,
           (name, detail) =>
             checks.push({ name, ok: false, skipped: true, detail }),
@@ -910,91 +1146,6 @@ async function runSelfCheck(config: SelfCheckConfig): Promise<void> {
       skipped: !drawn,
       detail: `${frames} frames in one second, visibility: ${document.visibilityState}`,
     });
-
-    // The example film: the real custom URL scheme, the sandboxed frame and the
-    // messages between them.
-    app.example = 'film';
-    await tick();
-    const chapter = await until(
-      () =>
-        /^1 \/ \d+/.test(text('.player .chap')) ? text('.player .chap') : null,
-      20000,
-    );
-    record(
-      'the example film loads in the sandboxed frame and reports its chapters',
-      !!chapter,
-      chapter ?? `chapter label: "${text('.player .chap')}"`,
-    );
-    const frame = document.querySelector<HTMLIFrameElement>('.canvas iframe');
-    record(
-      'the artifact frame allows scripts and nothing else',
-      frame?.getAttribute('sandbox') === 'allow-scripts',
-      frame?.getAttribute('sandbox') ?? 'no frame',
-    );
-    record(
-      "the artifact frame is served by the app's own scheme",
-      /^(codjiva:|http:\/\/codjiva\.localhost)/.test(frame?.src ?? ''),
-      frame?.src,
-    );
-    if (drawn) {
-      document.querySelector<HTMLButtonElement>('.player .ibtn')?.click();
-      const moved = await until(
-        () =>
-          !text('.player .time').startsWith('0:00')
-            ? text('.player .time')
-            : null,
-        8000,
-      );
-      record(
-        'the film plays when asked through the host bar',
-        !!moved,
-        text('.player .time'),
-      );
-      document.querySelector<HTMLButtonElement>('.player .ibtn')?.click();
-    } else {
-      // A film advances once per drawn frame, so it cannot play in a window
-      // that is not drawn.
-      checks.push({
-        name: 'the film plays when asked through the host bar',
-        ok: false,
-        skipped: true,
-        detail: 'the window is not being drawn',
-      });
-    }
-    const bar = document.querySelector<HTMLElement>('.player .scrub');
-    if (bar) {
-      const r = bar.getBoundingClientRect();
-      // The middle of the scrubber is inside the third of the example film's
-      // four chapters.
-      const at = {
-        clientX: r.left + r.width * 0.5,
-        clientY: r.top + r.height / 2,
-        pointerId: 1,
-        bubbles: true,
-      };
-      bar.dispatchEvent(new PointerEvent('pointerdown', at));
-      bar.dispatchEvent(new PointerEvent('pointerup', at));
-    }
-    const sought = await until(
-      () =>
-        /^3 \/ \d+/.test(text('.player .chap')) ? text('.player .chap') : null,
-      8000,
-    );
-    record(
-      'seeking from the host bar moves the film',
-      !!sought,
-      text('.player .chap'),
-    );
-    await sleep(500);
-    await shot('04-film');
-
-    app.example = 'visual';
-    await tick();
-    await until(() => document.querySelector('.zoomctl'));
-    await sleep(1500);
-    await shot('05-visual');
-    record('the example visual opens', !!document.querySelector('.zoomctl'));
-    app.example = null;
   } catch (error: any) {
     record(
       'the self-check ran to the end',

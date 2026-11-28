@@ -21,6 +21,9 @@ import type {
   ArtifactSummary,
   Changes,
   FileContent,
+  GitChange,
+  GitHunk,
+  GitSide,
   FileInfo,
   FileKind,
   JobEvent,
@@ -109,6 +112,9 @@ const LANGS: Record<string, [string, string]> = {
   cpp: ['C++', 'cpp'],
   mod: ['Go module', ''],
 };
+// A PNG picture that is 2 pixels wide and 1 pixel high.
+const MOCK_PICTURE =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEklEQVR4nGP8z8Dwn4GBgYEJAA4MAgFkU6uKAAAAAElFTkSuQmCC';
 const langOf = (name: string): [string | null, string] => {
   if (name === 'Makefile') return ['Makefile', 'makefile'];
   const found = LANGS[name.split('.').pop() ?? ''];
@@ -132,6 +138,7 @@ const DEFAULT_SETTINGS: Settings = {
   maxCompanionFiles: 12,
   companionIgnore: ['vendor/', 'third_party/', 'node_modules/'],
   theme: 'system',
+  codeFontSize: 13,
   maxBudgetUsd: null,
   layout: {
     sidebarOpen: true,
@@ -145,6 +152,8 @@ const DEFAULT_SETTINGS: Settings = {
     sourcePanelWidth: 380,
     sourceSplit: 40,
     sourceSwapped: false,
+    diffSplit: false,
+    diffWholeFile: false,
   },
   checkForUpdates: true,
 };
@@ -631,6 +640,101 @@ function wordIn(path: string, line: number, column: number) {
     : { name: text.slice(start, end), column: start, endColumn: end };
 }
 
+// The history of a file of the mock workspace: its commits, newest first,
+// each with the text the file had after it, and whether the file has
+// changes that are not committed.
+//
+// The end-to-end test gives a file a history by putting it in
+// `window.__mockGitHistory` under the path of the file. Every other file
+// has one commit, which created it with the text it has now.
+type MockHistory = {
+  pending: boolean;
+  commits: {
+    commit: string;
+    author: string;
+    time: number;
+    summary: string;
+    text: string;
+  }[];
+};
+function mockHistoryOf(path: string): MockHistory {
+  const given = (window as any).__mockGitHistory?.[path];
+  if (given) return given;
+  return {
+    pending: false,
+    commits: [
+      {
+        commit: '9dbe5110c0ffee00000000000000000000000001',
+        author: 'Ada Writer',
+        time: Math.floor(Date.now() / 1000) - 8 * 86_400,
+        summary: 'Add ' + path.split('/').pop(),
+        text: FILES[path] ?? '',
+      },
+    ],
+  };
+}
+
+// The runs of lines that differ between two texts, in the form git gives
+// them. The lines the texts share at their start and at their end are set
+// aside first. The lines between are compared with a table of the longest
+// common run of lines, which is enough for the short files of the mock
+// workspace.
+function mockHunks(oldText: string, newText: string): GitHunk[] {
+  const linesOf = (text: string) =>
+    text === '' ? [] : text.replace(/\n$/, '').split('\n');
+  const a = linesOf(oldText);
+  const b = linesOf(newText);
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (
+    tail < a.length - head &&
+    tail < b.length - head &&
+    a[a.length - 1 - tail] === b[b.length - 1 - tail]
+  )
+    tail++;
+  const n = a.length - head - tail;
+  const m = b.length - head - tail;
+  // `longest[i][j]` is the length of the longest run of lines that the
+  // parts from line `i` of the old text and from line `j` of the new text
+  // have in common.
+  const longest = Array.from({ length: n + 1 }, () =>
+    new Array<number>(m + 1).fill(0),
+  );
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      longest[i][j] =
+        a[head + i] === b[head + j]
+          ? longest[i + 1][j + 1] + 1
+          : Math.max(longest[i + 1][j], longest[i][j + 1]);
+  const hunks: GitHunk[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[head + i] === b[head + j]) {
+      i++;
+      j++;
+      continue;
+    }
+    const fromOld = i;
+    const fromNew = j;
+    while (i < n || j < m) {
+      if (i < n && j < m && a[head + i] === b[head + j]) break;
+      if (j >= m || (i < n && longest[i + 1][j] >= longest[i][j + 1])) i++;
+      else j++;
+    }
+    const oldLines = i - fromOld;
+    const newLines = j - fromNew;
+    hunks.push({
+      oldStart: head + fromOld + (oldLines ? 1 : 0),
+      oldLines,
+      newStart: head + fromNew + (newLines ? 1 : 0),
+      newLines,
+    });
+  }
+  return hunks;
+}
+
 export const mockApi: Api = {
   async appInfo() {
     return {
@@ -657,7 +761,13 @@ export const mockApi: Api = {
     opened = false;
   },
   async workspaceSessionGet() {
-    return sessions.get(openedRoot) ?? { openFiles: [], selected: null };
+    return (
+      sessions.get(openedRoot) ?? {
+        openFiles: [],
+        selected: null,
+        bookmarks: {},
+      }
+    );
   },
   async workspaceSessionSet(session) {
     sessions.set(openedRoot, session);
@@ -671,6 +781,13 @@ export const mockApi: Api = {
         openedAt: '2026-11-12T16:20:00Z',
       },
     ];
+  },
+  // No folder is opened again at the start, unless the end-to-end test has
+  // put the path of one in the browser's session storage under
+  // `mockLastWorkspace`. The storage is used because the test loads the page
+  // again to start the app, and that clears everything else.
+  async workspaceLast() {
+    return sessionStorage.getItem('mockLastWorkspace');
   },
   async treeChildren(relPath) {
     if (!opened) throw fail('no_workspace', 'Open a folder first.');
@@ -712,6 +829,19 @@ export const mockApi: Api = {
       binary: false,
     };
   },
+  // An SVG file of the mock workspace is its own text. Every other image is
+  // one picture of 2 by 1 pixels.
+  async fileImage(relPath) {
+    const text = FILES[relPath];
+    if (text == null) throw fail('not_found', 'Could not read that file.');
+    if (relPath.endsWith('.svg'))
+      return {
+        relPath,
+        dataUrl: `data:image/svg+xml;base64,${btoa(text)}`,
+        bytes: text.length,
+      };
+    return { relPath, dataUrl: MOCK_PICTURE, bytes: 70 };
+  },
   async fileRead(relPath): Promise<FileContent> {
     const text = FILES[relPath];
     if (text == null) throw fail('not_found', 'Could not read that file.');
@@ -720,6 +850,74 @@ export const mockApi: Api = {
       text,
       truncated: false,
       highlighter: langOf(relPath.split('/').pop()!)[1],
+    };
+  },
+  // Every line of a file of the mock workspace was last changed by one
+  // commit, made eight days ago. The user is its author on the odd lines.
+  // The files under `nav/`, which the end-to-end test adds, are not tracked.
+  // Git reports no changes, unless the end-to-end test has put a list of
+  // them in `window.__mockGitStatus`.
+  async gitStatus() {
+    return (window as any).__mockGitStatus ?? [];
+  },
+  // The changes of a file of the mock workspace (see `mockHistoryOf`).
+  async gitFileHistory(relPath) {
+    if (!(relPath in FILES)) return null;
+    const history = mockHistoryOf(relPath);
+    const side = (commit: string | null) => ({ commit, path: relPath });
+    const changes: GitChange[] = history.commits.map((commit, at) => ({
+      commit: commit.commit,
+      author: commit.author,
+      time: commit.time,
+      summary: commit.summary,
+      old: at < history.commits.length - 1 ? side(commit.commit + '^') : null,
+      new: side(commit.commit),
+    }));
+    if (history.pending)
+      changes.unshift({
+        commit: null,
+        author: '',
+        time: 0,
+        summary: '',
+        old: history.commits.length ? side('HEAD') : null,
+        new: side(null),
+      });
+    return { changes, more: false };
+  },
+  async gitFileDiff(old, next) {
+    await sleep((window as any).__mockDiffDelay ?? 0);
+    // The text of a version: the file itself for the version on disk, and
+    // the text the history has for a commit. `HEAD` is the newest commit,
+    // and a hash with `^` is the commit before that one.
+    const textOf = (side: GitSide) => {
+      if (side.commit == null) return FILES[side.path] ?? '';
+      const commits = mockHistoryOf(side.path).commits;
+      if (side.commit === 'HEAD') return commits[0]?.text ?? '';
+      const before = side.commit.endsWith('^');
+      const hash = side.commit.replace(/\^$/, '');
+      const at = commits.findIndex((commit) => commit.commit === hash);
+      return commits[at + (before ? 1 : 0)]?.text ?? '';
+    };
+    const oldText = old ? textOf(old) : '';
+    const newText = textOf(next);
+    return {
+      oldText,
+      newText,
+      hunks: mockHunks(oldText, newText),
+      binary: false,
+      tooLarge: false,
+    };
+  },
+  async gitBlame(relPath, line) {
+    if (!(relPath in FILES) || relPath.startsWith('nav/')) return null;
+    return {
+      committed: true,
+      commit: '9dbe5110c0ffee00000000000000000000000001',
+      author: 'Ada Writer',
+      byUser: line % 2 === 1,
+      time: Math.floor(Date.now() / 1000) - 8 * 86_400,
+      summary: 'Refuse an order when the batch is full',
+      body: 'The batch holds at most 64 orders.\nA full batch is flushed first.',
     };
   },
   async navLookup(relPath, line, column): Promise<NavLookup | null> {
@@ -1580,6 +1778,10 @@ export const mockApi: Api = {
   async onFsChanged(handler) {
     fsListeners.add(handler);
     return () => fsListeners.delete(handler);
+  },
+  // The browser has no menu bar, so the handler is never called.
+  async onMenuOpenFolder() {
+    return () => {};
   },
   // The end-to-end test server serves the built reference pages under this
   // path. A mock film shows the reference film, a mock step-through the

@@ -1,14 +1,23 @@
 <script lang="ts">
-  import { api, type NavSpan, type Scope } from '$lib/ipc';
+  import { api, type Blame, type NavSpan, type Scope } from '$lib/ipc';
+  import { agoOf, blameLabel, dateOf, whoOf } from '$lib/blame';
+  import { nextBookmark, reanchored } from '$lib/bookmarks';
+  import { findCount, findMatches, firstMatchFrom } from '$lib/find';
   import { FILE_KINDS } from '$lib/artifacts';
   import { asMade, sameScope, scopeTitle, type FileScope } from '$lib/discuss';
   import { highlightLines, linesOf } from '$lib/highlight';
   import { hasPrototypes, wordAt } from '$lib/nav';
-  import { app, type MenuItem } from '$lib/state/app.svelte';
+  import {
+    app,
+    CODE_FONT_DEFAULT,
+    codeFontSize,
+    type MenuItem,
+  } from '$lib/state/app.svelte';
   import { discuss } from '$lib/state/discuss.svelte';
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
+  import Icon from './Icon.svelte';
 
-  // The source viewer is read-only. Lines are LINE_HEIGHT pixels tall and only
+  // The source viewer is read-only. Lines are `lineHeight` pixels tall and only
   // the lines in view are in the page, so a file of many thousand lines scrolls
   // smoothly. OVERSCAN more lines are kept in the page above and below the
   // view, so that a fast scroll does not show an empty area.
@@ -32,6 +41,36 @@
   // The app's state (`app` in app.svelte.ts) asks the core what a name is;
   // this component only finds which name is under the pointer and draws the
   // marks.
+  //
+  // Finding text. Command with F (Control with F outside macOS) opens a small
+  // bar in the top right corner of the view. Every place the typed text
+  // stands in the file is marked, and the view shows one of them, which is
+  // marked more strongly. Enter and the down button go to the next place,
+  // Shift with Enter and the up button to the one before, and both start
+  // again at the other end of the file. Command with G does the same from
+  // the code. The "Aa" button tells capital letters from small ones. Escape
+  // and the ✕ button close the bar and remove the marks. The whole file is
+  // searched, also the lines that are not in the page (`findMatches` in
+  // lib/find.ts).
+  //
+  // Bookmarks. A double click on a line number puts a bookmark on that line,
+  // and a second one takes it away. A bookmarked line has an amber number
+  // and a small ribbon in front of it. F2 goes to the next bookmark of the
+  // file and Shift with F2 to the one before, starting again at the other
+  // end of the file. Each bookmark also has a tick on the right edge of the
+  // view, at the height its line has in the file, and a click on the tick
+  // goes to the line. The bookmark button of Toolbar.svelte lists them. The
+  // app keeps them between runs (`app.bookmarks`), and after the file
+  // changed each one is put on the line that has its code now (`reanchored`
+  // in lib/bookmarks.ts).
+  //
+  // The last change of a line. A click on a line asks git who changed that
+  // line last, and the answer is written after the code of the line in a
+  // muted colour: the author, how long ago, and the first line of the commit
+  // message. While the pointer is over that text, a card shows the whole
+  // commit message, the day and time, and the commit's hash with a button
+  // that copies it. Nothing is shown for a file git does not track or in a
+  // folder that is not a repository.
   //
   // Discussing and visualising selected code. When the user has selected
   // lines of code, a small bar appears near the end of the selection. Its
@@ -57,7 +96,14 @@
   //     show `line` again. The view scrolls whenever it changes.
   //   - `refresh` is a number that changes when the file changed on disk.
   //     The file is then read again and the view stays where it is.
-  const LINE_HEIGHT = 20;
+  //
+  // The size of the code is the setting `codeFontSize`, which the user
+  // changes in Settings under Appearance. A line is 20 pixels tall at the
+  // default size of 13 pixels and keeps that proportion at every other size.
+  // Both are given to the styles as `--source-font-size` and
+  // `--source-line-height`.
+  const fontSize = $derived(codeFontSize(app.settings?.codeFontSize));
+  const lineHeight = $derived(Math.round((fontSize * 20) / CODE_FONT_DEFAULT));
   const OVERSCAN = 30;
 
   let {
@@ -94,14 +140,14 @@
   // `scrollTop` says.
   const first = $derived(
     Math.min(
-      Math.max(0, Math.floor(scrollTop / LINE_HEIGHT) - OVERSCAN),
+      Math.max(0, Math.floor(scrollTop / lineHeight) - OVERSCAN),
       Math.max(0, lines.length - 1),
     ),
   );
   const last = $derived(
     Math.min(
       lines.length,
-      Math.ceil((scrollTop + height) / LINE_HEIGHT) + OVERSCAN,
+      Math.ceil((scrollTop + height) / lineHeight) + OVERSCAN,
     ),
   );
   const gutter = $derived(String(lines.length).length);
@@ -116,11 +162,14 @@
     // The bar for the selected lines is placed in the window, so it would
     // stay behind when the code scrolls away under it. `lastScrolled` is a
     // plain variable, so that reading it here makes no effect run again.
-    if (scrolled !== lastScrolled) discuss.clearSelection();
+    if (scrolled !== lastScrolled) {
+      discuss.clearSelection();
+      blameCard = null;
+    }
     lastScrolled = scrolled;
     scrollTop = scrolled;
     height = viewport.clientHeight;
-    app.sourceTop = Math.floor(scrolled / LINE_HEIGHT) + 1;
+    app.sourceTop = Math.floor(scrolled / lineHeight) + 1;
   }
 
   // Reads and colours the file whenever a different file is shown, and again
@@ -144,6 +193,10 @@
         text = linesOf(content.text);
         lines = html;
         truncated = content.truncated;
+        // The file may have changed since its bookmarks were made.
+        const marks = app.bookmarksOf(path);
+        const now = reanchored(marks, text);
+        if (now !== marks) app.setBookmarks(path, now);
         problem = null;
         shownPath = path;
         loading = false;
@@ -175,10 +228,10 @@
     const [toTop, toLine] = untrack(() => [top, line]);
     viewport.scrollTop =
       toTop != null
-        ? (toTop - 1) * LINE_HEIGHT
+        ? (toTop - 1) * lineHeight
         : toLine == null
           ? 0
-          : Math.max(0, (toLine - 1) * LINE_HEIGHT - viewport.clientHeight / 3);
+          : Math.max(0, (toLine - 1) * lineHeight - viewport.clientHeight / 3);
     measure();
   });
 
@@ -235,8 +288,12 @@
     return range;
   }
 
-  // The kinds of coloured code that are never a name to follow.
-  const NOT_A_NAME = '.tk-comment, .tk-string, .tk-number, .tk-operator';
+  // The kinds of coloured code that are never a name to follow. The kind
+  // `tk-number` is not among them, because lib/highlight.ts also gives it to
+  // named constants and to the members of an enum, which are names. A number
+  // is not taken for a name either way: `wordAt` returns no word for text
+  // that starts with a digit.
+  const NOT_A_NAME = '.tk-comment, .tk-string, .tk-operator';
 
   // The name under the point (x, y) of the window, as its line and columns,
   // or null when the point is not over a name. A word in a comment, text in
@@ -454,6 +511,140 @@
     }));
   };
 
+  // The last change of the line the user clicked last. `found` is null
+  // while git is being asked, and when git cannot say anything about the
+  // line. `asked` is the time of the click in seconds since the start of
+  // 1970, which the age of the commit is counted from.
+  let blame = $state<{
+    line: number;
+    found: Blame | null;
+    asked: number;
+  } | null>(null);
+  // Counts the questions to git, so that a slow answer about an earlier
+  // line cannot replace the answer about the line clicked last.
+  let blameAsks = 0;
+  // Where the card with the whole commit is, in pixels of the window, or
+  // null while it is hidden. `above` puts the card's bottom edge at `y` and
+  // false puts its top edge there.
+  let blameCard = $state<{ x: number; y: number; above: boolean } | null>(null);
+  let blameCardTimer: ReturnType<typeof setTimeout> | undefined;
+  const BLAME_CARD_WIDTH = 460;
+  // How long the pointer rests on the text of the last change before the
+  // card opens, in milliseconds.
+  const BLAME_CARD_DELAY = 350;
+  // Where the pointer was at the click that asked git, in pixels of the
+  // window.
+  let blameClick = { x: 0, y: 0 };
+
+  // Asks git about `number`, a line of the file on screen. A second click on
+  // the same line asks nothing. `event` is the click.
+  function askBlame(number: number, event: MouseEvent) {
+    if (blame?.line === number) return;
+    const mine = ++blameAsks;
+    const path = relPath;
+    clearTimeout(blameCardTimer);
+    blameCard = null;
+    blameClick = { x: event.clientX, y: event.clientY };
+    blame = { line: number, found: null, asked: Date.now() / 1000 };
+    api
+      .gitBlame(path, number)
+      .catch(() => null)
+      .then((found) => {
+        if (mine !== blameAsks || path !== relPath) return;
+        blame = found
+          ? { line: number, found, asked: Date.now() / 1000 }
+          : null;
+      });
+  }
+
+  // Called while the pointer moves over the text of the last change, which
+  // is the element `label`. The card opens when the pointer has rested on
+  // the text for BLAME_CARD_DELAY milliseconds.
+  //
+  // The text is written at the end of the line the user clicked, so it can
+  // appear under the pointer that made the click. The card does not open for
+  // that: the pointer must first have moved more than CLICK_SLACK pixels
+  // away from the place of the click.
+  //
+  // The card opens below the text. It opens above when the text is in the
+  // lower half of the window, so that the card stays in the window.
+  function overBlame(event: MouseEvent, label: HTMLElement) {
+    if (
+      Math.abs(event.clientX - blameClick.x) <= CLICK_SLACK &&
+      Math.abs(event.clientY - blameClick.y) <= CLICK_SLACK
+    )
+      return;
+    if (blameCard) return clearTimeout(blameCardTimer);
+    clearTimeout(blameCardTimer);
+    blameCardTimer = setTimeout(() => {
+      if (!label.isConnected) return;
+      const box = label.getBoundingClientRect();
+      const above = box.top > window.innerHeight / 2;
+      blameCard = {
+        x: Math.max(
+          8,
+          Math.min(box.left, window.innerWidth - BLAME_CARD_WIDTH - 8),
+        ),
+        y: above ? window.innerHeight - box.top + 4 : box.bottom + 4,
+        above,
+      };
+    }, BLAME_CARD_DELAY);
+  }
+
+  // Hides the card a moment after the pointer left the text or the card, so
+  // that the pointer can cross the gap between the two. A card that was
+  // about to open does not open.
+  function hideBlameCardSoon() {
+    clearTimeout(blameCardTimer);
+    blameCardTimer = setTimeout(() => (blameCard = null), 200);
+  }
+
+  // Another file has no answer yet.
+  $effect(() => {
+    void relPath;
+    blameAsks++;
+    blame = null;
+    blameCard = null;
+  });
+
+  // The bookmarks of the file on screen, and the lines they are on.
+  const bookmarks = $derived(app.bookmarksOf(relPath));
+  const bookmarked = $derived(new Set(bookmarks.map((mark) => mark.line)));
+
+  // A double click on a line number adds a bookmark to its line, or removes
+  // the one that is there.
+  function onDoubleClick(event: MouseEvent) {
+    const row = (event.target as Element)
+      .closest('.source-num')
+      ?.closest<HTMLElement>('.source-line');
+    if (!row) return;
+    const number = Number(row.dataset.line);
+    app.toggleBookmark(relPath, number, text[number - 1] ?? '');
+  }
+
+  // Goes to the next bookmark of the file, or with `forward` false to the
+  // one before. The search starts from the highlighted line (`line`) while
+  // that line is in view. Otherwise it starts from the first line in view
+  // going forward and from the last line in view going backward, so that the
+  // nearest bookmark outside the view is found.
+  function goToBookmark(forward: boolean) {
+    const firstInView = Math.floor(scrollTop / lineHeight) + 1;
+    const lastInView = Math.ceil((scrollTop + height) / lineHeight);
+    const from =
+      line != null && line >= firstInView && line <= lastInView
+        ? line
+        : forward
+          ? firstInView - 1
+          : lastInView + 1;
+    const next = nextBookmark(bookmarks, from, forward);
+    if (next) app.selectFile(relPath, next.line);
+  }
+
+  // How far down the view the tick of a bookmark on `number` is, in pixels:
+  // the same share of the view's height as the line's place in the file.
+  const tickTop = (number: number) =>
+    Math.round(((number - 0.5) / Math.max(1, lines.length)) * height) - 1;
+
   function onClick(event: MouseEvent) {
     const press = pressedAt;
     pressedAt = null;
@@ -466,6 +657,10 @@
     // A double click selects a word as text. Its first click has already
     // been handled here.
     if (event.detail > 1 || !window.getSelection()?.isCollapsed) return;
+    const clicked = (event.target as Element).closest<HTMLElement>(
+      '.source-line',
+    );
+    if (clicked) askBlame(Number(clicked.dataset.line), event);
     const name = nameAt(event.clientX, event.clientY);
     if (!name) return app.clearSymbol();
     if (followKey(event))
@@ -517,12 +712,123 @@
     app.openMenu(event, items);
   }
 
+  // The search for text in the file. `finding` is true while its bar is
+  // open, `findQuery` is the text in its box and `findCase` is true when
+  // capital letters are told from small ones.
+  let finding = $state(false);
+  let findQuery = $state('');
+  let findCase = $state(false);
+  let findInput: HTMLInputElement | undefined = $state();
+  // Every place the text stands in the file. `lines` is read so that the
+  // places are found again when another file, or the same file after a
+  // change, has been loaded: `text` itself is not watched.
+  const matches = $derived.by(() => {
+    void lines;
+    return finding ? findMatches(text, findQuery, findCase) : [];
+  });
+  // Which of `matches` the view shows, or -1 when there are none.
+  let findIndex = $state(-1);
+  // The line the search counts from when the text in the box changes: the
+  // first line in view when the bar was opened, and after that the line of
+  // the place the user last went to.
+  let findFrom = 1;
+
+  // Opens the bar, or goes back to its box when it is open. Text that is
+  // selected on one line is put into the box.
+  function openFind() {
+    const picked = window.getSelection()?.toString() ?? '';
+    if (picked && !picked.includes('\n')) findQuery = picked;
+    if (!finding) findFrom = Math.floor(scrollTop / lineHeight) + 1;
+    finding = true;
+    tick().then(() => {
+      findInput?.focus();
+      findInput?.select();
+    });
+  }
+
+  // Scrolls so that the place the search is at is in view. A line outside
+  // the view is put a third of the way down it. Once that line is in the
+  // page, the view is also scrolled sideways if the place is beyond its left
+  // or right edge.
+  function showMatch() {
+    const match = matches[findIndex];
+    if (!match || !viewport) return;
+    const top = (match.line - 1) * lineHeight;
+    const view = viewport;
+    if (
+      top < view.scrollTop + 2 * lineHeight ||
+      top > view.scrollTop + view.clientHeight - 2 * lineHeight
+    )
+      view.scrollTop = Math.max(0, top - view.clientHeight / 3);
+    tick().then(() => {
+      const box = rangeOf(match)?.getBoundingClientRect();
+      const frame = view.getBoundingClientRect();
+      if (!box) return;
+      if (box.left < frame.left + 60 || box.right > frame.right - 40)
+        view.scrollLeft += box.left - frame.left - frame.width / 3;
+    });
+  }
+
+  // Goes to the next place, or with `forward` false to the one before, and
+  // from the last place to the first and back.
+  function findNext(forward: boolean) {
+    if (!matches.length) return;
+    findIndex =
+      (findIndex + (forward ? 1 : -1) + matches.length) % matches.length;
+    findFrom = matches[findIndex].line;
+    showMatch();
+  }
+
+  // When the places change, because the text in the box, the "Aa" button or
+  // the file changed, the search shows the first place on or below
+  // `findFrom`.
+  $effect(() => {
+    const found = matches;
+    untrack(() => {
+      findIndex = firstMatchFrom(found, findFrom);
+      showMatch();
+    });
+  });
+
+  function onFindKey(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      findNext(!event.shiftKey);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      finding = false;
+    }
+  }
+
   function onKey(event: KeyboardEvent) {
     underline(event);
     if (app.dialog || app.menu) return;
+    // The keys of the search work wherever the keyboard is, also in the box
+    // of the search itself. Command and Control both count, as for the
+    // app's other keys in App.svelte.
+    const command = event.metaKey || event.ctrlKey;
+    if (command && !event.altKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      openFind();
+      return;
+    }
+    if (finding && command && event.key.toLowerCase() === 'g') {
+      event.preventDefault();
+      findNext(!event.shiftKey);
+      return;
+    }
     if ((event.target as HTMLElement).closest('input, textarea, select'))
       return;
+    if (event.key === 'Escape' && finding) {
+      finding = false;
+      return;
+    }
     if (event.key === 'Escape') discuss.clearSelection();
+    if (event.key === 'F2') {
+      event.preventDefault();
+      goToBookmark(!event.shiftKey);
+      return;
+    }
     const symbol = app.symbol;
     if (!symbol) return;
     if (event.key === 'Escape') {
@@ -548,7 +854,23 @@
     typeof CSS !== 'undefined' &&
     'highlights' in CSS &&
     typeof Highlight !== 'undefined';
-  const MARKS = ['nav-use', 'nav-selected', 'nav-target', 'nav-link'];
+  //   - `find-match`: every place the text of the search stands.
+  //   - `find-current`: the one of those places the search is at.
+  // Where two marks cover the same text, the one with the greater number in
+  // MARK_ORDER is drawn, so the place the search is at stands out from the
+  // other places.
+  const MARKS = [
+    'nav-use',
+    'nav-selected',
+    'nav-target',
+    'nav-link',
+    'find-match',
+    'find-current',
+  ];
+  const MARK_ORDER: Record<string, number> = {
+    'find-match': 1,
+    'find-current': 2,
+  };
 
   // The uses of the selected name in this file: the places the lookup found
   // if the name was selected in this file, and the references the search
@@ -574,8 +896,10 @@
       .filter((one) => one.line > first && one.line <= last)
       .map(rangeOf)
       .filter((range) => range !== null);
-    if (ranges.length) CSS.highlights.set(name, new Highlight(...ranges));
-    else CSS.highlights.delete(name);
+    if (!ranges.length) return void CSS.highlights.delete(name);
+    const highlight = new Highlight(...ranges);
+    highlight.priority = MARK_ORDER[name] ?? 0;
+    CSS.highlights.set(name, highlight);
   }
 
   // Draws the marks again whenever the lines in the page change, because a
@@ -587,6 +911,8 @@
     mark('nav-selected', selected ? [selected] : []);
     mark('nav-target', span && span.line === line ? [span] : []);
     mark('nav-link', hover ? [hover] : []);
+    mark('find-match', matches);
+    mark('find-current', matches[findIndex] ? [matches[findIndex]] : []);
   });
   $effect(() => () => {
     if (canMark) for (const name of MARKS) CSS.highlights.delete(name);
@@ -612,6 +938,8 @@
 <div
   class="source"
   class:linking={!!hover}
+  style:--source-font-size="{fontSize}px"
+  style:--source-line-height="{lineHeight}px"
   bind:this={viewport}
   onscroll={measure}
   onmousedown={(event) => {
@@ -621,6 +949,7 @@
     if (event.button === 0) discuss.clearSelection();
   }}
   onclick={onClick}
+  ondblclick={onDoubleClick}
   oncontextmenu={onMenu}
   onmousemove={(event) => {
     pointer = { x: event.clientX, y: event.clientY };
@@ -632,18 +961,94 @@
     hover = null;
   }}
 >
+  {#if finding}
+    <!-- The bar stays in the top right corner of the view while the code
+         scrolls under it. A press in the bar is not a press in the code. -->
+    <div class="source-find-holder">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="source-find"
+        role="search"
+        onmousedown={(event) => event.stopPropagation()}
+        onclick={(event) => event.stopPropagation()}
+        ondblclick={(event) => event.stopPropagation()}
+        oncontextmenu={(event) => event.stopPropagation()}
+      >
+        <input
+          class="input"
+          placeholder="Find in this file"
+          aria-label="Find in this file"
+          spellcheck="false"
+          autocomplete="off"
+          bind:this={findInput}
+          bind:value={findQuery}
+          onkeydown={onFindKey}
+        />
+        <span class="find-count" aria-live="polite"
+          >{findQuery ? findCount(findIndex, matches.length) : ''}</span
+        >
+        <button
+          class="tb-btn find-case tip-end"
+          class:on={findCase}
+          aria-pressed={findCase}
+          aria-label="Match case"
+          data-tip="Match case"
+          onclick={() => (findCase = !findCase)}>Aa</button
+        >
+        <button
+          class="tb-btn tip-end"
+          aria-label="Previous match"
+          data-tip="Previous (Shift+Enter)"
+          disabled={!matches.length}
+          onclick={() => findNext(false)}><Icon name="up" /></button
+        >
+        <button
+          class="tb-btn tip-end"
+          aria-label="Next match"
+          data-tip="Next (Enter)"
+          disabled={!matches.length}
+          onclick={() => findNext(true)}><Icon name="down" /></button
+        >
+        <button
+          class="tb-btn tip-end"
+          aria-label="Close the search"
+          data-tip="Close (Esc)"
+          onclick={() => (finding = false)}><Icon name="close" /></button
+        >
+      </div>
+    </div>
+  {/if}
   {#if problem}
     <div class="source-note">{problem}</div>
   {:else if loading}
     <div class="source-note">Reading…</div>
   {:else}
+    {#if bookmarks.length}
+      <!-- The ticks stay at the right edge of the view while the code
+           scrolls under them. A press on a tick is not a press in the code. -->
+      <div class="source-ticks">
+        {#each bookmarks as mark (mark.line)}
+          <button
+            class="source-tick"
+            style:top="{tickTop(mark.line)}px"
+            title="Bookmark on line {mark.line}"
+            aria-label="Go to the bookmark on line {mark.line}"
+            onmousedown={(event) => event.stopPropagation()}
+            onclick={(event) => {
+              event.stopPropagation();
+              app.selectFile(relPath, mark.line);
+            }}
+          ></button>
+        {/each}
+      </div>
+    {/if}
     <div
       class="source-sizer"
-      style:height="{lines.length * LINE_HEIGHT + (truncated ? 40 : 0)}px"
+      style:height="{lines.length * lineHeight + (truncated ? 40 : 0)}px"
     >
       <div
         class="source-rows"
-        style:top="{first * LINE_HEIGHT}px"
+        style:top="{first * lineHeight}px"
         bind:this={rows}
       >
         {#each lines.slice(first, last) as html, i (first + i)}
@@ -652,6 +1057,8 @@
           <div
             class="source-line"
             class:ref={number === line}
+            class:bookmarked={bookmarked.has(number)}
+            class:found={!canMark && matches[findIndex]?.line === number}
             class:in-scope={!!openNow &&
               number >= openNow.startLine &&
               number <= openNow.endLine}
@@ -672,15 +1079,34 @@
                   )}"
                   onmousedown={(event) => event.stopPropagation()}
                   onclick={(event) => openMark(event, found)}
-                ></button>{/if}</span
+                ></button>{:else if bookmarked.has(number)}<span
+                  class="bookmark-mark"
+                ></span>{/if}</span
             ><span class="source-num" style:width="{gutter + 2}ch"
               >{number}</span
-            ><span class="source-text">{@html html || ' '}</span>
+            ><span class="source-text">{@html html || ' '}</span
+            >{#if blame?.line === number && blame.found}
+              {@const found = blame.found}
+              <!-- The text is not part of the code: a press on it selects
+                   nothing and follows no name. -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <span
+                class="source-blame"
+                class:committed={found.committed}
+                onmousedown={(event) => event.stopPropagation()}
+                onclick={(event) => event.stopPropagation()}
+                onmousemove={(event) => {
+                  if (found.committed) overBlame(event, event.currentTarget);
+                }}
+                onmouseleave={hideBlameCardSoon}
+                >{blameLabel(found, blame.asked)}</span
+              >
+            {/if}
           </div>
         {/each}
       </div>
       {#if truncated}
-        <div class="source-cut" style:top="{lines.length * LINE_HEIGHT}px">
+        <div class="source-cut" style:top="{lines.length * lineHeight}px">
           This file is longer than the viewer shows. Open it in your editor to
           see the rest.
         </div>
@@ -688,6 +1114,48 @@
     </div>
   {/if}
 </div>
+{#if blameCard && blame?.found?.committed}
+  {@const found = blame.found}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="blame-card"
+    style:left="{blameCard.x}px"
+    style:top={blameCard.above ? null : `${blameCard.y}px`}
+    style:bottom={blameCard.above ? `${blameCard.y}px` : null}
+    style:width="{BLAME_CARD_WIDTH}px"
+    onmouseenter={() => clearTimeout(blameCardTimer)}
+    onmouseleave={hideBlameCardSoon}
+  >
+    <div class="blame-head">
+      <b>{whoOf(found)}</b>
+      <span class="muted"
+        >{agoOf(found.time, blame.asked)} · {dateOf(found.time)}</span
+      >
+    </div>
+    <div class="blame-summary">{found.summary}</div>
+    {#if found.body}<div class="blame-body">{found.body}</div>{/if}
+    <div class="blame-foot">
+      <code>{found.commit.slice(0, 7)}</code>
+      <button
+        class="blame-change"
+        onclick={() => {
+          blameCard = null;
+          void app.openDiff(relPath, found.commit);
+        }}>Show this change</button
+      >
+      <button
+        class="tb-btn tip-end"
+        aria-label="Copy the hash of the commit"
+        data-tip="Copy the hash"
+        onclick={() =>
+          navigator.clipboard
+            .writeText(found.commit)
+            .then(() => app.notify('Copied the hash of the commit'))
+            .catch((error) => app.fail(error))}><Icon name="copy" /></button
+      >
+    </div>
+  </div>
+{/if}
 {#if picked}
   {@const scope = picked.scope}
   <div
@@ -728,23 +1196,3 @@
     >
   </div>
 {/if}
-<div class="source-bar">
-  <span>Read-only</span>
-  <span class="source-hint"
-    >Click a name to see where it is defined and used. {onMac
-      ? '⌘-click'
-      : 'Ctrl+click'} goes to its definition. Select lines to discuss or visualise
-    them.</span
-  >
-  <button
-    class="btn small"
-    onclick={() =>
-      api.openExternal(relPath, line ?? undefined).catch((e) => app.fail(e))}
-    >Open in external editor</button
-  >
-  <button
-    class="btn small"
-    onclick={() => api.reveal(relPath).catch((e) => app.fail(e))}
-    >Reveal in file manager</button
-  >
-</div>

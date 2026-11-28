@@ -79,9 +79,17 @@ const buildVisual = (visual, stage, post) => {
   const state = Object.assign({}, plant.defaults || {}, visual.state || {});
   if (plant.set) plant.set(m.refs, state, 0);
 
-  // An overlay inside the world. When a part is highlighted, a veil dims the
-  // whole drawing. Copies of the highlighted elements, and of everything
-  // drawn inside them, are drawn above the veil at full brightness.
+  // An overlay inside the world, for the part the viewer selected with a
+  // click. A veil dims the whole drawing, and copies of the selected
+  // elements, and of everything drawn inside them, are drawn above the veil
+  // at full brightness.
+  //
+  // The part under the pointer is not shown that way. While nothing is
+  // selected, a glowing frame is drawn around each of its elements (see
+  // `placeGlow`) and nothing is dimmed, so that moving the pointer over the
+  // drawing does not change the brightness of the whole drawing. While
+  // another part is selected, the drawing is dimmed already, and the part
+  // under the pointer is drawn bright above the veil like the selected one.
   const veil = elementFromHtml('<div class="cj-veil"></div>');
   const liftSvg = elementFromHtml(
     '<svg class="art cj-lift" viewBox="0 0 1920 1080"></svg>',
@@ -273,6 +281,7 @@ const buildVisual = (visual, stage, post) => {
     el === noteCard ||
     el.classList.contains('cj-marker') ||
     el.classList.contains('cj-note-ring') ||
+    el.classList.contains('cj-glow-ring') ||
     el.classList.contains('bub');
 
   // The elements that are drawn inside the elements of a node without being
@@ -466,6 +475,44 @@ const buildVisual = (visual, stage, post) => {
         CJ.esc(found.note.text);
   };
 
+  // The frames that glow around the part under the pointer. A frame is an
+  // HTML element, and not a glow on the part itself, because one browser
+  // engine draws no CSS shadow around an element inside an SVG drawing.
+  //
+  // `placeGlow` puts one frame around each element of `entry` that is
+  // displayed, GLOW_GAP world pixels outside its box, and hides the frames
+  // that are not needed. With `entry` null it hides them all. The frames are
+  // made when they are first needed and are used again after that. They let
+  // the pointer through, so the part under them is still the one under the
+  // pointer.
+  const GLOW_GAP = 4;
+  const glowRings = [];
+  const placeGlow = (entry) => {
+    const frame = world.getBoundingClientRect();
+    const scale = frame.width / STAGE_W || 1;
+    const boxes = entry
+      ? entry.els
+          .map((el) => el.getBoundingClientRect())
+          .filter((box) => box.width || box.height)
+      : [];
+    boxes.forEach((box, i) => {
+      if (!glowRings[i]) {
+        glowRings[i] = elementFromHtml('<div class="cj-glow-ring"></div>');
+        m.dimmer.before(glowRings[i]);
+      }
+      const ring = glowRings[i];
+      ring.setAttribute('data-node', entry.node.id);
+      ring.style.display = '';
+      ring.style.left = (box.left - frame.left) / scale - GLOW_GAP + 'px';
+      ring.style.top = (box.top - frame.top) / scale - GLOW_GAP + 'px';
+      ring.style.width = box.width / scale + 2 * GLOW_GAP + 'px';
+      ring.style.height = box.height / scale + 2 * GLOW_GAP + 'px';
+    });
+    glowRings.slice(boxes.length).forEach((ring) => {
+      ring.style.display = 'none';
+    });
+  };
+
   // False until the labels that lie over a packet have their two colours (see
   // `shadeLabels`). The packets of a visual do not move, so this is done
   // once, in the first `draw` in which the plant has a size on the page.
@@ -480,11 +527,11 @@ const buildVisual = (visual, stage, post) => {
     placeNoteCard(scale);
     liftSvg.replaceChildren();
     liftHtml.replaceChildren();
-    const focus = selected || hovered;
-    veil.style.opacity = focus ? 0.6 : 0;
+    veil.style.opacity = selected ? 0.6 : 0;
     if (selected) liftCopies(nodeById[selected], 'cj-selected');
-    if (hovered && hovered !== selected)
+    if (hovered && hovered !== selected && selected)
       liftCopies(nodeById[hovered], 'cj-hover');
+    placeGlow(hovered && !selected ? nodeById[hovered] : null);
     m.bubbleEls.forEach((el, i) => {
       const open = i === openMarker;
       el.style.opacity = open ? 1 : 0;

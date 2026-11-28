@@ -17,8 +17,8 @@
   // user pointed at.
   //
   // Notes. `artifactId` is the id of the artifact the film is, or null for a
-  // film that is not an artifact of the workspace, such as the bundled
-  // example. The notes that answers of discussions put on that artifact are
+  // film that is not an artifact of the workspace, which has no notes. The
+  // notes that answers of discussions put on that artifact are
   // sent to the film when it is ready, and again whenever they change or are
   // switched on or off. The film shows each note for a few seconds from its
   // moment. Each note also has a mark on the scrubber. A film built before

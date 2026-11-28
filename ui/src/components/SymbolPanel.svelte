@@ -41,6 +41,11 @@
   // only have the same name, and are shown when the user opens the line
   // "Others with this name".
   //
+  // The references of one file can be closed, so that only the heading of
+  // the file is left. A click on the heading closes them and opens them
+  // again. The button beside the word "References" does that for every file
+  // at once.
+  //
   // The references are searched for when this panel appears and not when
   // the name is selected, so that nothing is searched while the panel is
   // closed.
@@ -52,6 +57,40 @@
 
   $effect(() => {
     if (app.symbol?.search === 'idle') app.searchReferences();
+  });
+
+  // Which files have their references closed.
+  //   - `allClosed` is what the button beside the word "References" last
+  //     asked for: true after it closed every file, false after it opened
+  //     every file. It is false when a name is selected.
+  //   - `closedByFile` holds a file's path once the user has clicked that
+  //     file's heading since then. The value is true if the click closed
+  //     the file and false if it opened it.
+  // A file that is not in `closedByFile` follows `allClosed`. A search adds
+  // files to the list while it runs, and such a file is closed if the user
+  // has already closed every file.
+  let allClosed = $state(false);
+  let closedByFile = $state<Record<string, boolean>>({});
+  const isClosed = (path: string) => closedByFile[path] ?? allClosed;
+  const everyClosed = $derived(
+    files.length > 0 && files.every((file) => isClosed(file.path)),
+  );
+
+  function toggleFile(path: string) {
+    closedByFile[path] = !isClosed(path);
+  }
+
+  // Opens every file if all of them are closed. Otherwise closes every file.
+  function toggleAll() {
+    allClosed = !everyClosed;
+    closedByFile = {};
+  }
+
+  // Selecting another name opens every file again.
+  $effect(() => {
+    void app.symbol;
+    allClosed = false;
+    closedByFile = {};
   });
 
   const BASIS = {
@@ -160,10 +199,22 @@
       {/each}
     {/if}
 
-    <div class="kicker">
-      References{symbol.references.length
-        ? ` · ${symbol.references.length}`
-        : ''}
+    <div class="nav-refs-head">
+      <div class="kicker">
+        References{symbol.references.length
+          ? ` · ${symbol.references.length}`
+          : ''}
+      </div>
+      {#if files.length}
+        {@const label = everyClosed ? 'Expand all files' : 'Collapse all files'}
+        <button
+          class="tb-btn tip-end"
+          data-tip={label}
+          aria-label={label}
+          onclick={toggleAll}
+          ><Icon name={everyClosed ? 'expand' : 'collapse'} /></button
+        >
+      {/if}
     </div>
     {#if symbol.search === 'running'}
       <p class="symbol-basis">Searching…</p>
@@ -176,24 +227,33 @@
     {/if}
     {#each files as file (file.path)}
       {@const where = splitPath(file.path)}
-      <div class="nav-file" title={file.path}>
+      {@const closed = isClosed(file.path)}
+      <button
+        class="nav-file"
+        title={file.path}
+        aria-expanded={!closed}
+        onclick={() => toggleFile(file.path)}
+      >
+        <span class="chev">{closed ? '▸' : '▾'}</span>
         <span class="name">{where.name}</span>
         <span class="muted">{where.folder}</span>
         <span class="grow"></span>
         <span class="muted">{file.references.length}</span>
-      </div>
-      {#each file.references as reference (`${reference.line}:${reference.column}`)}
-        {@const tag = roleTag(reference.role)}
-        <button
-          class="nav-row ref-row"
-          class:on={isShown(reference)}
-          onclick={() => app.openSpan(reference)}
-        >
-          <span class="nav-num">{reference.line}</span>
-          {@render code(reference.text, reference)}
-          {#if tag}<span class="nav-tag">{tag}</span>{/if}
-        </button>
-      {/each}
+      </button>
+      {#if !closed}
+        {#each file.references as reference (`${reference.line}:${reference.column}`)}
+          {@const tag = roleTag(reference.role)}
+          <button
+            class="nav-row ref-row"
+            class:on={isShown(reference)}
+            onclick={() => app.openSpan(reference)}
+          >
+            <span class="nav-num">{reference.line}</span>
+            {@render code(reference.text, reference)}
+            {#if tag}<span class="nav-tag">{tag}</span>{/if}
+          </button>
+        {/each}
+      {/if}
     {/each}
   </div>
 {:else}

@@ -25,6 +25,7 @@ export default ts.config(
       'fixtures/',
       'landing/demo/',
       'codeviz-spec/',
+      '.codjiva/',
     ],
   },
   js.configs.recommended,
@@ -63,12 +64,13 @@ export default ts.config(
     languageOptions: { parserOptions: { parser: ts.parser } },
   },
   {
-    // SourceView and CodeExcerpt put the lines of a file on the page as
-    // HTML. Each line has been escaped and coloured by lib/highlight.ts
-    // first, so it holds no markup of the file's own.
+    // SourceView, CodeExcerpt and DiffView put the lines of a file on the
+    // page as HTML. Each line has been escaped and coloured by
+    // lib/highlight.ts first, so it holds no markup of the file's own.
     files: [
       'ui/src/components/SourceView.svelte',
       'ui/src/components/CodeExcerpt.svelte',
+      'ui/src/components/DiffView.svelte',
     ],
     rules: { 'svelte/no-at-html-tags': 'off' },
   },

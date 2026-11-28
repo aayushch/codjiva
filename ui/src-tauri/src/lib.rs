@@ -5,7 +5,10 @@
 //! interface, and the URL scheme that serves artifacts to the sandboxed frame.
 
 mod artifacts;
+mod blame;
 mod capture;
+mod git_diff;
+mod git_status;
 mod jobs;
 mod nav;
 mod protocol;
@@ -20,7 +23,7 @@ use codjiva_core::settings::{
 use codjiva_core::store::{self, GitignoreChoice, StoreStatus};
 use codjiva_core::watch::DirWatcher;
 use codjiva_core::workspace::{
-    FileContent, FileHit, FileInfo, TreeEntry, Workspace,
+    FileContent, FileHit, FileInfo, ImageContent, TreeEntry, Workspace,
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -104,6 +107,7 @@ fn workspace_open(
     // Recent workspaces are a convenience. Failing to record one must not stop
     // the folder opening.
     let _ = settings::remember_workspace(&state.config_dir, &root, ws.name());
+    let _ = settings::remember_last_workspace(&state.config_dir, Some(&root));
 
     let emitter = app.clone();
     let indexed = Arc::clone(&ws);
@@ -133,6 +137,9 @@ fn workspace_open(
 
 #[tauri::command]
 fn workspace_close(state: State<'_, AppState>) {
+    // The user closed the folder, so the next start of the app shows the
+    // welcome screen and does not open it again.
+    let _ = settings::remember_last_workspace(&state.config_dir, None);
     *state
         .watcher
         .lock()
@@ -141,6 +148,14 @@ fn workspace_close(state: State<'_, AppState>) {
         .workspace
         .write()
         .expect("the workspace lock is not poisoned") = None;
+}
+
+/// The path of the folder that was open when the app last stopped, for the
+/// interface to open again at the start. Nothing when the user had closed
+/// the folder, or the folder no longer exists.
+#[tauri::command]
+fn workspace_last(state: State<'_, AppState>) -> Option<String> {
+    settings::last_workspace(&state.config_dir)
 }
 
 #[tauri::command]
@@ -187,6 +202,15 @@ fn file_read(
     state: State<'_, AppState>,
 ) -> Result<FileContent> {
     state.workspace()?.read_text(&rel_path)
+}
+
+/// An image file of the open workspace, for the viewer to show.
+#[tauri::command]
+fn file_image(
+    rel_path: String,
+    state: State<'_, AppState>,
+) -> Result<ImageContent> {
+    state.workspace()?.read_image(&rel_path)
 }
 
 #[tauri::command]
@@ -353,10 +377,53 @@ fn reveal(
     })
 }
 
+/// The id of the "Open Folder…" item of the File menu.
+#[cfg(target_os = "macos")]
+const MENU_OPEN_FOLDER: &str = "open-folder";
+
+/// The menu bar on macOS: the menu Tauri makes by default, with
+/// "Open Folder…" added as the first item of its File menu. Windows and
+/// Linux have no menu bar, and the folder is opened there with the button
+/// in the title bar or with Ctrl+O.
+#[cfg(target_os = "macos")]
+fn menu_bar(
+    handle: &AppHandle,
+) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
+    let menu = Menu::default(handle)?;
+    for item in menu.items()? {
+        let MenuItemKind::Submenu(submenu) = item else {
+            continue;
+        };
+        if submenu.text()? != "File" {
+            continue;
+        }
+        let open = MenuItem::with_id(
+            handle,
+            MENU_OPEN_FOLDER,
+            "Open Folder…",
+            true,
+            Some("CmdOrCtrl+O"),
+        )?;
+        let line = PredefinedMenuItem::separator(handle)?;
+        submenu.prepend_items(&[&open, &line])?;
+    }
+    Ok(menu)
+}
+
 pub fn run() {
     let config_dir = settings::config_dir();
     let loaded = Settings::load(&config_dir).unwrap_or_default();
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // A click on "Open Folder…" is passed to the interface, which shows the
+    // folder dialog as it does for its own button.
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(menu_bar).on_menu_event(|handle, event| {
+        if event.id().as_ref() == MENU_OPEN_FOLDER {
+            let _ = handle.emit("menu-open-folder", ());
+        }
+    });
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         // The updater reads `latest.json` from the newest release on GitHub
@@ -392,11 +459,13 @@ pub fn run() {
             workspace_open,
             workspace_close,
             workspace_recent,
+            workspace_last,
             workspace_session_get,
             workspace_session_set,
             tree_children,
             file_info,
             file_read,
+            file_image,
             files_search,
             watch_dirs,
             store_ensure,
@@ -431,6 +500,10 @@ pub fn run() {
             artifacts::artifact_open_in_browser,
             artifacts::artifact_reveal,
             artifacts::guard_revert,
+            blame::git_blame,
+            git_status::git_status,
+            git_diff::git_file_history,
+            git_diff::git_file_diff,
             nav::nav_lookup,
             nav::nav_references,
             nav::nav_cancel,

@@ -1,7 +1,13 @@
-// Checks what a visual shows when a part is highlighted. The drawing is
-// dimmed, and the part is drawn bright above the dimmed drawing together with
-// everything that is drawn inside it, such as the labels on a machine. A box
-// inside a machine that has a node of its own can be selected by itself.
+// Checks what a visual shows when a part is highlighted.
+//   - The part under the pointer has a glowing frame around it, and nothing
+//     is dimmed.
+//   - A click selects a part. The drawing is dimmed, and the part is drawn
+//     bright above the dimmed drawing together with everything that is drawn
+//     inside it, such as the labels on a machine.
+//   - While a part is selected, the part under the pointer is drawn bright
+//     above the dimmed drawing in the same way.
+// A box inside a machine that has a node of its own can be selected by
+// itself.
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -56,6 +62,10 @@ const lifted = () =>
       ).map((el) => el.getAttribute('data-node'));
     return {
       hover: names('cj-hover'),
+      // The parts that have the glowing frame of the pointer around them.
+      glow: Array.from(document.querySelectorAll('.cj-glow-ring'))
+        .filter((ring) => ring.style.display !== 'none')
+        .map((ring) => ring.getAttribute('data-node')),
       selected: names('cj-selected'),
       words: Array.from(document.querySelectorAll('.cj-lift-html > *')).map(
         (el) => el.textContent,
@@ -78,16 +88,13 @@ const loop = await cornerOf('flushloop');
 await page.mouse.move(loop.x, loop.y);
 const hovered = await lifted();
 check(
-  hovered.dimmed &&
-    hovered.hover.join() === 'flushloop' &&
-    hovered.words.some((text) => text.includes('releaseDeferred()')),
-  'a hovered machine is drawn bright with the labels that are on it',
+  !hovered.dimmed &&
+    hovered.glow.length > 0 &&
+    hovered.glow.every((name) => name === 'flushloop') &&
+    hovered.hover.length === 0 &&
+    hovered.words.length === 0,
+  'a hovered machine has a glowing frame, and the drawing is not dimmed',
   JSON.stringify(hovered),
-);
-check(
-  !hovered.words.some((text) => text.includes('Store')),
-  'a label outside the hovered machine stays dimmed',
-  JSON.stringify(hovered.words),
 );
 
 const process = await cornerOf('process');
@@ -97,6 +104,29 @@ check(
   outer.selected.join() === 'process' && outer.words.includes('stamp()'),
   'a selected machine shows the box that is drawn inside it',
   JSON.stringify(outer),
+);
+check(
+  outer.dimmed && outer.glow.length === 0,
+  'a click dims the drawing around the selected machine',
+  JSON.stringify(outer),
+);
+
+// While a machine is selected, the machine under the pointer is drawn bright
+// above the dimmed drawing, with the labels that are on it.
+await page.mouse.move(loop.x, loop.y);
+const beside = await lifted();
+check(
+  beside.dimmed &&
+    beside.hover.join() === 'flushloop' &&
+    beside.glow.length === 0 &&
+    beside.words.some((text) => text.includes('releaseDeferred()')),
+  'beside a selected machine, a hovered machine is drawn bright with the labels that are on it',
+  JSON.stringify(beside),
+);
+check(
+  !beside.words.some((text) => text.includes('Store')),
+  'a label outside both machines stays dimmed',
+  JSON.stringify(beside.words),
 );
 
 const plate = await page.locator('.world > .v-inner').boundingBox();

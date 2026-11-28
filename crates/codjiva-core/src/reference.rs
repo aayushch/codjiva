@@ -1,13 +1,11 @@
-//! The reference examples that ship inside the app: a film, a still visual and
-//! a pipeline.
+//! The reference examples that agents are given as worked examples: a film, a
+//! still visual, a pipeline, a step-through and four views.
 //!
-//! All three explain the made-up Go program in `fixtures/go-orders`. The app
-//! shows the film and the visual from the welcome screen, and agents are
-//! pointed at the sources as worked examples. The sources are compiled into the
-//! binary, and the pages are built from them the first time they are asked for.
+//! All of them explain the made-up Go program in `fixtures/go-orders`. Their
+//! source files are compiled into the binary as text, and `write_sources`
+//! writes them into the folder of a job. The app does not show them.
 
-use codjiva_build::{build, Sources};
-use std::sync::OnceLock;
+use codjiva_build::Sources;
 
 macro_rules! reference_file {
     ($path:literal) => {
@@ -172,34 +170,18 @@ pub fn write_sources(dir: &std::path::Path) -> std::io::Result<()> {
     )
 }
 
-/// The built reference film as one HTML page.
-pub fn film_html() -> &'static str {
-    static HTML: OnceLock<String> = OnceLock::new();
-    HTML.get_or_init(|| {
-        build(&film_sources())
-            .expect("the bundled reference film builds")
-            .html
-    })
-}
-
-/// The built reference visual as one HTML page.
-pub fn visual_html() -> &'static str {
-    static HTML: OnceLock<String> = OnceLock::new();
-    HTML.get_or_init(|| {
-        build(&visual_sources())
-            .expect("the bundled reference visual builds")
-            .html
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use codjiva_build::build;
 
     #[test]
     fn the_bundled_reference_pages_build() {
-        assert!(film_html().contains("CJ.boot({\"film\":"));
-        assert!(visual_html().contains("CJ.boot({\"visual\":"));
+        let film = build(&film_sources()).expect("the reference film builds");
+        assert!(film.html.contains("CJ.boot({\"film\":"));
+        let visual =
+            build(&visual_sources()).expect("the reference visual builds");
+        assert!(visual.html.contains("CJ.boot({\"visual\":"));
     }
 
     #[test]

@@ -6,10 +6,13 @@
 
 pub mod agents;
 pub mod artifacts;
+pub mod blame;
 pub mod companions;
 pub mod compose;
 pub mod env;
 pub mod error;
+pub mod git_diff;
+pub mod git_status;
 pub mod guard;
 pub mod jobs;
 pub mod lang;

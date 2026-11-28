@@ -1,7 +1,13 @@
 <script lang="ts">
   import { api, type IgnoreCheck, type Settings } from '$lib/ipc';
   import { parsePatterns } from '$lib/ignore';
-  import { app } from '$lib/state/app.svelte';
+  import {
+    app,
+    CODE_FONT_DEFAULT,
+    CODE_FONT_MAX,
+    CODE_FONT_MIN,
+    codeFontSize,
+  } from '$lib/state/app.svelte';
   import { updater } from '$lib/state/updater.svelte';
   import ApiProviders from './ApiProviders.svelte';
 
@@ -28,7 +34,11 @@
       'Which other files are suggested when you animate a file.',
     ],
     ['editor', 'Source code', 'How files open in your own editor.'],
-    ['appearance', 'Appearance', 'The colours of the app.'],
+    [
+      'appearance',
+      'Appearance',
+      'The colours of the app and the size of code.',
+    ],
     ['updates', 'Updates', 'Newer versions of Codjiva.'],
   ] as const;
   type Section = (typeof SECTIONS)[number][0];
@@ -47,6 +57,9 @@
     ['high', 'High'],
     ['agent', 'Agent decides'],
   ];
+  // The size of code that the Appearance section shows and changes by one
+  // pixel at a time.
+  const codeSize = $derived(codeFontSize(app.settings?.codeFontSize));
   const themes: [Settings['theme'], string][] = [
     ['system', 'Match the system'],
     ['light', 'Light'],
@@ -426,6 +439,32 @@
               in it. A blueprint or a film made by an earlier version of the app
               stays dark until it is made again. An exported film is dark.
             </div>
+          </div>
+          <div class="field">
+            <span class="label">Code size</span>
+            <div class="stepper">
+              <button
+                class="btn"
+                aria-label="Smaller code"
+                disabled={codeSize <= CODE_FONT_MIN}
+                onclick={() => set('codeFontSize', codeSize - 1)}>−</button
+              >
+              <span class="stepper-value" aria-live="polite">{codeSize} px</span
+              >
+              <button
+                class="btn"
+                aria-label="Larger code"
+                disabled={codeSize >= CODE_FONT_MAX}
+                onclick={() => set('codeFontSize', codeSize + 1)}>+</button
+              >
+              <button
+                class="btn"
+                disabled={codeSize === CODE_FONT_DEFAULT}
+                onclick={() => set('codeFontSize', CODE_FONT_DEFAULT)}
+                >Reset</button
+              >
+            </div>
+            <div class="why">The size of the code in the source view.</div>
           </div>
         {:else if section === 'updates'}
           <div class="field">

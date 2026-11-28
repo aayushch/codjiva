@@ -527,6 +527,17 @@ html.embed #app {
 .cj-selected {
   filter: drop-shadow(0 0 8px color-mix(in srgb, var(--main) 70%, transparent));
 }
+/* The frame around the part under the pointer while nothing is selected.
+   Nothing around the part is dimmed, so the frame is a line with a glow
+   around it. It lets the pointer through to the part. */
+.cj-glow-ring {
+  position: absolute;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 16px 2px color-mix(in srgb, var(--accent) 70%, transparent);
+  pointer-events: none;
+}
 .cj-marker {
   position: absolute;
   width: 30px;

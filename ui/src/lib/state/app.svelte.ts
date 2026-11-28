@@ -9,7 +9,9 @@ import {
   type AppInfo,
   type ArtifactDetail,
   type ArtifactSummary,
+  type Bookmark,
   type Changes,
+  type GitEntry,
   type Feedback,
   type FileInfo,
   type FileKind,
@@ -32,6 +34,10 @@ import {
   type WorkspaceInfo,
 } from '$lib/ipc';
 import { FILE_KINDS, isView, PIPELINE_PREFIX, showsFilm } from '$lib/artifacts';
+import { toggled } from '$lib/bookmarks';
+import { isPicture, previewKindOf, type PreviewKind } from '$lib/preview';
+import { gitMarks, NO_MARKS } from '$lib/gitStatus';
+import { diffs } from './diffs.svelte';
 import {
   newJob,
   reduceJob,
@@ -96,6 +102,21 @@ export const SOURCE_PANEL_WIDTH = 380;
 // section can have, in percent.
 export const SOURCE_SPLIT_MIN = 15;
 export const SOURCE_SPLIT_MAX = 85;
+// The list `bookmarksOf` returns for a file that has no bookmark.
+const NO_BOOKMARKS: Bookmark[] = [];
+// The size of the code in the source view, in pixels: the size the app
+// starts with, and the least and the greatest size Settings offers.
+export const CODE_FONT_DEFAULT = 13;
+export const CODE_FONT_MIN = 10;
+export const CODE_FONT_MAX = 24;
+// The size to draw code at for the value of the setting `codeFontSize`. A
+// missing value gives the default size. A value outside the range from
+// CODE_FONT_MIN to CODE_FONT_MAX gives the nearest end of the range.
+export const codeFontSize = (setting: number | undefined) =>
+  Math.min(
+    CODE_FONT_MAX,
+    Math.max(CODE_FONT_MIN, Math.round(setting ?? CODE_FONT_DEFAULT)),
+  );
 // The least height of the library while its list is showing, and the height
 // that is always left for the file tree above it.
 export const LIBRARY_MIN = 96;
@@ -269,9 +290,6 @@ class AppState {
   // The context menu on screen, or null. `openMenu` shows one and `closeMenu`
   // removes it.
   menu = $state<Menu | null>(null);
-
-  // Which of the two bundled examples is showing in place of a file, if any.
-  example = $state<null | 'film' | 'visual'>(null);
 
   dialog = $state<Dialog>(null);
   // What to do after the user has answered the .gitignore question.
@@ -556,8 +574,7 @@ class AppState {
   // The inspector describes that artifact, so it can only show while this is
   // true.
   artifactShown = $derived(
-    !this.example &&
-      !!this.currentArtifact &&
+    !!this.currentArtifact &&
       !!this.detail &&
       (this.tab !== 'source' || !!this.spotlight) &&
       this.shownVersion != null &&
@@ -568,8 +585,7 @@ class AppState {
   // selected name (`symbol`) is defined and used, and says how to select a
   // name while none is selected.
   sourceShown = $derived(
-    !this.example &&
-      !this.spotlight &&
+    !this.spotlight &&
       this.tab === 'source' &&
       !!this.selected &&
       !this.selectedIsFolder &&
@@ -591,6 +607,12 @@ class AppState {
   private stopWatching: (() => void) | null = null;
   private stopValidating: (() => void) | null = null;
 
+  // True from the start of the app until `init` has opened the folder that
+  // was open when the app last stopped, or has found that there is none.
+  // The welcome screen is not shown during that time, so that it does not
+  // appear for a moment before the folder does.
+  starting = $state(true);
+
   async init() {
     try {
       this.info = await api.appInfo();
@@ -603,9 +625,15 @@ class AppState {
       this.stopValidating = await api.onValidateRequest((request) => {
         this.validateQueue.push(request);
       });
+      await api.onMenuOpenFolder(() => this.pickAndOpen());
+      // The folder that was open when the app last stopped is opened again,
+      // with the tabs it had then (see `restoreSession`).
+      const last = await api.workspaceLast();
+      if (last) await this.openWorkspace(last);
     } catch (error) {
       this.fail(error);
     }
+    this.starting = false;
     // Looking for agents starts programs and can take a few seconds, so the
     // window does not wait for it.
     this.loadAgents();
@@ -708,8 +736,139 @@ class AppState {
       .workspaceSessionSet({
         openFiles: $state.snapshot(this.openFiles),
         selected: this.selected,
+        bookmarks: $state.snapshot(this.bookmarks),
       })
       .catch(() => {});
+  }
+
+  // The files the user asked to see rendered, by their path inside the
+  // workspace. The Source view of such a file shows the picture or the page
+  // the file describes in place of its text (see lib/preview.ts). It is not
+  // kept between runs of the app.
+  previews = $state<Record<string, boolean>>({});
+
+  // What the Source view of the selected file shows in place of its text, or
+  // null when it shows the text or another view is on screen.
+  //   - An image file that is not text is always shown as its picture.
+  //   - A file in `previews` is shown in the way `previewKindOf` says.
+  rendered = $derived.by((): PreviewKind | null => {
+    const path = this.selected;
+    if (this.tab !== 'source' || !path || this.selectedPipelineId) return null;
+    if (path.endsWith('/') || this.spotlight) return null;
+    if (isPicture(path)) return 'image';
+    return this.previews[path] ? previewKindOf(path) : null;
+  });
+
+  // Shows the file at `path` rendered, in the Source view.
+  async openPreview(path: string) {
+    this.previews[path] = true;
+    delete this.diffs[path];
+    await this.selectFile(path);
+    if (this.tab !== 'source') await this.setTab('source');
+  }
+
+  // Switches the selected file between its text and its rendered form.
+  togglePreview() {
+    const path = this.selected;
+    if (!path) return;
+    if (this.previews[path]) delete this.previews[path];
+    else {
+      this.previews[path] = true;
+      delete this.diffs[path];
+    }
+  }
+
+  // The files whose Source view shows their changes in place of their text
+  // (see DiffView.svelte), by their path inside the workspace. A file is in
+  // at most one of `diffs` and `previews`. It is not kept between runs of
+  // the app.
+  diffs = $state<Record<string, boolean>>({});
+
+  // True while the Source view of the selected file shows its changes.
+  // An image file has no text to compare, and a folder that is not inside
+  // a git repository has no changes to show.
+  diffing = $derived.by((): boolean => {
+    const path = this.selected;
+    if (this.tab !== 'source' || !path || this.selectedPipelineId) return false;
+    if (path.endsWith('/') || this.spotlight || isPicture(path)) return false;
+    return this.gitRepo && !!this.diffs[path];
+  });
+
+  // How the diff view is laid out, kept with the layout of the panels (see
+  // `saveLayout`). With `diffSplit`, the old version is on the left and the
+  // new version on the right. With `diffWholeFile`, every line is shown and
+  // nothing is folded away.
+  diffSplit = $state(false);
+  diffWholeFile = $state(false);
+
+  // Shows the changes of the file at `path`, in the Source view. `commit`
+  // is the hash of the commit to start on. Without it, the view starts on
+  // the change that was last on screen for the file, or on the newest one.
+  async openDiff(path: string, commit?: string) {
+    this.diffs[path] = true;
+    delete this.previews[path];
+    if (commit) diffs.want(path, commit);
+    await this.selectFile(path);
+    if (this.tab !== 'source') await this.setTab('source');
+  }
+
+  // Switches the selected file between its text and its changes.
+  toggleDiff() {
+    const path = this.selected;
+    if (!path) return;
+    if (this.diffs[path]) delete this.diffs[path];
+    else {
+      this.diffs[path] = true;
+      delete this.previews[path];
+    }
+  }
+
+  // The bookmarks of the open workspace: for each file that has any, by its
+  // path inside the workspace, the lines the user bookmarked in the source
+  // view, ordered by line (see lib/bookmarks.ts). They are kept with the
+  // file tabs on this computer, and are not written into the workspace.
+  bookmarks = $state<Record<string, Bookmark[]>>({});
+
+  // The bookmarks of the file at `path`. A file without bookmarks gives the
+  // same empty list every time.
+  bookmarksOf(path: string): Bookmark[] {
+    return this.bookmarks[path] ?? NO_BOOKMARKS;
+  }
+
+  // Makes `list` the bookmarks of the file at `path` and keeps them for the
+  // next time the folder is opened. An empty list removes the file's entry.
+  setBookmarks(path: string, list: Bookmark[]) {
+    if (list.length) this.bookmarks[path] = list;
+    else delete this.bookmarks[path];
+    this.saveSession();
+  }
+
+  // Adds a bookmark on `line` of the file at `path`, or removes the one that
+  // is there. `text` is the code of that line.
+  toggleBookmark(path: string, line: number, text: string) {
+    const before = this.bookmarksOf(path);
+    const after = toggled(before, line, text);
+    this.setBookmarks(path, after);
+    if (after.length < before.length) this.unmarkLine(path, [line]);
+  }
+
+  // Removes every bookmark of the file at `path`.
+  clearBookmarks(path: string) {
+    const lines = this.bookmarksOf(path).map((mark) => mark.line);
+    this.setBookmarks(path, []);
+    this.unmarkLine(path, lines);
+  }
+
+  // Going to a bookmark highlights its line in the source view, as every
+  // jump to a line does (`sourceLine`). When the bookmark is removed, that
+  // highlight is removed with it. `lines` are the lines of the file at
+  // `path` whose bookmarks were removed. The highlight stays when it is on
+  // another line or the file is not the one on screen.
+  private unmarkLine(path: string, lines: number[]) {
+    if (path !== this.selected || this.sourceLine == null) return;
+    if (!lines.includes(this.sourceLine)) return;
+    this.sourceLine = null;
+    this.sourceSpan = null;
   }
 
   // Shows the file tabs the workspace had when it was last used, and in them
@@ -727,6 +886,7 @@ class AppState {
       const session = await api.workspaceSessionGet();
       remembered = tabsOfSession(session.openFiles);
       selected = session.selected;
+      this.bookmarks = session.bookmarks ?? {};
     } catch {
       return;
     }
@@ -786,7 +946,7 @@ class AppState {
         await this.selectFolder(path);
         if (file.view === 'map') await this.setTab('map');
       } else {
-        await this.selectFile(
+        await this.selectFileAgain(
           path,
           file.view === 'source' && file.line != null ? file.line : undefined,
         );
@@ -1145,7 +1305,7 @@ class AppState {
         // A folder opens on its visual. Its map is the other thing it has.
         if (place.tab === 'map') await this.setTab('map');
       } else {
-        await this.selectFile(
+        await this.selectFileAgain(
           place.selected,
           place.tab === 'source' && place.line != null ? place.line : undefined,
         );
@@ -1184,7 +1344,6 @@ class AppState {
   // explains several files and belongs to none of them.
   async selectPipeline(id: string) {
     await this.move(async () => {
-      this.example = null;
       this.closeScope();
       this.selected = PIPELINE_PREFIX + id;
       this.tab = 'visual';
@@ -1444,8 +1603,7 @@ class AppState {
       (this.jobArtifact.scope
         ? this.spotlight !== this.jobArtifact.id &&
           !(this.sourceShown && this.scopeArtifactId === this.jobArtifact.id)
-        : this.example !== null ||
-          this.tab === 'source' ||
+        : this.tab === 'source' ||
           this.currentArtifact?.id !== this.jobArtifact.id),
   );
 
@@ -1687,12 +1845,69 @@ class AppState {
     this.notify(messageOf(error), 'error');
   }
 
+  // The changed files of the open workspace, as git reports them (see
+  // lib/gitStatus.ts). The file tree shows a letter and a colour for each.
+  // The list is empty for a folder that is not inside a git repository.
+  gitEntries = $state.raw<GitEntry[]>([]);
+  // True when the open workspace is inside a git repository, which is known
+  // once git has answered for the first time.
+  gitRepo = $state(false);
+  gitMarks = $derived(
+    this.gitEntries.length ? gitMarks(this.gitEntries) : NO_MARKS,
+  );
+  // True while git is being asked for the changes.
+  private gitAsking = false;
+  // True when `refreshGit` was called while git was being asked. Git is
+  // then asked once more when the answer arrives, because the files may
+  // have changed after git read them.
+  private gitAskAgain = false;
+
+  // Asks git for the changed files of the workspace and keeps the answer in
+  // `gitEntries`. It is called when a folder is opened, when a watched
+  // folder changes on disk, and when the window comes to the front. Git is
+  // asked by one call at a time.
+  async refreshGit() {
+    if (!this.workspace) return;
+    if (this.gitAsking) {
+      this.gitAskAgain = true;
+      return;
+    }
+    this.gitAsking = true;
+    const root = this.workspace.root;
+    try {
+      const entries = await api.gitStatus();
+      // The answer is dropped when another folder was opened meanwhile.
+      if (this.workspace?.root === root) {
+        this.gitEntries = entries ?? [];
+        this.gitRepo = entries != null;
+      }
+    } catch {
+      // Without an answer the tree keeps the marks it has.
+    }
+    this.gitAsking = false;
+    if (this.gitAskAgain) {
+      this.gitAskAgain = false;
+      void this.refreshGit();
+    }
+  }
+
+  // True while the dialog that picks a folder is open.
+  private pickingFolder = false;
+
+  // Shows the dialog that picks a folder and opens the folder the user
+  // chooses. A second call while the dialog is open does nothing. On macOS
+  // the key for "Open Folder…" can arrive twice, once from the menu bar and
+  // once as a key press in the window.
   async pickAndOpen() {
+    if (this.pickingFolder) return;
+    this.pickingFolder = true;
     try {
       const path = await api.pickFolder();
       if (path) await this.openWorkspace(path);
     } catch (error) {
       this.fail(error);
+    } finally {
+      this.pickingFolder = false;
     }
   }
 
@@ -1704,8 +1919,12 @@ class AppState {
       this.selected = null;
       this.fileInfo = null;
       this.openFiles = [];
+      this.bookmarks = {};
+      this.gitEntries = [];
+      this.gitRepo = false;
+      this.diffs = {};
+      diffs.reset();
       this.menu = null;
-      this.example = null;
       this.tab = 'visual';
       this.workspace = info;
       this.artifacts = [];
@@ -1723,6 +1942,9 @@ class AppState {
       this.closeScope();
       this.clearSymbol();
       await this.loadDir('');
+      // Git can take a moment in a large repository, so the folder does not
+      // wait for it. The marks appear in the tree when git has answered.
+      void this.refreshGit();
       await this.reloadArtifacts();
       await this.syncWatched();
       this.recents = await api.workspaceRecent();
@@ -1738,8 +1960,12 @@ class AppState {
     this.selected = null;
     this.fileInfo = null;
     this.openFiles = [];
+    this.bookmarks = {};
+    this.gitEntries = [];
+    this.gitRepo = false;
+    this.diffs = {};
+    diffs.reset();
     this.menu = null;
-    this.example = null;
     this.places = [];
     this.placeIndex = -1;
     this.sourceLine = null;
@@ -1932,9 +2158,11 @@ class AppState {
   }
 
   // Called when the window comes to the front. The user may have changed
-  // files in another program meanwhile, so the core is asked to look for
-  // changed files, at most once in five seconds.
+  // files in another program meanwhile, or made a commit, so git is asked
+  // for the changed files again. The core is also asked to look for changed
+  // files, at most once in five seconds.
   windowFocused() {
+    void this.refreshGit();
     if (!this.workspace || Date.now() - this.lastNavRefresh < 5000) return;
     this.lastNavRefresh = Date.now();
     api.navRefresh().catch(() => {});
@@ -1955,8 +2183,23 @@ class AppState {
     await this.move(() => this.showFile(relPath, line, span));
   }
 
+  // Selects a file the user was on before, through its file tab or with
+  // Back and Forward. `line` is the line its source view was at then.
+  // `selectFile` takes a line as a request to see that line of the text,
+  // and so makes a file that shows its changes show its text. Here the
+  // line is only where the view was, so a file that was showing its changes
+  // shows them again.
+  private async selectFileAgain(relPath: string, line?: number) {
+    const showedChanges = !!this.diffs[relPath];
+    await this.selectFile(relPath, line);
+    if (showedChanges) this.diffs[relPath] = true;
+  }
+
   // The work of `selectFile` for a path that is a file.
   private async showFile(relPath: string, line?: number, span?: NavSpan) {
+    // A line is a line of the text of the file, so the file shows its text
+    // again when it was showing its changes.
+    if (line != null) delete this.diffs[relPath];
     // Going to a line of the file that is already selected changes only what
     // the source viewer shows. The file is not read and described again.
     if (
@@ -1976,7 +2219,6 @@ class AppState {
         if (!this.children[dir]) await this.loadDir(dir);
         this.expanded[dir] = true;
       }
-      this.example = null;
       if (this.scope && this.scope.path !== relPath) this.closeScope();
       this.selected = relPath;
       this.sourceLine = line ?? null;
@@ -2040,7 +2282,6 @@ class AppState {
         if (!this.children[parent]) await this.loadDir(parent);
         this.expanded[parent] = true;
       }
-      this.example = null;
       this.closeScope();
       this.selected = dir + '/';
       this.tab = 'visual';
@@ -2058,6 +2299,8 @@ class AppState {
   }
 
   private async onFsChanged(changes: Changes) {
+    // A file that changed on disk may have another git status now.
+    void this.refreshGit();
     try {
       for (const dir of changes.dirs) {
         if (this.children[dir]) await this.loadDir(dir);
@@ -2222,6 +2465,8 @@ class AppState {
       Math.max(SOURCE_SPLIT_MIN, layout.sourceSplit ?? 40),
     );
     this.sourceSwapped = !!layout.sourceSwapped;
+    this.diffSplit = !!layout.diffSplit;
+    this.diffWholeFile = !!layout.diffWholeFile;
   }
 
   // Writes the panels' sizes and open states to the settings, if they differ
@@ -2243,6 +2488,8 @@ class AppState {
       sourcePanelWidth: Math.round(this.sourcePanelWidth),
       sourceSplit: Math.round(this.sourceSplit),
       sourceSwapped: this.sourceSwapped,
+      diffSplit: this.diffSplit,
+      diffWholeFile: this.diffWholeFile,
     };
     if (JSON.stringify(layout) === JSON.stringify(this.settings.layout)) return;
     await this.saveSettings({ ...this.settings, layout });

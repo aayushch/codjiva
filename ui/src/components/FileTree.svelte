@@ -2,6 +2,8 @@
   import { VIEWS } from '$lib/artifacts';
   import { targetOfArtifact } from '$lib/jobs';
   import type { ArtifactKind } from '$lib/ipc';
+  import { GIT_LETTER, gitTitle, statusOf } from '$lib/gitStatus';
+  import { isPicture, previewKindOf } from '$lib/preview';
   import { app, type MenuItem } from '$lib/state/app.svelte';
   import { ancestorsOf, type TreeRow } from '$lib/tree';
   import Icon from './Icon.svelte';
@@ -50,6 +52,27 @@
     }
     return counts;
   });
+  // What git says about the file or folder of a row, or null when git
+  // reports no change for it. The name of such a row has the colour of the
+  // status. The row of a file also has the letter of the status at its right
+  // end. A folder has the colour only, and it has the colour when a changed
+  // file is somewhere inside it, so that the way to a changed file can be
+  // followed through closed folders.
+  const gitOf = (row: TreeRow) =>
+    statusOf(app.gitMarks, row.entry.relPath, row.entry.kind === 'dir');
+  // The tooltip of a row: its path, then what git says about it, then how
+  // many files and folders inside it have a visual or a film. `inside` is
+  // that number.
+  function titleOf(row: TreeRow, inside: number) {
+    const parts = [row.entry.relPath];
+    const git = gitOf(row);
+    if (git) parts.push(gitTitle(git, row.entry.kind === 'dir'));
+    if (inside)
+      parts.push(
+        `${inside} inside ${inside === 1 ? 'has' : 'have'} a blueprint or a film`,
+      );
+    return parts.join(' · ');
+  }
   // The path of the selected row. A selected folder's path is stored with a
   // trailing slash.
   const selectedPath = $derived(app.selected?.replace(/\/$/, '') ?? null);
@@ -206,6 +229,21 @@
         action: () => app.makeView(path, view.name),
       });
     }
+    // A file that can be shown rendered, such as an SVG picture or an HTML
+    // page, has a command that opens it that way.
+    if (!isDir && previewKindOf(path))
+      items.push('separator', {
+        label: 'Preview',
+        action: () => app.openPreview(path),
+      });
+    // In a git repository, a file of text can show its changes. A file
+    // that git reports as changed opens on what is not committed, and the
+    // command says so.
+    if (!isDir && app.gitRepo && !isPicture(path))
+      items.push('separator', {
+        label: gitOf(row) ? 'Show changes' : 'Show history',
+        action: () => app.openDiff(path),
+      });
     items.push(
       'separator',
       { label: 'Copy path', action: () => app.copyPath(path, true) },
@@ -261,18 +299,18 @@
       {#each visible as row, i (row.entry.relPath)}
         {@const index = first + i}
         {@const inside = holds.get(row.entry.relPath) ?? 0}
+        {@const git = gitOf(row)}
         <div
           class="row"
           class:selected={row.entry.relPath === selectedPath}
           class:cursor={index === cursor}
           style:--depth={row.depth}
+          data-git={git}
           role="treeitem"
           aria-selected={row.entry.relPath === selectedPath}
           aria-expanded={row.entry.kind === 'dir' ? row.expanded : undefined}
           tabindex="-1"
-          title={inside
-            ? `${row.entry.relPath} · ${inside} inside ${inside === 1 ? 'has' : 'have'} a blueprint or a film`
-            : row.entry.relPath}
+          title={titleOf(row, inside)}
           onclick={() => activate(index)}
           onkeydown={() => {}}
           oncontextmenu={(event) => {
@@ -297,6 +335,9 @@
                 app.selectFolder(row.entry.relPath);
               }}><Icon name="viz" size={13} /></button
             >
+          {/if}
+          {#if git && row.entry.kind === 'file'}
+            <span class="git-letter">{GIT_LETTER[git]}</span>
           {/if}
           {#if badges.has(row.entry.relPath)}
             <span

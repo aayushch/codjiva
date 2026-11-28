@@ -38,6 +38,8 @@
   import TitleBar from './components/TitleBar.svelte';
   import Toasts from './components/Toasts.svelte';
   import Toolbar from './components/Toolbar.svelte';
+  import DiffView from './components/DiffView.svelte';
+  import PreviewView from './components/PreviewView.svelte';
   import VisualFrame from './components/VisualFrame.svelte';
   import Welcome from './components/Welcome.svelte';
 
@@ -190,14 +192,13 @@
   // which makes the press a click and not a drag.
   const CLICK_SLACK = 3;
   // The toolbar is a row of its own across the editor area and the inspector,
-  // so that it keeps its width when the inspector appears or goes away. An
-  // example hides it in full screen, and the welcome screen has none.
-  const showToolbar = $derived(app.example ? !app.theater : !!app.workspace);
+  // so that it keeps its width when the inspector appears or goes away. The
+  // welcome screen has none.
+  const showToolbar = $derived(!!app.workspace);
   // The row of file tabs is above the toolbar while a workspace is open and
-  // at least one file, folder or pipeline has a tab. An example and full
-  // screen hide it.
+  // at least one file, folder or pipeline has a tab. Full screen hides it.
   const showFileTabs = $derived(
-    !!app.workspace && !app.example && !app.theater && app.openFiles.length > 0,
+    !!app.workspace && !app.theater && app.openFiles.length > 0,
   );
 
   // The job panel at the bottom of the window belongs to an open workspace.
@@ -387,20 +388,10 @@
   {#if showToolbar}<Toolbar />{/if}
 
   <main class="main">
-    {#if app.example}
-      {#if app.example === 'film'}
-        <FilmPlayer
-          src={api.artifactUrl('reference/film') + '?embed=1'}
-          title="Example film"
-        />
-      {:else}
-        <VisualFrame
-          src={api.artifactUrl('reference/visual') + '?embed=1'}
-          title="Example blueprint"
-        />
-      {/if}
-    {:else if !app.workspace}
-      <Welcome />
+    {#if !app.workspace}
+      <!-- While the app starts, it may be opening the folder that was open
+           when it last stopped, so the welcome screen waits for that. -->
+      {#if !app.starting}<Welcome />{/if}
     {:else}
       {#if !app.selected}
         <div class="canvas">
@@ -414,14 +405,24 @@
           </div>
         </div>
       {:else if app.tab === 'source' && !app.selectedPipelineId && !app.spotlight}
-        <SourceView
-          relPath={app.selected}
-          line={app.sourceLine}
-          span={app.sourceSpan}
-          top={app.resumeSourceAt}
-          reveal={app.sourceReveal}
-          refresh={app.sourceRefresh}
-        />
+        {#if app.diffing}
+          <DiffView relPath={app.selected} refresh={app.sourceRefresh} />
+        {:else if app.rendered}
+          <PreviewView
+            relPath={app.selected}
+            kind={app.rendered}
+            refresh={app.sourceRefresh}
+          />
+        {:else}
+          <SourceView
+            relPath={app.selected}
+            line={app.sourceLine}
+            span={app.sourceSpan}
+            top={app.resumeSourceAt}
+            reveal={app.sourceReveal}
+            refresh={app.sourceRefresh}
+          />
+        {/if}
       {:else if showArtifact && app.currentArtifact}
         {#key `${app.currentArtifact.id}/${app.shownVersion}`}
           {#if showsFilm(app.currentArtifact)}

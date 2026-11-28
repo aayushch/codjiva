@@ -27,11 +27,95 @@ export type RecentWorkspace = { path: string; name: string; openedAt: string };
 // that was showing, such as `visual` or `source`, and `line` is the line the
 // source view was at, or null.
 export type SessionTab = { path: string; view: string; line: number | null };
-// What was open in a workspace when the user last used it: the file tabs from
-// left to right, and the `path` of the tab that was on screen.
+// A line of a file that the user bookmarked in the source view: the number
+// of the line, counted from 1, and the code that was on it, which is used to
+// find the line again after the file changed.
+export type Bookmark = { line: number; text: string };
+// What the app keeps about a workspace between two times the user opens it:
+// the file tabs from left to right, the `path` of the tab that was on screen,
+// and the bookmarks of each file by the file's path inside the workspace.
 export type WorkspaceSession = {
   openFiles: SessionTab[];
   selected: string | null;
+  bookmarks: Record<string, Bookmark[]>;
+};
+
+// An image file for the viewer: its path inside the workspace, the image as
+// a `data:` address that an `<img>` element can show, and the size of the
+// file in bytes.
+export type ImageContent = { relPath: string; dataUrl: string; bytes: number };
+
+// What git says about a changed file (see lib/gitStatus.ts for how the file
+// tree shows each one).
+//   - `modified`: the content of a tracked file changed.
+//   - `added`: the file is new and was added to the index.
+//   - `untracked`: the file is new and git does not track it.
+//   - `deleted`: a tracked file was deleted.
+//   - `renamed`: a tracked file was given another name.
+//   - `conflicted`: a merge left the file with a conflict that is not
+//     resolved.
+export type GitStatus =
+  'modified' | 'added' | 'untracked' | 'deleted' | 'renamed' | 'conflicted';
+
+// One changed file or folder of the workspace. `path` is its path inside the
+// workspace. A path with a slash at its end is a folder in which git tracks
+// nothing; git reports such a folder once, and not each file inside it.
+export type GitEntry = { path: string; status: GitStatus };
+
+// One version of a file, for the diff view.
+//   - With `commit`, it is the file as that commit has it. `commit` is the
+//     full hash, the hash followed by `^` for the first parent of that
+//     commit, or `HEAD`. `path` is then the path from the root of the
+//     repository.
+//   - With `commit` null, it is the file as it is on disk now. `path` is
+//     then the path inside the workspace.
+export type GitSide = { commit: string | null; path: string };
+
+// One change of a file: a commit that changed it, or the changes that are
+// not committed.
+//   - `commit` is the full hash of the commit. It is null for the changes
+//     that are not committed; `author` and `summary` are then empty and
+//     `time` is 0.
+//   - `time` is when the author made the commit, in seconds since the start
+//     of 1970 in UTC.
+//   - `old` is the version before the change. It is null when the change
+//     created the file.
+//   - `new` is the version the change made.
+export type GitChange = {
+  commit: string | null;
+  author: string;
+  time: number;
+  summary: string;
+  old: GitSide | null;
+  new: GitSide;
+};
+
+// The changes of one file, newest first. The changes that are not committed
+// come first, when the file has any. `more` is true when the file has more
+// commits than the app lists.
+export type GitFileHistory = { changes: GitChange[]; more: boolean };
+
+// A run of lines that differ between two versions. The first line of a file
+// has the number 1. `oldLines` lines of the old version, starting at line
+// `oldStart`, were replaced by `newLines` lines of the new version, starting
+// at line `newStart`. The start beside a count of 0 is the line after which
+// the lines of the other version belong.
+export type GitHunk = {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+};
+
+// Two versions of a file and the lines in which they differ. When `binary`
+// or `tooLarge` is true, the versions are not compared: both texts and
+// `hunks` are empty.
+export type GitFileDiff = {
+  oldText: string;
+  newText: string;
+  hunks: GitHunk[];
+  binary: boolean;
+  tooLarge: boolean;
 };
 
 export type TreeEntry = {
@@ -90,6 +174,9 @@ export type Settings = {
   companionIgnore: string[];
   // The colours of the app's own window. `system` follows the operating system.
   theme: 'system' | 'light' | 'dark';
+  // The size of the code in the source view, in pixels, from CODE_FONT_MIN to
+  // CODE_FONT_MAX of state/app.svelte.ts.
+  codeFontSize: number;
   maxBudgetUsd: number | null;
   layout: Layout;
   // Whether the app looks for a newer version by itself. With false it looks
@@ -121,6 +208,13 @@ export type Layout = {
   sourcePanelWidth: number;
   sourceSplit: number;
   sourceSwapped: boolean;
+  // How the diff view of a file is laid out. With `diffSplit`, the old
+  // version is on the left and the new version on the right; without it,
+  // both are in one column. With `diffWholeFile`, every line of the file is
+  // shown; without it, the lines that did not change are folded away,
+  // except a few around each change.
+  diffSplit: boolean;
+  diffWholeFile: boolean;
 };
 
 // An agent that could run jobs, as found on this machine.
@@ -545,6 +639,25 @@ export type NavReference = NavSpan & {
   role: NavRole;
   text: string;
 };
+// The last change of one line of a file, as git knows it.
+export interface Blame {
+  // False for a line that is changed and not committed. The other fields
+  // are then empty, and `time` is 0.
+  committed: boolean;
+  // The full hash of the commit.
+  commit: string;
+  // The name of the commit's author.
+  author: string;
+  // True when the author is the user, by git's `user.email` or `user.name`.
+  byUser: boolean;
+  // When the commit was made, in seconds since the start of 1970.
+  time: number;
+  // The first line of the commit message.
+  summary: string;
+  // The commit message after its first line.
+  body: string;
+}
+
 // What a search for references reports while it runs: more references, in
 // the order they are listed, and at the end how it went. `exact` is true when
 // the name is local to a function, so the list is all of its uses and nothing
@@ -888,6 +1001,9 @@ export interface Api {
   workspaceOpen(path: string): Promise<WorkspaceInfo>;
   workspaceClose(): Promise<void>;
   workspaceRecent(): Promise<RecentWorkspace[]>;
+  // The path of the folder that was open when the app last stopped, or null
+  // when the user had closed the folder or the folder no longer exists.
+  workspaceLast(): Promise<string | null>;
   // The file tabs that were open in the open workspace when it was last
   // used, and keeping the ones that are open now for the next time.
   workspaceSessionGet(): Promise<WorkspaceSession>;
@@ -895,6 +1011,9 @@ export interface Api {
   treeChildren(relPath: string): Promise<TreeEntry[]>;
   fileInfo(relPath: string): Promise<FileInfo>;
   fileRead(relPath: string): Promise<FileContent>;
+  // Reads an image file for the viewer. Fails for a file that is not an
+  // image, and for an image larger than 20 MB.
+  fileImage(relPath: string): Promise<ImageContent>;
   filesSearch(query: string, limit?: number): Promise<FileHit[]>;
   watchDirs(dirs: string[]): Promise<void>;
   storeEnsure(): Promise<StoreStatus>;
@@ -968,9 +1087,27 @@ export interface Api {
   // Calls `handler` whenever watched folders change on disk. Returns a function
   // that stops it.
   onFsChanged(handler: (changes: Changes) => void): Promise<() => void>;
+  // Calls `handler` when the user chooses "Open Folder…" in the File menu of
+  // the menu bar, which only macOS has. Returns a function that stops it.
+  onMenuOpenFolder(handler: () => void): Promise<() => void>;
   // The address the sandboxed frame loads for a path served by the app, such as
-  // `reference/film`.
+  // `artifact/<id>/<version>`.
   artifactUrl(path: string): string;
+  // Asks git for the last change of line `line` of a file, counted from 1.
+  // Returns null when git cannot say: the folder is not a repository, git
+  // does not track the file, or the file has no such line.
+  gitBlame(relPath: string, line: number): Promise<Blame | null>;
+  // The changed files of the open workspace, as git reports them. Null when
+  // git cannot say, for example for a folder that is not inside a
+  // repository.
+  gitStatus(): Promise<GitEntry[] | null>;
+  // The changes of a file of the workspace, newest first. Null when git
+  // cannot say, for example for a folder that is not inside a repository.
+  gitFileHistory(relPath: string): Promise<GitFileHistory | null>;
+  // The versions `old` and `next` of a file and the lines in which they
+  // differ. With `old` null, every line of `next` counts as added. The two
+  // are the `old` and the `new` of one entry of `gitFileHistory`.
+  gitFileDiff(old: GitSide | null, next: GitSide): Promise<GitFileDiff>;
   // Says what the name at a place of a file is and where it is defined.
   // `declaration` asks for prototypes before bodies. Returns null when there
   // is no name at that place.

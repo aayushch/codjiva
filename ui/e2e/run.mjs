@@ -23,8 +23,7 @@ if (!existsSync(path.join(dist, 'index.html'))) {
 }
 mkdirSync(path.join(out, 'artifact/reference'), { recursive: true });
 
-// Build the three reference artifacts. The example views load the film and the
-// visual, and the mock shows them, and the pipeline, as the results of its
+// Build the reference artifacts. The mock shows them as the results of its
 // jobs.
 const build = (name) =>
   execFileSync(
@@ -1325,9 +1324,6 @@ const longSource = await page.evaluate(async () => {
   return {
     pageScrolls: document.scrollingElement.scrollHeight - window.innerHeight,
     sourceBottom: Math.round(box.bottom),
-    barTop: Math.round(
-      document.querySelector('.source-bar').getBoundingClientRect().top,
-    ),
     windowHeight: window.innerHeight,
     lastNumber: last.querySelector('.source-num').textContent,
     gapAfterLastLine: Math.round(
@@ -1337,9 +1333,8 @@ const longSource = await page.evaluate(async () => {
 });
 check(
   longSource.pageScrolls <= 0 &&
-    longSource.barTop < longSource.windowHeight &&
-    longSource.sourceBottom === longSource.barTop,
-  'a long file scrolls inside the source view and the bar under it stays in the window',
+    longSource.sourceBottom <= longSource.windowHeight,
+  'a long file scrolls inside the source view, which ends inside the window',
   JSON.stringify(longSource),
 );
 check(
@@ -1950,7 +1945,7 @@ check(
 await fileTab('handler.go').click({ button: 'right' });
 check(
   (await menuItems()).join('|') ===
-    'Close|Close the other tabs|Copy path|Copy relative path',
+    'Close|Close the other tabs|Open in external editor|Reveal in file manager|Copy path|Copy relative path',
   'a right-click on a tab opens its menu',
   (await menuItems()).join('|'),
 );
@@ -1994,9 +1989,84 @@ check(
   (await tabNames()).join(),
 );
 await shot('13-file-tabs');
-// Closing the tab on screen shows the tab to its right.
+// The tabs have one width. The window is made so narrow here that the row
+// of tabs is 480 pixels wide, which is less than three tabs at their widest.
+const tabWidths = () =>
+  page
+    .locator('.file-tab')
+    .evaluateAll((tabs) =>
+      tabs.map((tab) => tab.getBoundingClientRect().width),
+    );
+const tabsAtRest = () =>
+  page.waitForFunction(() =>
+    document
+      .querySelector('.file-tabs')
+      .getAnimations({ subtree: true })
+      .every((animation) => animation.playState !== 'running'),
+  );
+const wideRow = await page
+  .locator('.file-tabs')
+  .evaluate((tabRow) => tabRow.clientWidth);
+await page.setViewportSize({ width: 1600 - (wideRow - 480), height: 960 });
+await page.waitForFunction(
+  () => document.querySelector('.file-tabs').clientWidth === 480,
+);
+const threeTabs = await tabWidths();
+check(
+  threeTabs.length === 3 && threeTabs.every((w) => Math.abs(w - 160) < 0.5),
+  'the tabs share the width of the row in equal parts',
+  threeTabs.join(),
+);
+// Closing the tab on screen shows the tab to its right. That tab moves to
+// where the closed tab was, so its close button is under the pointer, and
+// the widths of the tabs stay as they are while the pointer is on the row.
+// The names of the tabs that were moved sideways with an animation.
+await page.evaluate(() => {
+  window.__tabsMoved = new Set();
+  const animate = Element.prototype.animate;
+  Element.prototype.animate = function (...args) {
+    const sideways = (Array.isArray(args[0]) ? args[0] : []).some((frame) =>
+      /translateX\((?!0px)/.test(frame.transform ?? ''),
+    );
+    if (sideways && this.classList.contains('file-tab'))
+      window.__tabsMoved.add(this.querySelector('.name').textContent);
+    return animate.apply(this, args);
+  };
+});
+const closeLeft = async (name) =>
+  (await fileTab(name).locator('.file-tab-close').boundingBox()).x;
+const closedAt = await closeLeft('limiter.go');
 await fileTab('limiter.go').locator('.file-tab-close').click();
 await page.locator('.file-tab.on', { hasText: 'store.go' }).waitFor();
+await tabsAtRest();
+const nextAt = await closeLeft('store.go');
+const keptTabs = await tabWidths();
+check(
+  Math.abs(nextAt - closedAt) < 0.5,
+  'the close button of the next tab is where the closed tab had its own',
+  `${closedAt} ${nextAt}`,
+);
+check(
+  keptTabs.length === 2 && keptTabs.every((w) => Math.abs(w - 160) < 0.5),
+  'the tabs keep their widths while the pointer is on the row of tabs',
+  keptTabs.join(),
+);
+const tabsMoved = await page.evaluate(() => [...window.__tabsMoved].join());
+check(
+  tabsMoved === 'store.go',
+  'the tab after a closed tab slides to its new place',
+  tabsMoved,
+);
+await page.mouse.move(700, 500);
+await page.waitForFunction(() => !document.querySelector('.file-tab.kept'));
+await tabsAtRest();
+const freedTabs = await tabWidths();
+check(
+  freedTabs.every((w) => Math.abs(w - 200) < 0.5),
+  'the tabs share the row again when the pointer leaves the row of tabs',
+  freedTabs.join(),
+);
+await page.setViewportSize({ width: 1600, height: 960 });
 check(
   (await tabNames()).join() === 'handler.go,store.go' &&
     (await page.locator('.row.selected .name').textContent()) === 'store.go',
@@ -2038,7 +2108,7 @@ const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
 await row('limiter.go').click({ button: 'right' });
 check(
   (await menuItems()).join('|') ===
-    'Visualise…|Animate…|Step through…|Schema view…|Lanes view…|Structure view…|Copy path|Copy relative path' &&
+    'Visualise…|Animate…|Step through…|Schema view…|Lanes view…|Structure view…|Show history|Copy path|Copy relative path' &&
     (await page.evaluate(() => document.activeElement.textContent)) ===
       'Visualise…',
   'a right-click on a file opens a menu, with keyboard focus on its first command',
@@ -2903,9 +2973,38 @@ check((await page.getByRole('dialog').count()) === 0, 'Escape closes a dialog');
   check((await notice.count()) === 0, 'the notice can be hidden');
 }
 
-// ---- example film in the sandboxed frame
+// ---- a film in the sandboxed frame
+// The page is loaded again and a film is made of handler.go, so that the
+// checks below start from a film that nothing has been done to.
 await page.reload();
-await page.getByRole('button', { name: 'Watch the example film' }).click();
+check(
+  (await page.locator('.welcome .actions .btn').allTextContents())
+    .map((label) => label.trim())
+    .join(' | ') === 'Open folder…',
+  'the welcome screen offers to open a folder and no example',
+  (await page.locator('.welcome .actions .btn').allTextContents()).join(' | '),
+);
+await page.locator('.recent', { hasText: 'shop' }).click();
+await row('internal').waitFor();
+// Starts the job of the dialog that is open. The first job after the page
+// was loaded asks about .gitignore before its own dialog.
+const startJob = async (title, button) => {
+  const dialog = page.getByRole('dialog');
+  await dialog.waitFor();
+  const add = dialog.getByRole('button', { name: 'Add', exact: true });
+  if ((await add.count()) === 1) await add.click();
+  await dialog.getByText(title).waitFor();
+  await dialog.getByRole('button', { name: button, exact: true }).click();
+};
+await page.keyboard.press(`${mod}+p`);
+await page.getByPlaceholder('Go to file…').fill('orders/handler.go');
+await page.locator('.quick-row').first().waitFor();
+await page.keyboard.press('Enter');
+await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
+await showKind('Film');
+await page.getByRole('button', { name: 'Animate with companions…' }).click();
+await startJob('Animate handler.go', 'Animate');
+await page.locator('.player:not(.waiting)').waitFor({ timeout: 60000 });
 const frame = page.locator('.canvas iframe');
 check(
   (await frame.getAttribute('sandbox')) === 'allow-scripts',
@@ -2957,12 +3056,12 @@ await page.getByRole('button', { name: 'Mute' }).waitFor({ timeout: 3000 });
 check(true, "the sound button switches the film's sound and mirrors its state");
 
 // ---- the film is drawn in the app's theme
-const exampleFrame = page.frameLocator('.canvas iframe');
+const filmFrameInTheme = page.frameLocator('.canvas iframe');
 await page.keyboard.press(`${mod}+,`);
 await section('Appearance').click();
 await page.getByRole('button', { name: 'Light', exact: true }).click();
 await page.getByRole('button', { name: 'Done' }).click();
-await exampleFrame
+await filmFrameInTheme
   .locator('html[data-theme="light"]')
   .waitFor({ timeout: 5000 });
 await page
@@ -2981,13 +3080,17 @@ await page.keyboard.press(`${mod}+,`);
 await section('Appearance').click();
 await page.getByRole('button', { name: 'Dark', exact: true }).click();
 await page.getByRole('button', { name: 'Done' }).click();
-await exampleFrame.locator('html:not([data-theme])').waitFor({ timeout: 5000 });
+await filmFrameInTheme
+  .locator('html:not([data-theme])')
+  .waitFor({ timeout: 5000 });
 await page.locator('.canvas iframe.dark-stage').waitFor({ timeout: 5000 });
 check(true, 'back in the dark theme the film is dark again, without reloading');
 
-// ---- example visual
-await page.locator('.tab', { hasText: 'Blueprint' }).click();
-await page.locator('.zoomctl').waitFor();
+// ---- the zoom buttons of a blueprint
+await showKind('Blueprint');
+await page.locator('.empty .pick').first().click();
+await startJob('Visualise handler.go', 'Visualise');
+await page.locator('.zoomctl').waitFor({ timeout: 60000 });
 await page.waitForTimeout(800);
 await page.getByRole('button', { name: 'Zoom in' }).click();
 await page.waitForTimeout(200);
@@ -3019,9 +3122,9 @@ check(
   JSON.stringify(zoomTips),
 );
 await shot('08-visual');
-await page.getByRole('button', { name: 'Close example' }).click();
+// The next checks start from the welcome screen.
+await page.reload();
 await page.getByRole('button', { name: 'Open folder…' }).waitFor();
-check(true, 'closing the example returns to the welcome screen');
 
 // ---- the colours of code, on a C++ header that is added to the workspace
 await page.evaluate(() =>
@@ -3481,6 +3584,52 @@ check(
     .startsWith('reset.go:3'),
   'opening that line lists the other definitions',
 );
+
+// The references of a file can be closed, and the button beside the word
+// "References" closes and opens the references of every file.
+const fileHeads = page.locator('.symbol-panel .nav-file');
+const refRows = page.locator('.symbol-panel .ref-row');
+const allFiles = page.locator('.symbol-panel .nav-refs-head .tb-btn');
+await fileHeads.nth(1).waitFor();
+const rowsOpen = await refRows.count();
+const rowsOfFirst = Number(
+  await fileHeads.nth(0).locator('.muted').last().textContent(),
+);
+await fileHeads.nth(0).click();
+check(
+  (await refRows.count()) === rowsOpen - rowsOfFirst &&
+    (await fileHeads.nth(0).getAttribute('aria-expanded')) === 'false' &&
+    (await fileHeads.count()) === 2,
+  'a click on the heading of a file closes the references of that file only',
+  `${await refRows.count()} of ${rowsOpen} rows`,
+);
+await allFiles.click();
+check(
+  (await refRows.count()) === 0 &&
+    (await fileHeads.count()) === 2 &&
+    (await allFiles.getAttribute('aria-label')) === 'Expand all files',
+  'the button beside "References" closes every file and leaves the headings',
+  `${await refRows.count()} rows`,
+);
+await fileHeads.nth(1).click();
+check(
+  (await refRows.count()) === rowsOpen - rowsOfFirst &&
+    (await allFiles.getAttribute('aria-label')) === 'Collapse all files',
+  'a file can be opened alone after every file was closed',
+  `${await refRows.count()} rows`,
+);
+check(
+  (await page.locator('.insp-tabs').count()) === 0,
+  'the panel beside the source view has no About and Ask tabs',
+);
+await allFiles.click();
+await allFiles.click();
+check(
+  (await refRows.count()) === rowsOpen &&
+    (await fileHeads.nth(0).getAttribute('aria-expanded')) === 'true',
+  'the same button opens every file again',
+  `${await refRows.count()} of ${rowsOpen} rows`,
+);
 const builtName = await pointOf(6, 'meter');
 await page.mouse.click(builtName.x, builtName.y);
 await page.locator('.symbol-panel .kicker', { hasText: 'Type' }).waitFor();
@@ -3499,6 +3648,1023 @@ check(
   'the panel offers the definition of the type the code gives a name',
 );
 await shot('12-source-name-type');
+
+// A named constant is drawn in the colour of a number. A click on it selects
+// it like any other name.
+await page.evaluate(() =>
+  window.__mockSetFile(
+    'nav/limits.ts',
+    [
+      'const MAX_BATCH = 64;',
+      '',
+      'export const full = (count: number) => count >= MAX_BATCH;',
+      '',
+    ].join('\n'),
+  ),
+);
+await page.keyboard.press(`${mod}+KeyP`);
+await page.locator('.dialog.quick .input').fill('nav/limits');
+await page.locator('.quick-row').first().waitFor();
+await page.keyboard.press('Enter');
+await page.locator('.source-line[data-line="3"] .tk-number').waitFor();
+const constantUse = await pointOf(3, 'MAX_BATCH');
+const constantKind = await page.evaluate(
+  ([x, y]) => document.elementFromPoint(x, y).className,
+  [constantUse.x, constantUse.y],
+);
+await page.mouse.click(constantUse.x, constantUse.y);
+await page.locator('.symbol-panel h3', { hasText: 'MAX_BATCH' }).waitFor();
+check(
+  constantKind === 'tk-number',
+  'a click on a named constant, which has the colour of a number, selects it',
+  constantKind,
+);
+
+// The size of the code is changed in Settings, and a line stays 20 pixels
+// tall for every 13 pixels of the size.
+const codeMetrics = () =>
+  page
+    .locator('.source-line')
+    .first()
+    .evaluate((line) => ({
+      font: getComputedStyle(line).fontSize,
+      height: line.getBoundingClientRect().height,
+    }));
+const codeBefore = await codeMetrics();
+await page.keyboard.press(`${mod}+,`);
+await section('Appearance').click();
+await page.getByRole('button', { name: 'Larger code' }).click();
+await page.getByRole('button', { name: 'Larger code' }).click();
+await page.locator('.stepper-value', { hasText: '15 px' }).waitFor();
+await shot('12b-code-size');
+await page.getByRole('button', { name: 'Done' }).click();
+const codeLarger = await codeMetrics();
+check(
+  codeBefore.font === '13px' &&
+    codeBefore.height === 20 &&
+    codeLarger.font === '15px' &&
+    codeLarger.height === 23,
+  'Settings changes the size of the code in the source view',
+  JSON.stringify([codeBefore, codeLarger]),
+);
+await page.keyboard.press(`${mod}+,`);
+await section('Appearance').click();
+await page.getByRole('button', { name: 'Reset', exact: true }).click();
+await page.locator('.stepper-value', { hasText: '13 px' }).waitFor();
+await page.getByRole('button', { name: 'Done' }).click();
+check(
+  (await codeMetrics()).font === '13px',
+  'the Reset button sets the size of the code back',
+);
+
+// ---- the last change of a line
+// A click on a line asks git who changed it last. The answer is written
+// after the code of the line, and a card with the whole commit shows while
+// the pointer is over it. The mock tracks every file but those under `nav/`.
+{
+  const blameOf = (line) =>
+    page.locator(`.source-line[data-line="${line}"] .source-blame`);
+  const numberOf = (line) =>
+    page.locator(`.source-line[data-line="${line}"] .source-num`);
+  await numberOf(1).click();
+  await page.waitForTimeout(300);
+  check(
+    (await page.locator('.source-blame').count()) === 0,
+    'a line of a file that git does not track has no last change',
+  );
+  await page.keyboard.press(`${mod}+KeyP`);
+  await page.locator('.dialog.quick .input').fill('orders/handler.go');
+  await page.locator('.quick-row').first().waitFor();
+  await page.keyboard.press('Enter');
+  await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
+  await page.locator('.tab.source-tab').click();
+  await numberOf(3).waitFor();
+  await numberOf(3).click();
+  await blameOf(3).waitFor();
+  check(
+    (await blameOf(3).textContent()).trim() ===
+      'You, last week • Refuse an order when the batch is full',
+    'a click on a line shows who changed it last, how long ago and why',
+    await blameOf(3).textContent(),
+  );
+  const copied = await page.evaluate(() => {
+    const line = document.querySelector('.source-line[data-line="3"]');
+    const range = document.createRange();
+    range.selectNodeContents(line);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const text = selection.toString();
+    selection.removeAllRanges();
+    return text;
+  });
+  check(
+    !copied.includes('Refuse an order'),
+    'the last change is not selected with the code of its line',
+    copied,
+  );
+  await blameOf(3).hover();
+  const card = page.locator('.blame-card');
+  await card.waitFor();
+  const cardText = await card.innerText();
+  check(
+    cardText.includes('You') &&
+      cardText.includes('9dbe511') &&
+      cardText.includes('The batch holds at most 64 orders.') &&
+      !cardText.includes('9dbe5110'),
+    'the card over the last change shows the whole commit message and the short hash',
+    cardText,
+  );
+  await shot('12c-blame');
+  // The card stays while the pointer is over it, and goes when it leaves.
+  await card.hover();
+  await page.waitForTimeout(400);
+  const stayed = (await card.count()) === 1;
+  await page.mouse.move(5, 5);
+  await card.waitFor({ state: 'detached' });
+  check(stayed, 'the card stays while the pointer is over it');
+  await numberOf(4).click();
+  await blameOf(4).waitFor();
+  check(
+    (await blameOf(4).textContent()).trim().startsWith('Ada Writer, ') &&
+      (await page.locator('.source-blame').count()) === 1,
+    'a click on another line moves the last change to that line',
+    await blameOf(4).textContent(),
+  );
+}
+
+// ---- bookmarks in the source view
+// A double click on a line number sets a bookmark on the line and a second
+// one removes it. F2 and Shift with F2 go through the bookmarks of the file,
+// each has a tick on the right edge of the view, and the bookmark button of
+// the toolbar lists them. They are there again when the folder is opened
+// again.
+{
+  const numberOf = (line) =>
+    page.locator(`.source-line[data-line="${line}"] .source-num`);
+  const marked = () =>
+    page
+      .locator('.source-line.bookmarked')
+      .evaluateAll((rows) => rows.map((row) => Number(row.dataset.line)));
+  const shownLine = () =>
+    page
+      .locator('.source-line.ref')
+      .evaluate((row) => Number(row.dataset.line));
+  for (const line of [9, 27, 34]) await numberOf(line).dblclick();
+  await page.locator('.source-tick').nth(2).waitFor();
+  check(
+    (await marked()).join() === '9,27,34' &&
+      (await page.locator('.bookmark-mark').count()) === 3 &&
+      (await page.locator('.bookmarks-tab .count').textContent()) === '3',
+    'a double click on a line number sets a bookmark, which the line and the toolbar show',
+    (await marked()).join(),
+  );
+  const amber = await numberOf(9).evaluate(
+    (number) => getComputedStyle(number).color,
+  );
+  const plain = await numberOf(10).evaluate(
+    (number) => getComputedStyle(number).color,
+  );
+  check(
+    amber !== plain,
+    'the number of a bookmarked line has a colour of its own',
+    `${amber} and ${plain}`,
+  );
+  // The ticks are at the right edge of the view, in the order of the lines.
+  const ticks = await page.evaluate(() => {
+    const view = document.querySelector('.source').getBoundingClientRect();
+    return Array.from(document.querySelectorAll('.source-tick')).map((tick) => {
+      const box = tick.getBoundingClientRect();
+      return {
+        atEdge: Math.abs(box.right - view.right) < 20,
+        top: Math.round(box.top - view.top),
+      };
+    });
+  });
+  check(
+    ticks.every((tick) => tick.atEdge) &&
+      ticks[0].top < ticks[1].top &&
+      ticks[1].top < ticks[2].top,
+    'each bookmark has a tick on the right edge of the source view',
+    JSON.stringify(ticks),
+  );
+  await shot('12d-bookmarks');
+
+  // F2 goes down through the bookmarks and starts again at the top.
+  const order = [9, 27, 34];
+  await page.keyboard.press('F2');
+  await page.locator('.source-line.ref.bookmarked').waitFor();
+  const first = await shownLine();
+  const after = (line, steps) =>
+    order[(order.indexOf(line) + steps + order.length) % order.length];
+  const visited = [first];
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press('F2');
+    await page.waitForTimeout(150);
+    visited.push(await shownLine());
+  }
+  await page.keyboard.press('Shift+F2');
+  await page.waitForTimeout(150);
+  visited.push(await shownLine());
+  check(
+    order.includes(first) &&
+      visited[1] === after(first, 1) &&
+      visited[2] === after(first, 2) &&
+      visited[3] === first &&
+      visited[4] === after(first, -1),
+    'F2 goes to the next bookmark, around the end of the file, and Shift with F2 goes back',
+    visited.join(),
+  );
+
+  // The list of the toolbar and a tick go to a bookmark too.
+  await page.locator('.bookmarks-tab').click();
+  const listed = await page.locator('.menu-item').allTextContents();
+  check(
+    listed.length === 4 &&
+      listed[0].trim().startsWith('9 · ') &&
+      listed[3].trim() === 'Remove all bookmarks of this file',
+    'the bookmark button lists the bookmarks of the file',
+    listed.join(' | '),
+  );
+  await page.locator('.menu-item').nth(1).click();
+  await page.locator('.source-line.ref[data-line="27"]').waitFor();
+  await page.locator('.source-tick').first().click();
+  await page.locator('.source-line.ref[data-line="9"]').waitFor();
+  check(true, 'the list and a tick go to the line of a bookmark');
+
+  // The folder is opened again, and the bookmarks are still there.
+  await page.keyboard.press(`${mod}+o`);
+  await page.locator('.file-tab.on', { hasText: 'handler.go' }).waitFor();
+  await page.locator('.source-tick').nth(2).waitFor();
+  check(
+    (await marked()).join() === '9,27,34',
+    'the bookmarks are there again when the folder is opened again',
+    (await marked()).join(),
+  );
+
+  // A second double click removes one, and the list removes the rest. The
+  // line a jump went to is highlighted, and removing its bookmark removes
+  // that highlight too.
+  await page.locator('.source-tick').first().click();
+  await page.locator('.source-line.ref[data-line="9"]').waitFor();
+  await numberOf(9).dblclick();
+  await page.locator('.bookmarks-tab .count', { hasText: '2' }).waitFor();
+  const afterOne = (await marked()).join();
+  const highlightAfterOne = await page.locator('.source-line.ref').count();
+  await page.keyboard.press('F2');
+  await page.locator('.source-line.ref.bookmarked').waitFor();
+  await page.locator('.bookmarks-tab').click();
+  await page
+    .locator('.menu-item', { hasText: 'Remove all bookmarks of this file' })
+    .click();
+  await page.locator('.source-tick').first().waitFor({ state: 'detached' });
+  check(
+    highlightAfterOne === 0 &&
+      (await page.locator('.source-line.ref').count()) === 0,
+    'removing a bookmark removes the highlight of the line a jump to it left',
+    `${highlightAfterOne} then ${await page.locator('.source-line.ref').count()}`,
+  );
+  check(
+    afterOne === '27,34' &&
+      (await marked()).length === 0 &&
+      (await page.locator('.bookmarks-tab .count').count()) === 0,
+    'a second double click removes a bookmark, and the list removes them all',
+    afterOne,
+  );
+}
+
+// ---- finding text in the source view
+// The key with F opens the search of the file on screen, which is
+// handler.go. Every place the text stands is marked, the view shows one of
+// them, and Enter goes to the next. A place far down a long file is
+// scrolled to, although its line was not in the page.
+{
+  const count = page.locator('.source-find .find-count');
+  const box = page.getByLabel('Find in this file');
+  const marks = () =>
+    page.evaluate(() => ({
+      all: CSS.highlights?.get('find-match')?.size ?? 0,
+      current: CSS.highlights?.get('find-current')?.size ?? 0,
+    }));
+  await page.keyboard.press(`${mod}+f`);
+  await box.waitFor();
+  check(
+    await box.evaluate((input) => input === document.activeElement),
+    'the key with F opens the search of the file with the keyboard in its box',
+  );
+  await page.keyboard.type('handler');
+  await count.filter({ hasText: ' of ' }).waitFor();
+  const anyCase = await count.textContent();
+  const total = Number(anyCase.split(' of ')[1]);
+  const marked = await marks();
+  check(
+    anyCase.startsWith('1 of ') &&
+      total > 1 &&
+      marked.all === total &&
+      marked.current === 1,
+    'every place the text stands in the file is marked, and one of them more strongly',
+    `${anyCase} ${JSON.stringify(marked)}`,
+  );
+  await shot('12e-find');
+  await page.keyboard.press('Enter');
+  const second = await count.textContent();
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.press('Shift+Enter');
+  const last = await count.textContent();
+  check(
+    second === `2 of ${total}` && last === `${total} of ${total}`,
+    'Enter goes to the next place, and Shift with Enter goes back around the start of the file',
+    `${second} then ${last}`,
+  );
+  await page.getByRole('button', { name: 'Match case' }).click();
+  await page.waitForTimeout(150);
+  const exactCase = await count.textContent();
+  check(
+    exactCase === 'No results' || Number(exactCase.split(' of ')[1]) < total,
+    'the "Aa" button tells capital letters from small ones',
+    `${anyCase} then ${exactCase}`,
+  );
+  await page.getByRole('button', { name: 'Match case' }).click();
+  await box.fill('no such text anywhere');
+  await count.filter({ hasText: 'No results' }).waitFor();
+  check(
+    (await marks()).all === 0,
+    'text that is not in the file has no result and no mark',
+  );
+  await page.keyboard.press('Escape');
+  await page.locator('.source-find').waitFor({ state: 'detached' });
+  check(true, 'Escape closes the search');
+
+  // A long file, with the word only on line 300.
+  await page.evaluate(() =>
+    window.__mockSetFile(
+      'nav/long.go',
+      Array.from({ length: 400 }, (_, i) =>
+        i === 299 ? 'var needle = 1' : `// line ${i + 1}`,
+      ).join('\n'),
+    ),
+  );
+  await page.keyboard.press(`${mod}+KeyP`);
+  await page.locator('.dialog.quick .input').fill('nav/long');
+  await page.locator('.quick-row').first().waitFor();
+  await page.keyboard.press('Enter');
+  await page.locator('.file-tab.on', { hasText: 'long.go' }).waitFor();
+  await page.locator('.source-line[data-line="1"]').waitFor();
+  await page.keyboard.press(`${mod}+f`);
+  await box.fill('needle');
+  await page.locator('.source-line[data-line="300"]').waitFor();
+  const needle = await page.evaluate(() => {
+    const view = document.querySelector('.source').getBoundingClientRect();
+    const line = document
+      .querySelector('.source-line[data-line="300"]')
+      .getBoundingClientRect();
+    return {
+      inView: line.top > view.top && line.bottom < view.bottom,
+      current: CSS.highlights?.get('find-current')?.size ?? 0,
+    };
+  });
+  check(
+    needle.inView &&
+      needle.current === 1 &&
+      (await count.textContent()) === '1 of 1',
+    'the search scrolls to a place on a line that was not in the page',
+    JSON.stringify(needle),
+  );
+  await page.getByRole('button', { name: 'Close the search' }).click();
+  await page.locator('.source-find').waitFor({ state: 'detached' });
+  check(
+    await page.evaluate(() => !CSS.highlights?.has('find-match')),
+    'closing the search removes its marks',
+  );
+}
+
+// ---- pictures, and files shown rendered
+// An image file is shown as its picture. An SVG file and an HTML file are
+// text, and the Preview command of the file tree and the Preview button of
+// the toolbar show them rendered.
+{
+  await page.evaluate(() => {
+    window.__mockSetFile('art/dot.png', 'not text');
+    window.__mockSetFile(
+      'art/logo.svg',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="teal"/></svg>',
+    );
+    window.__mockSetFile(
+      'art/page.html',
+      '<!doctype html><h1>Orders</h1><p>A page of the shop.</p>',
+    );
+    window.__mockSetFile(
+      'art/guide.md',
+      [
+        '# Guide',
+        '',
+        'Read the [manual](https://example.com/manual) first.',
+        '',
+        '![The logo](logo.svg)',
+        '',
+        '- [x] one',
+        '- [ ] two',
+        '',
+        '```go',
+        'func main() {}',
+        '```',
+      ].join('\n'),
+    );
+    // The stand-in backend lists the root folder again when it is told that
+    // a file there changed. That is how the new folder gets its row.
+    window.__mockEditFile('go.mod');
+  });
+  await row('art').waitFor();
+  const open = async (name) => {
+    await page.keyboard.press(`${mod}+KeyP`);
+    await page.locator('.dialog.quick .input').fill(name);
+    await page.locator('.quick-row').first().waitFor();
+    await page.keyboard.press('Enter');
+    await page
+      .locator('.file-tab.on', { hasText: name.split('/').pop() })
+      .waitFor();
+  };
+  await open('art/dot.png');
+  await page.locator('.preview-about', { hasText: 'px' }).waitFor();
+  check(
+    (await page.locator('.preview-about').innerText()).trim() ===
+      '2 × 1 px · 70 B' &&
+      (await page.locator('.source').count()) === 0 &&
+      (await page.locator('.preview-tab').count()) === 0,
+    'an image file is shown as its picture, with its size in pixels and in bytes',
+    await page.locator('.preview-about').innerText(),
+  );
+  await shot('12f-picture');
+
+  // An SVG file opens as text. The Preview button shows the picture and
+  // shows the text again.
+  await open('art/logo.svg');
+  await page.locator('.source-line').first().waitFor();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.locator('.preview-about', { hasText: '40 × 20 px' }).waitFor();
+  check(
+    (await page.locator('.source').count()) === 0 &&
+      (await page.locator('.bookmarks-tab').count()) === 0,
+    'the Preview button shows an SVG file as the picture it describes',
+  );
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.locator('.source-line').first().waitFor();
+  check(
+    (await page.locator('.preview').count()) === 0,
+    'the same button shows the text of the file again',
+  );
+
+  // The Preview command of the file tree opens an HTML file as a page, in a
+  // frame that may do nothing.
+  await row('page.html').click({ button: 'right' });
+  check(
+    (await page.locator('.menu-item').allTextContents())
+      .map((label) => label.trim())
+      .includes('Preview'),
+    'the menu of a file that can be shown rendered has a Preview command',
+    (await page.locator('.menu-item').allTextContents()).join('|'),
+  );
+  await page.locator('.menu-item', { hasText: 'Preview' }).click();
+  const framed = page.locator('.preview-frame');
+  await framed.waitFor();
+  check(
+    (await framed.getAttribute('sandbox')) === '' &&
+      (await framed.getAttribute('srcdoc')).includes('<h1>Orders</h1>') &&
+      (await page.locator('.file-tab.on .name').textContent()) === 'page.html',
+    'the Preview command opens an HTML file as a page, in a frame that runs no scripts',
+    await framed.getAttribute('sandbox'),
+  );
+  const heading = page.frameLocator('.preview-frame').locator('h1');
+  await heading.waitFor({ timeout: 5000 });
+  check(
+    (await heading.textContent()) === 'Orders',
+    'the page of the HTML file is laid out in the frame',
+  );
+  await shot('12g-page');
+
+  // A Markdown file opens as text, and the Preview button shows it as a
+  // document in the colours of the app. The picture it names is a file of
+  // the workspace, so it is shown. The link keeps its address as a tooltip
+  // and cannot be followed.
+  await open('art/guide.md');
+  await page.locator('.source-line').first().waitFor();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const rendered = page.frameLocator('.preview-frame');
+  await rendered.locator('h1').waitFor({ timeout: 5000 });
+  const guide = await rendered.locator('body').evaluate((body) => ({
+    title: body.querySelector('h1').textContent,
+    picture: body.querySelector('img').getAttribute('src').slice(0, 19),
+    link: body.querySelector('a').getAttribute('href'),
+    tip: body.querySelector('a').getAttribute('title'),
+    boxes: body.querySelectorAll('input[type=checkbox]').length,
+    code: body.querySelector('pre code').textContent.trim(),
+    ground: getComputedStyle(body.ownerDocument.documentElement)
+      .backgroundColor,
+  }));
+  const ground = await page.evaluate(
+    () => getComputedStyle(document.querySelector('.preview')).backgroundColor,
+  );
+  check(
+    guide.title === 'Guide' &&
+      guide.picture === 'data:image/svg+xml;' &&
+      guide.link === null &&
+      guide.tip === 'https://example.com/manual' &&
+      guide.boxes === 2 &&
+      guide.code === 'func main() {}' &&
+      (await page.locator('.preview-frame').getAttribute('sandbox')) === '',
+    'the Preview button shows a Markdown file as a document, with its picture from the workspace',
+    JSON.stringify(guide),
+  );
+  check(
+    guide.ground === ground,
+    'the Markdown document has the ground of the app',
+    `${guide.ground} / ${ground}`,
+  );
+  await shot('12h-markdown');
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.locator('.source-line').first().waitFor();
+}
+
+// ---- what git says about the files, in the file tree
+// The stand-in backend reports the changes the test gives it, and is asked
+// again when a file changes on disk and when the window comes to the front.
+{
+  const git = (name) =>
+    row(name).evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = `var(--git-${element.dataset.git})`;
+      document.body.append(probe);
+      const wanted = getComputedStyle(probe).color;
+      probe.remove();
+      const name = element.querySelector('.name');
+      const letter = element.querySelector('.git-letter');
+      return {
+        status: element.dataset.git ?? null,
+        letter: letter?.textContent ?? null,
+        coloured:
+          getComputedStyle(name).color === wanted &&
+          (!letter || getComputedStyle(letter).color === wanted),
+        title: element.getAttribute('title'),
+      };
+    });
+  const plain = await git('guide.md');
+  check(
+    plain.status === null && plain.letter === null,
+    'a file without a change has no git mark',
+    JSON.stringify(plain),
+  );
+  await page.evaluate(() => {
+    window.__mockGitStatus = [
+      { path: 'art/logo.svg', status: 'modified' },
+      { path: 'art/guide.md', status: 'untracked' },
+      { path: 'art/page.html', status: 'conflicted' },
+      { path: 'art/dot.png', status: 'added' },
+      { path: 'internal/orders/gone.go', status: 'deleted' },
+    ];
+    window.__mockEditFile('go.mod');
+  });
+  await page.locator('.row[data-git="modified"]').first().waitFor();
+  const marks = {
+    logo: await git('logo.svg'),
+    guide: await git('guide.md'),
+    page: await git('page.html'),
+    dot: await git('dot.png'),
+    art: await git('art'),
+    internal: await git('internal'),
+  };
+  check(
+    marks.logo.letter === 'M' &&
+      marks.guide.letter === 'U' &&
+      marks.page.letter === '!' &&
+      marks.dot.letter === 'A' &&
+      Object.values(marks).every((mark) => mark.coloured) &&
+      marks.logo.title === 'art/logo.svg · Modified',
+    'a changed file has the letter and the colour of its git status',
+    JSON.stringify(marks),
+  );
+  check(
+    marks.art.status === 'conflicted' &&
+      marks.art.letter === null &&
+      marks.art.title.includes('Has files with a conflict') &&
+      marks.internal.status === 'deleted',
+    'a folder has the colour of the changes inside it, and no letter',
+    JSON.stringify([marks.art, marks.internal]),
+  );
+  await shot('12i-git');
+
+  // Git tracks nothing in a folder: every row inside it is untracked. The
+  // window coming to the front asks git again.
+  await page.evaluate(() => {
+    window.__mockGitStatus = [{ path: 'art/', status: 'untracked' }];
+    window.dispatchEvent(new Event('focus'));
+  });
+  await page.locator('.row[data-git="untracked"]').first().waitFor();
+  await page.waitForFunction(
+    () => document.querySelectorAll('.row[data-git="conflicted"]').length === 0,
+  );
+  const inside = [
+    await git('art'),
+    await git('logo.svg'),
+    await git('dot.png'),
+  ];
+  check(
+    inside.every((mark) => mark.status === 'untracked' && mark.coloured) &&
+      inside[0].letter === null &&
+      inside[1].letter === 'U' &&
+      (await git('internal')).status === null,
+    'everything inside a folder that git does not track is untracked',
+    JSON.stringify(inside),
+  );
+  await page.evaluate(() => {
+    window.__mockGitStatus = [];
+    window.dispatchEvent(new Event('focus'));
+  });
+  await page.waitForFunction(
+    () => document.querySelectorAll('.row[data-git]').length === 0,
+  );
+  check(
+    (await page.locator('.git-letter').count()) === 0,
+    'the marks go when git reports no changes',
+  );
+}
+
+// ---- the changes of a file, walked from what is not committed
+// The stand-in backend gives `diffs/price.go` three commits and a change
+// that is not committed. The Changes button of the toolbar shows one change
+// at a time, compared with the version before it.
+{
+  await page.evaluate(() => {
+    // The file after each commit. Each version is the one before with one
+    // edit, so every change has a known number of lines.
+    const first = ['package price', ''];
+    for (let i = 1; i <= 60; i++) first.push(`const Step${i} = ${i}`);
+    const second = [...first];
+    second[4] = 'const Step3 = 300';
+    const third = [...second];
+    third.splice(50, 0, 'const Extra = 1', 'const More = 2');
+    const now = [...third];
+    now[10] = 'const Step9 = 900';
+    now.splice(20, 1);
+    const text = (lines) => lines.join('\n') + '\n';
+    window.__mockSetFile('diffs/price.go', text(now));
+    const day = 86_400;
+    const at = Math.floor(Date.now() / 1000);
+    window.__mockGitHistory = {
+      'diffs/price.go': {
+        pending: true,
+        commits: [
+          {
+            commit: 'c3'.padEnd(40, '0'),
+            author: 'Bo Reader',
+            time: at - 2 * day,
+            summary: 'Add two prices',
+            text: text(third),
+          },
+          {
+            commit: 'c2'.padEnd(40, '0'),
+            author: 'Ada Writer',
+            time: at - 5 * day,
+            summary: 'Raise the third step',
+            text: text(second),
+          },
+          {
+            commit: 'c1'.padEnd(40, '0'),
+            author: 'Ada Writer',
+            time: at - 9 * day,
+            summary: 'Add the prices',
+            text: text(first),
+          },
+        ],
+      },
+    };
+    window.__mockGitStatus = [{ path: 'diffs/price.go', status: 'modified' }];
+    window.__mockEditFile('go.mod');
+  });
+  await row('diffs').waitFor();
+  await page.keyboard.press(`${mod}+KeyP`);
+  await page.locator('.dialog.quick .input').fill('diffs/price.go');
+  await page.locator('.quick-row').first().waitFor();
+  await page.keyboard.press('Enter');
+  await page.locator('.file-tab.on', { hasText: 'price.go' }).waitFor();
+  await page.locator('.tab.source-tab').click();
+  await page.locator('.source-line').first().waitFor();
+
+  // Where the buttons at the right end of the toolbar are, from left to
+  // right. They must not move when the list of changes appears.
+  const places = () =>
+    page
+      .locator('.toolbar .tabs .tab')
+      .evaluateAll((tabs) =>
+        tabs.map((tab) => Math.round(tab.getBoundingClientRect().left)),
+      );
+  const before = await places();
+  const changesButton = page.getByRole('button', {
+    name: 'Changes',
+    exact: true,
+  });
+  await changesButton.click();
+  await page.locator('.diff-line').first().waitFor();
+  const picker = page.locator('.commit-button');
+  const shown = async () => (await picker.innerText()).replace(/\s*▾$/, '');
+  check(
+    (await shown()) === 'Uncommitted changes' &&
+      (await page.locator('.source').count()) === 0,
+    'the Changes button shows what is not committed in place of the text',
+    await shown(),
+  );
+  check(
+    JSON.stringify(await places()) === JSON.stringify(before) &&
+      before.length >= 3,
+    'the buttons at the right end of the toolbar stay where they are when the list of changes appears',
+    `${JSON.stringify(before)} -> ${JSON.stringify(await places())}`,
+  );
+  const pickerWidth = (await picker.boundingBox()).width;
+
+  // One column: the removed lines and the added lines of the change, with
+  // the unchanged lines far from them folded away.
+  const lines = (kind) => page.locator(`.diff-line.${kind}`);
+  const texts = async (kind) =>
+    (await lines(kind).locator('.source-text').allTextContents()).join('|');
+  check(
+    (await texts('removed')) === 'const Step9 = 9|const Step19 = 19' &&
+      (await texts('added')) === 'const Step9 = 900' &&
+      (await page.locator('.diff-counts').innerText()).replace(/\s+/g, ' ') ===
+        '+1 −2',
+    'a change is shown as the lines it removed and the lines it added',
+    `${await texts('removed')} / ${await texts('added')} / ${await page.locator('.diff-counts').innerText()}`,
+  );
+  const folds = page.locator('.diff-fold');
+  const foldCount = await folds.count();
+  const rowsBefore = await page.locator('.diff-line').count();
+  check(
+    foldCount === 2 &&
+      (await folds.first().innerText()).trim() === '⋯ 7 unchanged lines',
+    'the unchanged lines far from a change are folded away',
+    (await folds.allInnerTexts()).join(' | '),
+  );
+  await folds.first().click();
+  check(
+    (await folds.count()) === foldCount - 1 &&
+      (await page.locator('.diff-line').count()) === rowsBefore + 7,
+    'a click on a row of folded lines shows those lines',
+    `${await folds.count()} folds, ${await page.locator('.diff-line').count()} lines`,
+  );
+  await shot('12j-diff');
+
+  // A click on a number of the new version shows that line in the text.
+  await lines('added').locator('.diff-num.to-line').click();
+  await page.locator('.source-line.ref').waitFor();
+  check(
+    (await page.locator('.source-line.ref').getAttribute('data-line')) ===
+      '11' && (await page.locator('.diff').count()) === 0,
+    'a click on a line number of the file on disk shows that line in the text',
+    await page.locator('.source-line.ref').getAttribute('data-line'),
+  );
+  await changesButton.click();
+  await page.locator('.diff-line').first().waitFor();
+
+  // The whole file: nothing is folded. The buttons of the bar go from one
+  // place where lines changed to the next.
+  await page.getByRole('button', { name: 'Whole file' }).click();
+  const pane = page.locator('.diff-pane').first();
+  const top = () => pane.evaluate((element) => element.scrollTop);
+  await page.waitForFunction(
+    () => document.querySelectorAll('.diff-fold').length === 0,
+  );
+  const sizer = await page
+    .locator('.diff-sizer')
+    .evaluate((element) => element.getBoundingClientRect().height);
+  check(
+    sizer === 65 * 20,
+    'the whole file is shown with every line',
+    `${sizer} px`,
+  );
+  const atFirst = await top();
+  // The rows that are highlighted: the class each has for its highlight and
+  // whether it is a changed row.
+  const flashed = () =>
+    page
+      .locator('.diff-line.flash-a, .diff-line.flash-b')
+      .evaluateAll((lines) =>
+        lines.map(
+          (line) =>
+            (line.classList.contains('flash-a') ? 'a' : 'b') +
+            (line.matches('.added, .removed') ? ' changed' : ' same'),
+        ),
+      );
+  await page.getByRole('button', { name: 'Next change' }).click();
+  const atSecond = await top();
+  const flashedSecond = await flashed();
+  await shot('12n-diff-went-to-change');
+  await page.keyboard.press('Shift+F7');
+  const flashedFirst = await flashed();
+  check(
+    atSecond > atFirst && (await top()) === atFirst,
+    'the bar and the F7 key go to the next and the previous change',
+    `${atFirst} -> ${atSecond} -> ${await top()}`,
+  );
+  check(
+    flashedSecond.length > 0 &&
+      flashedSecond.every((line) => line === 'a changed') &&
+      flashedFirst.length > 0 &&
+      flashedFirst.every((line) => line === 'b changed'),
+    'the rows of the change the view went to are highlighted',
+    `${flashedSecond.join()} | ${flashedFirst.join()}`,
+  );
+  await page.waitForFunction(
+    () => !document.querySelector('.diff-line.flash-a, .diff-line.flash-b'),
+  );
+  check(true, 'the highlight of a change is removed after it faded out');
+
+  // Two columns: the old version on the left, the new one on the right, and
+  // both scroll up and down together.
+  await page.getByRole('button', { name: 'Split' }).click();
+  await page.locator('.diff-pane[data-column="new"]').waitFor();
+  const oldPane = page.locator('.diff-pane[data-column="old"]');
+  const newPane = page.locator('.diff-pane[data-column="new"]');
+  check(
+    (await oldPane.locator('.diff-line.removed').count()) === 2 &&
+      (await oldPane.locator('.diff-line.added').count()) === 0 &&
+      (await newPane.locator('.diff-line.added').count()) === 1 &&
+      (await newPane.locator('.diff-line.removed').count()) === 0 &&
+      (await newPane.locator('.diff-line.blank').count()) === 1,
+    'two columns show the old version on the left and the new one on the right',
+  );
+  await oldPane.evaluate((element) => (element.scrollTop = 240));
+  await page.waitForFunction(
+    () =>
+      document.querySelector('.diff-pane[data-column="new"]').scrollTop === 240,
+  );
+  check(true, 'the two columns scroll up and down together');
+  check(
+    await page.evaluate(() => {
+      const layout = window.__mockSettings().layout;
+      return layout.diffSplit === true && layout.diffWholeFile === true;
+    }),
+    'the layout of the diff view is kept in the settings',
+  );
+  await shot('12k-diff-split');
+  await page.getByRole('button', { name: 'Single' }).click();
+  await page.getByRole('button', { name: 'Changes only' }).click();
+  await page.locator('.diff-fold').first().waitFor();
+
+  // Older and Newer walk through the commits of the file.
+  const older = page.getByRole('button', { name: 'Older change' });
+  const newer = page.getByRole('button', { name: 'Newer change' });
+  check(
+    (await newer.isDisabled()) && !(await older.isDisabled()),
+    'what is not committed is the newest change',
+  );
+  await older.click();
+  await page.locator('.diff-what', { hasText: 'Add two prices' }).waitFor();
+  await page.waitForFunction(
+    () => !document.querySelector('.diff-panes.reading'),
+  );
+  check(
+    (await shown()) === 'Add two prices' &&
+      (await texts('added')) === 'const Extra = 1|const More = 2' &&
+      (await lines('removed').count()) === 0 &&
+      (await page.locator('.diff-what').innerText()).includes(
+        'c300000 · Bo Reader · 2 days ago',
+      ) &&
+      (await picker.boundingBox()).width === pickerWidth,
+    'Older shows the commit before, compared with the version before it',
+    await page.locator('.diff-what').innerText(),
+  );
+  await older.click();
+  await page.locator('.diff-what', { hasText: 'Raise the third' }).waitFor();
+  await older.click();
+  await page.locator('.diff-what', { hasText: 'Add the prices' }).waitFor();
+  await page.waitForFunction(
+    () => !document.querySelector('.diff-panes.reading'),
+  );
+  check(
+    (await older.isDisabled()) &&
+      (await page.locator('.diff-what').innerText()).includes(
+        'created the file',
+      ) &&
+      (await lines('removed').count()) === 0 &&
+      (await page.locator('.diff-counts').innerText()).replace(/\s+/g, ' ') ===
+        '+62 −0',
+    'the commit that created the file shows every line as added',
+    await page.locator('.diff-counts').innerText(),
+  );
+  await newer.click();
+  await page.locator('.diff-what', { hasText: 'Raise the third' }).waitFor();
+  await page.waitForFunction(
+    () => !document.querySelector('.diff-panes.reading'),
+  );
+  check(
+    (await texts('removed')) === 'const Step3 = 3' &&
+      (await texts('added')) === 'const Step3 = 300',
+    'Newer shows the commit after',
+    `${await texts('removed')} / ${await texts('added')}`,
+  );
+
+  // The list of changes.
+  await picker.click();
+  const entries = page.locator('.commit-row');
+  await entries.first().waitFor();
+  check(
+    (await entries.locator('.commit-title').allTextContents()).join('|') ===
+      'Uncommitted changes|Add two prices|Raise the third step|Add the prices' &&
+      (await page.locator('.commit-row.on .commit-title').textContent()) ===
+        'Raise the third step' &&
+      (await entries.nth(0).locator('.commit-detail').textContent()) ===
+        'Compared with the last commit',
+    'the list has what is not committed first and then the commits, newest first',
+    (await entries.locator('.commit-title').allTextContents()).join('|'),
+  );
+  await shot('12l-diff-list');
+  await page.keyboard.press('Escape');
+  check(
+    (await entries.count()) === 0 &&
+      (await page.locator('.diff').count()) === 1,
+    'Escape closes the list of changes',
+  );
+  await picker.click();
+  await entries.nth(1).click();
+  await page.locator('.diff-what', { hasText: 'Add two prices' }).waitFor();
+  check(
+    (await entries.count()) === 0 && (await shown()) === 'Add two prices',
+    'choosing an entry of the list shows that change',
+    await shown(),
+  );
+
+  // The change on screen is the same one when the user comes back to the
+  // file.
+  await page.locator('.file-tab', { hasText: 'guide.md' }).click();
+  await page.locator('.source-line').first().waitFor();
+  check(
+    (await page.locator('.commit-picker').count()) === 0,
+    'the list of changes is in the toolbar only while changes are on screen',
+  );
+  await page.locator('.file-tab', { hasText: 'price.go' }).click();
+  await page.locator('.diff-what', { hasText: 'Add two prices' }).waitFor();
+  check(
+    (await shown()) === 'Add two prices',
+    'a file shows the change that was last on screen for it',
+    await shown(),
+  );
+
+  // The menu of the tree opens the changes of a changed file and the
+  // history of every other file.
+  await changesButton.click();
+  await page.locator('.source-line').first().waitFor();
+  await row('price.go').click({ button: 'right' });
+  const commands = async () =>
+    (await page.locator('.menu-item').allTextContents()).map((label) =>
+      label.trim(),
+    );
+  check(
+    (await commands()).includes('Show changes') &&
+      !(await commands()).includes('Show history'),
+    'the menu of a changed file has a command that shows its changes',
+    (await commands()).join('|'),
+  );
+  await page.keyboard.press('Escape');
+  await row('guide.md').click({ button: 'right' });
+  check(
+    (await commands()).includes('Show history'),
+    'the menu of an unchanged file has a command that shows its history',
+    (await commands()).join('|'),
+  );
+  await page.locator('.menu-item', { hasText: 'Show history' }).click();
+  await page.locator('.diff-what', { hasText: 'Add guide.md' }).waitFor();
+  check(
+    (await shown()) === 'Add guide.md' &&
+      (await page.locator('.file-tab.on .name').textContent()) === 'guide.md',
+    'a file without changes opens on its newest commit',
+    await shown(),
+  );
+  await changesButton.click();
+  await page.locator('.source-line').first().waitFor();
+
+  // The card about the last change of a line opens that change.
+  await page.locator('.source-line[data-line="3"] .source-num').click();
+  await page.locator('.source-blame').waitFor();
+  await page.locator('.source-blame').hover();
+  await page.mouse.move(600, 300);
+  await page.locator('.source-blame').hover();
+  await page.locator('.blame-card').waitFor();
+  await page.getByRole('button', { name: 'Show this change' }).click();
+  await page.locator('.diff-what', { hasText: 'Add guide.md' }).waitFor();
+  check(
+    (await page.locator('.blame-card').count()) === 0 &&
+      (await page.locator('.diff-what').innerText()).includes('9dbe511'),
+    'the card about the last change of a line shows that change',
+    await page.locator('.diff-what').innerText(),
+  );
+  await changesButton.click();
+  await page.locator('.source-line').first().waitFor();
+  await page.evaluate(() => {
+    window.__mockGitStatus = [];
+    window.dispatchEvent(new Event('focus'));
+  });
+  await page.waitForFunction(
+    () => document.querySelectorAll('.row[data-git]').length === 0,
+  );
+}
 
 // ---- a file chosen outside the tree is put in the middle of the tree
 // A folder of eighty files is added, so that the tree is much longer than
@@ -3741,6 +4907,28 @@ const words = async (locator) =>
   await page.locator('.insp-tabs').waitFor();
   const stage = page.frameLocator('.main .canvas iframe');
   await stage.locator('.cj-node').first().waitFor();
+
+  // The two tab buttons stay at the top of the inspector while the About tab
+  // scrolls below them. The window is made low, so that the About tab is
+  // taller than the panel.
+  {
+    await page.setViewportSize({ width: 1600, height: 420 });
+    const tabsTop = () =>
+      page
+        .locator('.insp-tabs')
+        .evaluate((tabs) => tabs.getBoundingClientRect().top);
+    const topBefore = await tabsTop();
+    const scrolled = await page.locator('.insp-body').evaluate((body) => {
+      body.scrollTop = body.scrollHeight;
+      return body.scrollTop;
+    });
+    check(
+      scrolled > 0 && (await tabsTop()) === topBefore,
+      'the tab buttons of the inspector stay in place while the About tab scrolls',
+      `scrolled ${scrolled}, top ${topBefore} -> ${await tabsTop()}`,
+    );
+    await page.setViewportSize({ width: 1600, height: 960 });
+  }
   const askTab = page.locator('.insp-tabs .itab', { hasText: 'Ask' });
   const ask = page.locator('.inspector .ask');
   const question = ask.getByLabel('Question');
@@ -3989,17 +5177,27 @@ const words = async (locator) =>
     const first = await page
       .locator(`.source-line[data-line="${from}"] .source-text`)
       .boundingBox();
-    const last = await page
-      .locator(`.source-line[data-line="${to}"]`)
-      .boundingBox();
+    const lastLine = page.locator(`.source-line[data-line="${to}"]`);
+    // The right end of a line that is in view. A line can be wider than the
+    // view, and the pointer must stay over the code.
+    const view = await page.locator('.source').boundingBox();
+    const rightOf = (box) =>
+      Math.min(box.x + box.width, view.x + view.width - 16);
     // A click in the empty room at the end of a line removes an earlier
     // selection. A press on selected text would drag that text and select
     // nothing new.
-    await page.mouse.click(last.x + last.width - 12, first.y + 10);
+    await page.mouse.click(
+      rightOf(await lastLine.boundingBox()) - 12,
+      first.y + 10,
+    );
+    // The click shows the last change of the line it was on, which can make
+    // every line wider or narrower. The last line is measured after that.
+    await page.waitForTimeout(150);
+    const last = await lastLine.boundingBox();
     await page.mouse.move(first.x + 1, first.y + 10);
     await page.mouse.down();
     await page.mouse.move(first.x + 60, first.y + 12, { steps: 3 });
-    await page.mouse.move(last.x + last.width - 30, last.y + 10, { steps: 6 });
+    await page.mouse.move(rightOf(last) - 30, last.y + 10, { steps: 6 });
     await page.mouse.up();
   };
   const bar = page.locator('.select-bar');
@@ -4299,6 +5497,30 @@ const words = async (locator) =>
   await page.mouse.down();
   await page.mouse.move(wideEdge.x + 480, wideEdge.y + 200, { steps: 5 });
   await page.mouse.up();
+}
+
+// ---- the app starts with the folder that was open when it last stopped
+// The stand-in backend names that folder when the test has put its path in
+// the session storage. The page is loaded again, which is a new start of the
+// app. Without the path, the app starts on the welcome screen.
+{
+  await page.evaluate(() =>
+    sessionStorage.setItem('mockLastWorkspace', '/mock/shop'),
+  );
+  await page.reload();
+  await row('go.mod').waitFor();
+  check(
+    (await page.locator('.welcome').count()) === 0 &&
+      (await page.locator('.titlebar').innerText()).includes('shop'),
+    'the app opens the folder that was open when it last stopped',
+  );
+  await page.evaluate(() => sessionStorage.removeItem('mockLastWorkspace'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Open folder…' }).waitFor();
+  check(
+    (await page.locator('.tree .row').count()) === 0,
+    'the app starts on the welcome screen when no folder was open',
+  );
 }
 
 check(errors.length === 0, 'the page logged no errors', errors.join(' | '));

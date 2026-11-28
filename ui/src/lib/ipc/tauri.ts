@@ -38,12 +38,14 @@ export const tauriApi: Api = {
   workspaceOpen: (path) => invoke('workspace_open', { path }),
   workspaceClose: () => invoke('workspace_close'),
   workspaceRecent: () => invoke('workspace_recent'),
+  workspaceLast: () => invoke('workspace_last'),
   workspaceSessionGet: () => invoke('workspace_session_get'),
   workspaceSessionSet: (session) =>
     invoke('workspace_session_set', { session }),
   treeChildren: (relPath) => invoke('tree_children', { relPath }),
   fileInfo: (relPath) => invoke('file_info', { relPath }),
   fileRead: (relPath) => invoke('file_read', { relPath }),
+  fileImage: (relPath) => invoke('file_image', { relPath }),
   filesSearch: (query, limit) => invoke('files_search', { query, limit }),
   watchDirs: (dirs) => invoke('watch_dirs', { dirs }),
   storeEnsure: () => invoke('store_ensure'),
@@ -94,6 +96,10 @@ export const tauriApi: Api = {
     invoke('artifact_open_in_browser', { id, version }),
   artifactReveal: (id, version) => invoke('artifact_reveal', { id, version }),
   guardRevert: (violations) => invoke('guard_revert', { violations }),
+  gitBlame: (relPath, line) => invoke('git_blame', { relPath, line }),
+  gitStatus: () => invoke('git_status'),
+  gitFileHistory: (relPath) => invoke('git_file_history', { relPath }),
+  gitFileDiff: (old, next) => invoke('git_file_diff', { old, new: next }),
   navLookup: (relPath, line, column, declaration) =>
     invoke('nav_lookup', { relPath, line, column, declaration }),
   async navReferences(relPath, line, column, onEvent) {
@@ -128,6 +134,9 @@ export const tauriApi: Api = {
   },
   async onFsChanged(handler) {
     return listen<Changes>('fs-changed', (event) => handler(event.payload));
+  },
+  async onMenuOpenFolder(handler) {
+    return listen('menu-open-folder', () => handler());
   },
   // On Windows a custom scheme is reached through an http address on a reserved
   // host name; on macOS and Linux the scheme is used directly.

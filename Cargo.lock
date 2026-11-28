@@ -548,7 +548,7 @@ dependencies = [
 
 [[package]]
 name = "codjiva-app"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "async-trait",
  "block2",
@@ -573,7 +573,7 @@ dependencies = [
 
 [[package]]
 name = "codjiva-build"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "base64 0.22.1",
  "jsonschema",
@@ -584,9 +584,10 @@ dependencies = [
 
 [[package]]
 name = "codjiva-core"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "codjiva-build",
  "codjiva-nav",
  "directories",
@@ -609,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "codjiva-nav"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "ignore",
  "memchr",

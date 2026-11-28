@@ -301,8 +301,8 @@ html.dragging-handle iframe {
   overflow: auto;
   overscroll-behavior: contain;
   background: var(--ground);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--source-font-size, 13px);
+  line-height: var(--source-line-height, 20px);
   font-variant-ligatures: none;
 }
 .source-sizer {
@@ -323,8 +323,15 @@ html.dragging-handle iframe {
    below) inside a flex or a grid container. */
 .source-line {
   display: block;
-  height: 20px;
+  height: var(--source-line-height, 20px);
   white-space: pre;
+}
+/* WebKit fills the empty space in front of the first selectable text of a
+   selected line with the selection colour of the line. That space is the
+   column of `.source-mark`. With a transparent colour here, only the code in
+   `.source-text` is highlighted. */
+.source-line::selection {
+  background: transparent;
 }
 /* The line a jump led to. The class `ref` is also the class of a link in
    the inspector (app-shell.css), which has padding, a pointer and an
@@ -366,41 +373,6 @@ html.dragging-handle iframe {
   padding-left: 24px;
   color: var(--main);
 }
-.source-bar {
-  flex: none;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  background: var(--shell-bar);
-  border-top: 1px solid var(--shell-border-soft);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--shell-text-2);
-}
-.source-bar .btn {
-  text-transform: none;
-  letter-spacing: 0;
-}
-/* The hint takes the room between the label and the buttons, and is cut
-   short when the bar is narrow. The label and the buttons keep their size. */
-.source-bar > span,
-.source-bar .btn {
-  flex: none;
-  white-space: nowrap;
-}
-.source-bar .source-hint {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--muted);
-}
-
 /* The marks of code navigation in the source view. SourceView.svelte gives
    each of these names the ranges of text it covers.
    - nav-use: every use of the selected name in the file.
@@ -513,21 +485,61 @@ html.dragging-handle iframe {
   font-size: 11.5px;
   color: var(--shell-tick);
 }
+/* What the name is at a reference, for example "defined". It is drawn as a
+   small tag in capitals with a border, so that it is not read as part of the
+   line of code before it. With the border it is 16 px tall, which is less
+   than the 17 px of the line of code, so it does not make the row taller. */
 .nav-tag {
   flex: none;
-  font-size: 11px;
-  color: var(--muted);
+  align-self: center;
+  padding: 0 5px;
+  border: 1px solid var(--shell-border);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--shell-text-2);
 }
-/* The heading of the references of one file. */
+/* The word "References" with the button that closes or opens every file. The
+   button is taller than the word, so the margins are smaller than those of a
+   `.kicker` by as much, and the row takes the same room as a `.kicker`. */
+.nav-refs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 13px 0 5px;
+}
+.nav-refs-head .kicker {
+  margin: 0;
+}
+/* The heading of the references of one file. A click on it closes the
+   references of the file and opens them again. */
 .nav-file {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  width: 100%;
   margin-top: 10px;
   padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink);
+  font: inherit;
   font-size: 12px;
+  text-align: left;
   overflow: hidden;
   white-space: nowrap;
+  cursor: pointer;
+}
+.nav-file:hover {
+  background: color-mix(in srgb, var(--main) 12%, transparent);
+}
+.nav-file .chev {
+  flex: none;
+  width: 10px;
+  color: var(--shell-tick);
 }
 .nav-file .name {
   color: var(--second);
@@ -652,6 +664,24 @@ html.dragging-handle iframe {
 .seg .btn {
   height: 30px;
   font-weight: 400;
+}
+/* A number in Settings that is changed one step at a time: a button to
+   lower it, the number, a button to raise it, and a button that sets the
+   default again. */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.stepper .btn {
+  height: 30px;
+  min-width: 34px;
+  font-weight: 400;
+}
+.stepper-value {
+  min-width: 56px;
+  text-align: center;
+  color: var(--second);
 }
 .seg .btn.on {
   border-color: var(--main);
@@ -1746,6 +1776,57 @@ html.dragging-handle iframe {
   opacity: 0.6;
 }
 
+/* What git says about a file, in the file tree. The row has the attribute
+   `data-git` with the status. The name of the row has the colour of the
+   status, and so has the letter at the right end of the row of a file. The
+   row keeps the colour when it is selected. The colours are the ones Visual
+   Studio Code uses for the same statuses, in the dark and the light theme. */
+:root {
+  --git-modified: #e2c08d;
+  --git-added: #81b88b;
+  --git-untracked: #73c991;
+  --git-renamed: #73c991;
+  --git-deleted: #c74e39;
+  --git-conflicted: #e4676b;
+}
+:root[data-theme='light'] {
+  --git-modified: #895503;
+  --git-added: #587c0c;
+  --git-untracked: #007100;
+  --git-renamed: #007100;
+  --git-deleted: #ad0707;
+  --git-conflicted: #ad0707;
+}
+.row[data-git='modified'] {
+  --git: var(--git-modified);
+}
+.row[data-git='added'] {
+  --git: var(--git-added);
+}
+.row[data-git='untracked'] {
+  --git: var(--git-untracked);
+}
+.row[data-git='renamed'] {
+  --git: var(--git-renamed);
+}
+.row[data-git='deleted'] {
+  --git: var(--git-deleted);
+}
+.row[data-git='conflicted'] {
+  --git: var(--git-conflicted);
+}
+.row[data-git] .name,
+.row .git-letter {
+  color: var(--git);
+}
+.row .git-letter {
+  flex: none;
+  width: 10px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 /* ---- the library: a heading that opens and closes it, a list that scrolls, an
    edge to drag */
 .library {
@@ -1854,13 +1935,18 @@ iframe {
 .file-tabs::-webkit-scrollbar {
   display: none;
 }
+/* The tabs share the width of the row in equal parts. A tab is never
+   narrower than its `min-width`, and the row scrolls when the tabs do not fit
+   at that width. A tab is never wider than its `max-width`, so a few tabs do
+   not fill the row. */
 .file-tab {
-  flex: none;
+  flex: 1 1 0;
   display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 260px;
-  padding: 0 6px 0 12px;
+  min-width: 140px;
+  max-width: 200px;
+  padding: 0 12px 0 6px;
   border-top: 2px solid transparent;
   border-right: 1px solid var(--shell-border-soft);
   color: var(--shell-text-2);
@@ -1880,6 +1966,13 @@ iframe {
   outline: 2px solid var(--main);
   outline-offset: -2px;
 }
+/* While the user closes tabs with the pointer, FileTabs.svelte gives every
+   tab the class `kept` and a fixed width, and puts `.file-tabs-gap` at the
+   end of the row in place of the closed tabs. */
+.file-tab.kept,
+.file-tabs-gap {
+  flex: none;
+}
 .file-tab .ico {
   flex: none;
 }
@@ -1890,7 +1983,9 @@ iframe {
 }
 /* The folder of a file, shown when two tabs have the same name. */
 .file-tab .where {
-  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 11px;
   color: var(--shell-tick);
 }
@@ -2151,10 +2246,15 @@ iframe {
    its messages from top to bottom, and the box for the next question. The box
    stays at the bottom edge of the panel while the messages scroll under it,
    so the user can always type. */
+/* The row of the two tab buttons. The line under it reaches both edges of the
+   panel, and what scrolls below the row is cut off at that line. */
 .insp-tabs {
+  flex: none;
   display: flex;
   gap: 2px;
-  margin: -4px -6px 12px;
+  margin: -4px -16px 0;
+  padding: 0 10px 8px;
+  border-bottom: 1px solid var(--shell-border-soft);
 }
 .insp-tabs .itab {
   padding: 4px 10px;
@@ -2177,12 +2277,33 @@ iframe {
   color: var(--shell-text-2);
   background: var(--shell-border);
 }
-/* With the Ask tab open the panel does not scroll as a whole. The list of
-   messages scrolls, between the heading and the question box. */
-.inspector.asking {
+/* The inspector beside a visual (Inspector.svelte) does not scroll as a
+   whole, so that the two tab buttons in `.insp-tabs` stay at its top. With the
+   About tab open, `.insp-body` scrolls below them. With the Ask tab open, the
+   list of messages scrolls, between the heading and the question box. */
+.inspector.tabbed {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+/* The room between the row of tab buttons and the Ask tab. */
+.inspector.tabbed > .ask {
+  padding-top: 10px;
+}
+/* What the About tab shows. The negative margins and the padding of the same
+   size put its scrollbar on the right edge of the panel, and let its content
+   reach the bottom edge of the panel. */
+.insp-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0 -16px -14px;
+  padding: 0 16px 14px;
+}
+/* `.kicker:first-child` has no margin above it. The first heading of the About
+   tab has one, which is its distance from the row of tab buttons. */
+.insp-body > .kicker:first-child {
+  margin-top: 14px;
 }
 .ask {
   flex: 1;
@@ -2505,13 +2626,279 @@ iframe {
   opacity: 0.6;
 }
 
+/* ---------- a file shown rendered (PreviewView.svelte) ----------
+   The area takes the place of the source view. A picture is in its middle
+   with a line of facts below it, and a page fills it. */
+.preview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground);
+}
+/* The picture is on a chequered ground, which shows where it is
+   transparent. A picture larger than the room is made smaller to fit, and a
+   smaller one keeps its own size. */
+.preview-picture {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: hidden;
+}
+.preview-picture img {
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  object-fit: contain;
+  background-color: var(--shell-bar);
+  background-image:
+    linear-gradient(45deg, var(--shell-border-soft) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--shell-border-soft) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--shell-border-soft) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--shell-border-soft) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+.preview-about {
+  flex: none;
+  padding: 8px 12px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--shell-text-2);
+}
+/* A page is drawn on white, as a browser draws a page that sets no colour
+   of its own. */
+.preview-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+/* The frame of a Markdown file has the ground of the app, which is also the
+   ground of the page inside it, so the frame is not white for a moment
+   before the page is drawn. */
+.preview-frame.themed {
+  background: var(--ground);
+}
+
+/* ---------- finding text in the source view (SourceView.svelte) ----------
+   The holder has no height and stays at the top left corner of the view
+   while the code scrolls, and is as wide as the view. The bar is placed from
+   that corner into the top right corner of the view. */
+.source-find-holder {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  width: 100%;
+  height: 0;
+}
+.source-find {
+  position: absolute;
+  top: 8px;
+  right: 22px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  background: var(--shell-bar);
+  box-shadow: 0 6px 18px var(--drop);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.source-find .input {
+  width: 220px;
+  padding: 4px 8px;
+  font: inherit;
+  color: var(--ink);
+}
+/* Which place the search is at and how many there are. It has a least width
+   so that the buttons do not move while the number changes. */
+.find-count {
+  min-width: 78px;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--shell-text-2);
+}
+.find-case {
+  font-size: 12px;
+}
+/* The places the text of the search stands, and the one the search is at. */
+::highlight(find-match) {
+  background-color: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+::highlight(find-current) {
+  background-color: var(--accent);
+  color: var(--ground);
+}
+/* A webview that cannot mark ranges of text shows the line of the place the
+   search is at. */
+.source-line.found {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* ---------- bookmarks in the source view (SourceView.svelte) ----------
+   A bookmarked line has an amber number, and a small ribbon in the column in
+   front of the number. A line that has a discussion mark shows that mark in
+   the column and no ribbon. */
+.source-line.bookmarked .source-num {
+  color: var(--main);
+}
+/* A line number takes a double click, which sets and removes a bookmark. */
+.source-num {
+  cursor: default;
+}
+.bookmark-mark {
+  display: block;
+  width: 7px;
+  height: 10px;
+  margin: calc((var(--source-line-height, 20px) - 10px) / 2) 0 0 6px;
+  background: var(--main);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 70%, 0 100%);
+}
+/* The ticks of the bookmarks. The holder has no height and stays at the top
+   left corner of the view while the code scrolls, and is as wide as the
+   view. Each tick is placed from that corner: at the right edge, and as far
+   down as SourceView.svelte says. The holder lets clicks through to the
+   code, and a tick takes them. */
+.source-ticks {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 100%;
+  height: 0;
+  pointer-events: none;
+}
+.source-tick {
+  position: absolute;
+  right: 0;
+  width: 12px;
+  height: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 1px 0 0 1px;
+  background: var(--main);
+  opacity: 0.8;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.source-tick:hover {
+  width: 16px;
+  opacity: 1;
+}
+/* The bookmark button of the toolbar, with the number of bookmarks of the
+   file beside its icon. */
+.tabs .tab.preview-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+}
+.tabs .tab.preview-tab .ico {
+  stroke: currentColor;
+  fill: none;
+}
+.tabs .tab.bookmarks-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+}
+.tabs .tab.bookmarks-tab .ico {
+  stroke: currentColor;
+  fill: none;
+}
+.tabs .tab.bookmarks-tab .count {
+  font-size: 11px;
+  color: var(--main);
+}
+
+/* ---------- the last change of a line (SourceView.svelte) ----------
+   The text after the code of the line the user clicked: who changed the line
+   last, how long ago, and the first line of the commit message. It is muted
+   and slanted so that it is not read as code, and it cannot be selected, so
+   it is never copied with the code. */
+.source-blame {
+  margin-left: 4ch;
+  padding-right: 24px;
+  font-style: italic;
+  color: var(--shell-tick);
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+.source-blame.committed:hover {
+  color: var(--muted);
+}
+/* The card with the whole commit, shown while the pointer is over that text
+   or over the card. It is placed in the window, not in the code, so the
+   edges of the source view do not cut it off. */
+.blame-card {
+  position: fixed;
+  z-index: 20;
+  padding: 12px 14px;
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  background: var(--shell-bar);
+  box-shadow: 0 6px 18px var(--drop);
+  font-size: 12px;
+  color: var(--ink);
+}
+.blame-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.blame-head b {
+  color: var(--accent);
+}
+.blame-head .muted {
+  color: var(--muted);
+}
+.blame-summary {
+  color: var(--second);
+  overflow-wrap: anywhere;
+}
+/* The rest of the commit message, with its own line breaks. A long message
+   scrolls inside the card. */
+.blame-body {
+  margin-top: 8px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.blame-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--shell-border-soft);
+}
+.blame-foot code {
+  color: var(--accent);
+}
+
 /* ---------- selected code in the source view (SourceView.svelte) ---------- */
 /* The room in front of the line number for the mark of code that has a
    discussion or a visual. */
 .source-mark {
   display: inline-block;
   width: 16px;
-  height: 20px;
+  height: var(--source-line-height, 20px);
   vertical-align: top;
   user-select: none;
   -webkit-user-select: none;
@@ -2523,7 +2910,7 @@ iframe {
   position: relative;
   display: block;
   width: 16px;
-  height: 20px;
+  height: var(--source-line-height, 20px);
   padding: 0;
   border: 0;
   background: none;
@@ -2644,4 +3031,357 @@ iframe {
 }
 .player .scrub .note-mark.flag {
   background: var(--main);
+}
+
+/* ---------- the changes of a file (DiffView.svelte) ----------
+   The area takes the place of the source view. A bar at its top names the
+   change and holds the controls of the view. Below it are one or two
+   columns of code that scroll. */
+.tabs .tab.diff-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+}
+.tabs .tab.diff-tab .ico {
+  stroke: currentColor;
+  fill: none;
+}
+.tabs .tab.diff-tab.on {
+  color: var(--main);
+}
+.diff {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground);
+}
+.diff-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px 0 16px;
+  border-bottom: 1px solid var(--shell-border-soft);
+  background: var(--shell-bar);
+  font-size: 12px;
+}
+/* The name of the change takes the room the controls leave, and is cut
+   short with dots when it does not fit. */
+.diff-what {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.diff-what b {
+  color: var(--second);
+  margin-right: 8px;
+}
+.diff-counts {
+  flex: none;
+  font-weight: 700;
+}
+.diff-counts .plus {
+  color: var(--git-added);
+}
+.diff-counts .minus {
+  color: var(--git-deleted);
+}
+.diff-bar .tb-btn {
+  flex: none;
+  width: 26px;
+  height: 26px;
+}
+.diff-bar .tb-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* A switch between two choices: two buttons in one frame, of which the
+   chosen one is filled. */
+.diff-switch {
+  flex: none;
+  display: flex;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.diff-switch button {
+  padding: 3px 9px;
+  border: 0;
+  background: none;
+  color: var(--shell-text-2);
+  font: inherit;
+  cursor: pointer;
+}
+.diff-switch button + button {
+  border-left: 1px solid var(--shell-border);
+}
+.diff-switch button.on {
+  background: var(--shell-button);
+  color: var(--second);
+}
+.diff-panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+/* The columns are a little paler while the versions of another change are
+   being read, so that the change of the old rows is not taken for the new
+   one. */
+.diff-panes.reading {
+  opacity: 0.55;
+}
+.diff-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-size: var(--source-font-size, 13px);
+  line-height: var(--source-line-height, 20px);
+  font-variant-ligatures: none;
+}
+.diff-panes.split .diff-pane + .diff-pane {
+  border-left: 1px solid var(--shell-border);
+}
+.diff-sizer {
+  position: relative;
+  min-width: max-content;
+}
+/* The rows in view. They are placed at their distance from the top of the
+   list of rows, and take no room of their own: the height of `.diff-sizer`
+   alone decides how far the column scrolls. */
+.diff-rows {
+  position: absolute;
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+}
+.diff-line {
+  display: block;
+  height: var(--source-line-height, 20px);
+  white-space: pre;
+}
+.diff-line.added {
+  background: color-mix(in srgb, var(--git-added) 17%, transparent);
+}
+.diff-line.removed {
+  background: color-mix(in srgb, var(--git-deleted) 19%, transparent);
+}
+/* A row of a two-column view whose line is only in the other column. */
+.diff-line.blank {
+  background: var(--panel);
+}
+/* The rows of the change that "Next change" or "Previous change" went to.
+   A pale layer of the accent colour lies over each row and fades out.
+   DiffView.svelte gives the rows the class `flash-a` or `flash-b` in turn.
+   The two classes have animations that differ only in name, so the fade
+   starts again when a row goes from one class to the other. */
+.diff-line.flash-a,
+.diff-line.flash-b {
+  position: relative;
+}
+.diff-line.flash-a::after,
+.diff-line.flash-b::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--main);
+  opacity: 0;
+  pointer-events: none;
+  animation: diff-flash-a 900ms ease-out;
+}
+.diff-line.flash-b::after {
+  animation-name: diff-flash-b;
+}
+@keyframes diff-flash-a {
+  0%,
+  20% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes diff-flash-b {
+  0%,
+  20% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.diff-num {
+  display: inline-block;
+  padding: 0 1ch 0 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  line-height: inherit;
+  text-align: right;
+  color: var(--shell-tick);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.diff-num.to-line {
+  cursor: pointer;
+}
+.diff-num.to-line:hover {
+  color: var(--accent);
+}
+.diff-sign {
+  display: inline-block;
+  width: 2ch;
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.diff-line.added .diff-sign {
+  color: var(--git-added);
+}
+.diff-line.removed .diff-sign {
+  color: var(--git-deleted);
+}
+/* The row that stands for unchanged lines that are folded away. Its words
+   stay at the left edge of the column when the column is scrolled
+   sideways. */
+.diff-fold {
+  display: block;
+  width: 100%;
+  height: var(--source-line-height, 20px);
+  padding: 0;
+  border: 0;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.92em;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.diff-fold span {
+  position: sticky;
+  left: 16px;
+}
+.diff-fold:hover {
+  color: var(--accent);
+}
+
+/* ---------- the list of changes of a file (CommitPicker.svelte) ----------
+   The button has a fixed width, so the controls beside it do not move when
+   a change with a longer or a shorter name is shown. The list hangs below
+   the button. */
+.commit-picker {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.commit-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 260px;
+  height: 28px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: 6px;
+  background: var(--shell-button);
+  color: var(--second);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.commit-button:disabled {
+  color: var(--shell-text-2);
+  cursor: default;
+}
+.commit-button .commit-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.commit-button .chev {
+  flex: none;
+  color: var(--shell-tick);
+}
+.commit-picker .tb-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.commit-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  width: 420px;
+  max-height: min(440px, 60vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  background: var(--shell-bar);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 12px 30px var(--drop);
+  font-size: 12px;
+}
+.commit-row {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.commit-row:hover,
+.commit-row:focus-visible {
+  background: var(--shell-button);
+  outline: none;
+}
+.commit-row.on {
+  border-left-color: var(--main);
+  background: var(--shell-button);
+}
+.commit-row span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commit-row .commit-title {
+  color: var(--second);
+}
+.commit-row .commit-detail {
+  color: var(--shell-text-2);
+  font-size: 11px;
+}
+.commit-more {
+  padding: 6px 10px;
+  color: var(--muted);
+}
+/* The command of the card about the last change of a line that shows the
+   whole change. */
+.blame-change {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.blame-change:hover {
+  text-decoration: underline;
 }

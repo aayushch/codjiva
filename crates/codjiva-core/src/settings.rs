@@ -141,6 +141,13 @@ pub struct Layout {
     pub source_panel_width: u32,
     pub source_split: u32,
     pub source_swapped: bool,
+    /// How the diff view of a file is laid out. With `diff_split`, the old
+    /// version is on the left and the new version on the right; without it,
+    /// both are in one column. With `diff_whole_file`, every line of the
+    /// file is shown; without it, the lines that did not change are folded
+    /// away, except a few around each change.
+    pub diff_split: bool,
+    pub diff_whole_file: bool,
 }
 
 impl Default for Layout {
@@ -157,6 +164,8 @@ impl Default for Layout {
             source_panel_width: 380,
             source_split: 40,
             source_swapped: false,
+            diff_split: false,
+            diff_whole_file: false,
         }
     }
 }
@@ -205,6 +214,9 @@ pub struct Settings {
     /// `companions::IgnoreList` for the forms.
     pub companion_ignore: Vec<String>,
     pub theme: Theme,
+    /// The size of the code in the source view, in pixels. The interface
+    /// keeps it between 10 and 24.
+    pub code_font_size: u32,
     /// The most a single job may spend, in US dollars, for agents that can
     /// enforce a budget.
     pub max_budget_usd: Option<f64>,
@@ -238,6 +250,7 @@ impl Default for Settings {
                 "node_modules/".to_string(),
             ],
             theme: Theme::System,
+            code_font_size: 13,
             max_budget_usd: None,
             layout: Layout::default(),
             check_for_updates: true,
@@ -291,6 +304,23 @@ pub fn remember_workspace(dir: &Path, path: &str, name: &str) -> Result<()> {
     util::write_json(&dir.join("recents.json"), &list)
 }
 
+/// The path of the folder that was open when the app last stopped, as it is
+/// kept in `last.json`. Returns `None` when no folder was open then, and
+/// when that folder no longer exists.
+pub fn last_workspace(dir: &Path) -> Option<String> {
+    let path: Option<String> = util::read_json(&dir.join("last.json"))
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    path.filter(|path| Path::new(path).is_dir())
+}
+
+/// Keeps `path` as the folder that is open now, so that the next start of
+/// the app can open it again. `None` records that no folder is open.
+pub fn remember_last_workspace(dir: &Path, path: Option<&str>) -> Result<()> {
+    util::write_json(&dir.join("last.json"), &path)
+}
+
 /// One file tab of a workspace, as the interface describes it.
 ///
 ///   - `path` is what the tab stands for: a file's path inside the workspace,
@@ -307,14 +337,27 @@ pub struct SessionTab {
     pub line: Option<u64>,
 }
 
-/// What was open in a workspace when the user last used it: the file tabs
-/// from left to right, and the `path` of the tab that was on screen. The
-/// interface shows them again when the user opens the same folder.
+/// A line of a file that the user bookmarked in the source view: the number
+/// of the line, counted from 1, and the code that was on it. The interface
+/// uses the code to find the line again after the file changed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Bookmark {
+    pub line: u64,
+    pub text: String,
+}
+
+/// What the app keeps about a workspace between two times the user opens
+/// it: the file tabs from left to right, the `path` of the tab that was on
+/// screen, and the bookmarks of each file by the file's path inside the
+/// workspace. The interface shows them again when the user opens the same
+/// folder.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WorkspaceSession {
     pub open_files: Vec<SessionTab>,
     pub selected: Option<String>,
+    pub bookmarks: BTreeMap<String, Vec<Bookmark>>,
 }
 
 /// The sessions of all workspaces, by the path of the workspace folder, as
@@ -381,6 +424,13 @@ mod tests {
                 },
             ],
             selected: Some("internal/orders/handler.go".into()),
+            bookmarks: BTreeMap::from([(
+                "internal/orders/handler.go".to_string(),
+                vec![Bookmark {
+                    line: 20,
+                    text: "func (h *Handler) Submit() {".to_string(),
+                }],
+            )]),
         };
         let of_b = WorkspaceSession {
             open_files: vec![SessionTab {
@@ -389,6 +439,7 @@ mod tests {
                 line: None,
             }],
             selected: Some("README.md".into()),
+            bookmarks: BTreeMap::new(),
         };
         remember_workspace(config.path(), &pa, "a").unwrap();
         remember_session(config.path(), &pa, &of_a).unwrap();
@@ -406,6 +457,28 @@ mod tests {
             WorkspaceSession::default()
         );
         assert_eq!(workspace_session(config.path(), &pa), of_a);
+    }
+
+    #[test]
+    fn the_last_folder_is_kept_until_it_is_closed_or_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config");
+        let folder = dir.path().join("shop");
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.to_string_lossy().into_owned();
+
+        assert_eq!(last_workspace(&config), None);
+        remember_last_workspace(&config, Some(&path)).unwrap();
+        assert_eq!(last_workspace(&config), Some(path.clone()));
+
+        // Closing the folder records that none is open.
+        remember_last_workspace(&config, None).unwrap();
+        assert_eq!(last_workspace(&config), None);
+
+        // A folder that was deleted since is not offered.
+        remember_last_workspace(&config, Some(&path)).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(last_workspace(&config), None);
     }
 
     #[test]

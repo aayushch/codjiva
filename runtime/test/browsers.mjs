@@ -138,8 +138,7 @@ for (const [name, engine] of [
     const box = await page.locator(selector).first().boundingBox();
     return [box.x + box.width / 2, box.y + box.height / 2];
   };
-  // Hover the Submit machine: it is copied above the veil with the hover
-  // highlight.
+  // Hover the Submit machine: a glowing frame is drawn around it.
   let [x, y] = await centre('.v-submit');
   // The machine is 220 sheet pixels wide, which gives the scale the sheet is
   // shown at.
@@ -147,7 +146,10 @@ for (const [name, engine] of [
     (await page.locator('.v-submit').first().boundingBox()).width / 220;
   await page.mouse.move(x, y);
   check(
-    (await page.locator('.cj-lift .cj-hover').count()) === 1,
+    (await page.locator('.cj-glow-ring:visible').count()) > 0 &&
+      (await page
+        .locator('.cj-veil')
+        .evaluate((veil) => Number(veil.style.opacity) === 0)),
     `${name}: hovering a machine highlights it`,
   );
   check(

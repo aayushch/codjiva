@@ -42,7 +42,8 @@
   // discussion about the visual (see AskPanel.svelte): the user asks about
   // the visual or the code behind it, and an answer can put notes on parts of
   // the visual. A question is sent with the part that is selected, or with
-  // the moment a film is at.
+  // the moment a film is at. The two tab buttons stay at the top of the panel
+  // and only what is below them scrolls.
   const detail = $derived(app.detail);
   const artifact = $derived(app.currentArtifact);
   // True for an artifact that is played one step at a time. The part on
@@ -237,7 +238,7 @@
 </script>
 
 {#if detail && artifact && target}
-  <aside class="inspector" class:asking={app.inspectorTab === 'ask'}>
+  <aside class="inspector tabbed">
     <div class="insp-tabs" role="tablist">
       <button
         class="itab"
@@ -266,407 +267,414 @@
         onnote={showNote}
       />
     {:else}
-      {#if node}
-        <div class="kicker">{following ? 'Current state' : 'Selected'}</div>
-        <h3>{node.label}</h3>
-        <p>{node.role}</p>
-        {#if node.rationale}
-          <div class="kicker">Rationale</div>
-          <RationaleNote rationale={node.rationale} />
-        {/if}
-        {#if node.refs?.length}
-          <div class="kicker">Code</div>
-          <!-- The first reference is the code of the part, shown as lines. Any
-             further ones are other places that belong to it, shown as links.
-             -->
-          {#key `${node.id}/${node.refs[0].path}/${node.refs[0].line}`}
-            <CodeExcerpt
-              path={node.refs[0].path}
-              line={node.refs[0].line}
-              end={node.refs[0].end}
-            />
-          {/key}
-          {#each node.refs.slice(1) as ref}
-            <button class="ref" onclick={() => openRef(ref.path, ref.line)}
-              >{shortPath(ref.path)}:{ref.line}</button
-            >
-          {/each}
-        {/if}
-        {#if node.fields?.length}
-          <div class="kicker">Fields</div>
-          {#each node.fields as field}
-            <div class="field-row">
-              <span class="field-name" class:key={field.key}
-                >{field.name}{field.optional ? '?' : ''}</span
-              >
-              <span class="field-type">{field.type ?? ''}</span>
-            </div>
-            {#if field.note}<div class="field-note">{field.note}</div>{/if}
-            {#each usesOf(node.id, field.name) as use}
-              <div class="field-use">
-                {use.how === 'writes' ? 'written by' : 'read by'}
-                <button class="ref inline" onclick={() => openPlace(use.ref)}
-                  >{use.by}</button
-                >
-              </div>
-            {/each}
-          {/each}
-        {/if}
-        {#if isMap}
-          {#if node.path}
-            {@const path = node.path}
-            <div class="kicker">In the workspace</div>
-            <button class="ref" onclick={() => app.selectFile(path)}
-              >Open {path}</button
-            >
-            {#each madeOf(path) as made}
-              <button class="ref" onclick={() => app.openArtifact(made)}
-                >Show its {kindWord(made)} · v{made.currentVersion}</button
+      <div class="insp-body">
+        {#if node}
+          <div class="kicker">{following ? 'Current state' : 'Selected'}</div>
+          <h3>{node.label}</h3>
+          <p>{node.role}</p>
+          {#if node.rationale}
+            <div class="kicker">Rationale</div>
+            <RationaleNote rationale={node.rationale} />
+          {/if}
+          {#if node.refs?.length}
+            <div class="kicker">Code</div>
+            <!-- The first reference is the code of the part, shown as lines. Any
+               further ones are other places that belong to it, shown as links.
+               -->
+            {#key `${node.id}/${node.refs[0].path}/${node.refs[0].line}`}
+              <CodeExcerpt
+                path={node.refs[0].path}
+                line={node.refs[0].line}
+                end={node.refs[0].end}
+              />
+            {/key}
+            {#each node.refs.slice(1) as ref}
+              <button class="ref" onclick={() => openRef(ref.path, ref.line)}
+                >{shortPath(ref.path)}:{ref.line}</button
               >
             {/each}
           {/if}
-          {#each [{ title: 'Uses', end: 'from' as const }, { title: 'Used by', end: 'to' as const }] as side}
-            {@const others = linked(node.id, side.end)}
-            {#if others.length}
-              <div class="kicker">{side.title}</div>
-              {#each others as one}
-                <div class="transition">
-                  <button
-                    class="ref inline"
-                    onclick={() => selectNode(one.other)}
-                    >{targetLabel(one.other)}</button
+          {#if node.fields?.length}
+            <div class="kicker">Fields</div>
+            {#each node.fields as field}
+              <div class="field-row">
+                <span class="field-name" class:key={field.key}
+                  >{field.name}{field.optional ? '?' : ''}</span
+                >
+                <span class="field-type">{field.type ?? ''}</span>
+              </div>
+              {#if field.note}<div class="field-note">{field.note}</div>{/if}
+              {#each usesOf(node.id, field.name) as use}
+                <div class="field-use">
+                  {use.how === 'writes' ? 'written by' : 'read by'}
+                  <button class="ref inline" onclick={() => openPlace(use.ref)}
+                    >{use.by}</button
                   >
-                  <span class="muted">{one.label}</span>
                 </div>
               {/each}
-            {/if}
-          {/each}
-        {/if}
-        {#if node.inputs?.length || node.outputs?.length}
-          <div class="io">
-            {#if node.inputs?.length}
-              <div>
-                <div class="kicker">Reads</div>
-                {#each node.inputs as one}<div class="io-row">{one}</div>{/each}
-              </div>
-            {/if}
-            {#if node.outputs?.length}
-              <div>
-                <div class="kicker">Writes</div>
-                {#each node.outputs as one}<div class="io-row">
-                    {one}
-                  </div>{/each}
-              </div>
-            {/if}
-          </div>
-        {/if}
-        {#if node.transitions?.length}
-          <div class="kicker">Goes on to</div>
-          {#each node.transitions as one}
-            {@const isNode = nodes.some((n) => n.id === one.to)}
-            <div class="transition">
-              <span class="when">{one.when}</span>
-              {#if isNode}
-                <button class="ref inline" onclick={() => selectNode(one.to)}
-                  >→ {targetLabel(one.to)}</button
+            {/each}
+          {/if}
+          {#if isMap}
+            {#if node.path}
+              {@const path = node.path}
+              <div class="kicker">In the workspace</div>
+              <button class="ref" onclick={() => app.selectFile(path)}
+                >Open {path}</button
+              >
+              {#each madeOf(path) as made}
+                <button class="ref" onclick={() => app.openArtifact(made)}
+                  >Show its {kindWord(made)} · v{made.currentVersion}</button
                 >
-              {:else}
-                <span>→ {one.to}</span>
+              {/each}
+            {/if}
+            {#each [{ title: 'Uses', end: 'from' as const }, { title: 'Used by', end: 'to' as const }] as side}
+              {@const others = linked(node.id, side.end)}
+              {#if others.length}
+                <div class="kicker">{side.title}</div>
+                {#each others as one}
+                  <div class="transition">
+                    <button
+                      class="ref inline"
+                      onclick={() => selectNode(one.other)}
+                      >{targetLabel(one.other)}</button
+                    >
+                    <span class="muted">{one.label}</span>
+                  </div>
+                {/each}
+              {/if}
+            {/each}
+          {/if}
+          {#if node.inputs?.length || node.outputs?.length}
+            <div class="io">
+              {#if node.inputs?.length}
+                <div>
+                  <div class="kicker">Reads</div>
+                  {#each node.inputs as one}<div class="io-row">
+                      {one}
+                    </div>{/each}
+                </div>
+              {/if}
+              {#if node.outputs?.length}
+                <div>
+                  <div class="kicker">Writes</div>
+                  {#each node.outputs as one}<div class="io-row">
+                      {one}
+                    </div>{/each}
+                </div>
               {/if}
             </div>
-          {/each}
-        {/if}
-        {#if node.edgeCases?.length}
-          <div class="kicker">Edge cases</div>
-          {#each node.edgeCases as one}
-            <div class="edge-case">
-              <div>{one.text}</div>
-              <div class="edge-case-foot">
-                {#if one.example != null}
-                  {#if takesInput}
-                    <button
-                      class="chip"
-                      title="Run the step-through on {one.example}"
-                      onclick={() =>
-                        app.frameSend?.({ cj: 'input', value: one.example })}
-                      >Try {one.example}</button
-                    >
-                  {:else}
-                    <code>{one.example}</code>
-                  {/if}
-                {/if}
-                {#each one.refs as ref}
-                  <button
-                    class="ref inline"
-                    onclick={() => openRef(ref.path, ref.line)}
-                    >{shortPath(ref.path)}:{ref.line}</button
+          {/if}
+          {#if node.transitions?.length}
+            <div class="kicker">Goes on to</div>
+            {#each node.transitions as one}
+              {@const isNode = nodes.some((n) => n.id === one.to)}
+              <div class="transition">
+                <span class="when">{one.when}</span>
+                {#if isNode}
+                  <button class="ref inline" onclick={() => selectNode(one.to)}
+                    >→ {targetLabel(one.to)}</button
                   >
-                {/each}
+                {:else}
+                  <span>→ {one.to}</span>
+                {/if}
               </div>
-            </div>
-          {/each}
-        {/if}
-      {:else}
-        <div class="kicker">This {word}</div>
-        <h3>{detail.manifest.title}</h3>
-        {#if isFilm}
-          <p class="muted">
-            {detail.manifest.durationSec
-              ? formatTime(detail.manifest.durationSec) + ' · '
-              : ''}{chapters.length} chapters
-          </p>
-        {:else if isPipeline}
-          <p class="muted">
-            Click a part or a join to see what it does. Zoom in to read a part.
-          </p>
+            {/each}
+          {/if}
+          {#if node.edgeCases?.length}
+            <div class="kicker">Edge cases</div>
+            {#each node.edgeCases as one}
+              <div class="edge-case">
+                <div>{one.text}</div>
+                <div class="edge-case-foot">
+                  {#if one.example != null}
+                    {#if takesInput}
+                      <button
+                        class="chip"
+                        title="Run the step-through on {one.example}"
+                        onclick={() =>
+                          app.frameSend?.({ cj: 'input', value: one.example })}
+                        >Try {one.example}</button
+                      >
+                    {:else}
+                      <code>{one.example}</code>
+                    {/if}
+                  {/if}
+                  {#each one.refs as ref}
+                    <button
+                      class="ref inline"
+                      onclick={() => openRef(ref.path, ref.line)}
+                      >{shortPath(ref.path)}:{ref.line}</button
+                    >
+                  {/each}
+                </div>
+              </div>
+            {/each}
+          {/if}
         {:else}
-          <p class="muted">
-            Click a part to see what it does and where it is in the code.
-          </p>
+          <div class="kicker">This {word}</div>
+          <h3>{detail.manifest.title}</h3>
+          {#if isFilm}
+            <p class="muted">
+              {detail.manifest.durationSec
+                ? formatTime(detail.manifest.durationSec) + ' · '
+                : ''}{chapters.length} chapters
+            </p>
+          {:else if isPipeline}
+            <p class="muted">
+              Click a part or a join to see what it does. Zoom in to read a
+              part.
+            </p>
+          {:else}
+            <p class="muted">
+              Click a part to see what it does and where it is in the code.
+            </p>
+          {/if}
+          {#if detail.manifest.instructions}
+            <div class="kicker">Instructions</div>
+            <p>{detail.manifest.instructions}</p>
+          {/if}
+          {#if detail.manifest.feedback}
+            <div class="kicker">Changed after feedback</div>
+            <p>{detail.manifest.feedback}</p>
+          {/if}
         {/if}
-        {#if detail.manifest.instructions}
-          <div class="kicker">Instructions</div>
-          <p>{detail.manifest.instructions}</p>
-        {/if}
-        {#if detail.manifest.feedback}
-          <div class="kicker">Changed after feedback</div>
-          <p>{detail.manifest.feedback}</p>
-        {/if}
-      {/if}
 
-      {#if isPipeline && detail.manifest.parts?.length}
-        <div class="kicker">Parts</div>
-        {#each detail.manifest.parts as part, i (part.key)}
-          {@const title = partTitle(part.artifact)}
-          {#if title}
+        {#if isPipeline && detail.manifest.parts?.length}
+          <div class="kicker">Parts</div>
+          {#each detail.manifest.parts as part, i (part.key)}
+            {@const title = partTitle(part.artifact)}
+            {#if title}
+              <button
+                class="part-row"
+                title="Open this part's own artifact"
+                onclick={() => {
+                  const found = app.artifacts.find(
+                    (a) => a.id === part.artifact,
+                  );
+                  if (found) app.openArtifact(found);
+                }}>{i + 1} · {title}</button
+              >
+            {:else}
+              <span class="part-row gone"
+                >{i + 1} · {part.key} (its artifact was deleted)</span
+              >
+            {/if}
+          {/each}
+          {#if detail.manifest.joins?.length}
+            <div class="kicker">Joins</div>
+            {#each detail.manifest.joins as join}
+              <div class="join">
+                <code>{partKey(join.fromArtifact)}</code> →
+                <code>{partKey(join.toArtifact)}</code>
+                · {join.symbol || join.toPort.replace(/^in:/, '')}
+                <div class="why">
+                  {[join.kind, join.carries]
+                    .filter(Boolean)
+                    .join(' · ')}{join.reason
+                    ? (join.kind || join.carries ? '. ' : '') + join.reason
+                    : ''}
+                </div>
+              </div>
+            {/each}
+          {/if}
+        {/if}
+        {#if !isPipeline && connected.length}
+          <div class="kicker">Connects to</div>
+          {#each connected as other (other.id)}
             <button
               class="part-row"
-              title="Open this part's own artifact"
-              onclick={() => {
-                const found = app.artifacts.find((a) => a.id === part.artifact);
-                if (found) app.openArtifact(found);
-              }}>{i + 1} · {title}</button
+              title="Open it"
+              onclick={() => app.openArtifact(other)}>{other.title}</button
             >
-          {:else}
-            <span class="part-row gone"
-              >{i + 1} · {part.key} (its artifact was deleted)</span
+          {/each}
+          <button
+            class="btn small"
+            onclick={() =>
+              app.askCompose([artifact.id, ...connected.map((a) => a.id)])}
+            >Compose a pipeline…</button
+          >
+        {/if}
+
+        {#if isFilm && chapters.length}
+          <div class="kicker">Chapters</div>
+          {#each chapters as chapter, i (chapter.id)}
+            <button
+              class="chapter-row"
+              class:on={app.filmMoment?.chapter === i}
+              title={chapter.desc || chapter.title}
+              onclick={() =>
+                app.frameSend?.({ cj: 'seek', t: chapter.start + 0.01 })}
             >
-          {/if}
-        {/each}
-        {#if detail.manifest.joins?.length}
-          <div class="kicker">Joins</div>
-          {#each detail.manifest.joins as join}
-            <div class="join">
-              <code>{partKey(join.fromArtifact)}</code> →
-              <code>{partKey(join.toArtifact)}</code>
-              · {join.symbol || join.toPort.replace(/^in:/, '')}
-              <div class="why">
-                {[join.kind, join.carries]
-                  .filter(Boolean)
-                  .join(' · ')}{join.reason
-                  ? (join.kind || join.carries ? '. ' : '') + join.reason
-                  : ''}
-              </div>
+              <span>{chapter.name}</span><span class="at"
+                >{formatTime(chapter.start)}</span
+              >
+            </button>
+          {/each}
+        {/if}
+        {#if isFilm && filmRationales.length}
+          <div class="kicker">Rationale</div>
+          {#each filmRationales as item}
+            <div
+              class="rationale-item"
+              class:on={app.filmMoment?.chapter === item.chapter}
+            >
+              <button
+                class="rationale-head"
+                title="Go to the chapter this is about"
+                onclick={() => {
+                  const chapter = chapters[item.chapter];
+                  if (chapter)
+                    app.frameSend?.({ cj: 'seek', t: chapter.start + 0.01 });
+                }}>{item.kicker}</button
+              >
+              <RationaleNote rationale={item.rationale} />
             </div>
           {/each}
         {/if}
-      {/if}
-      {#if !isPipeline && connected.length}
-        <div class="kicker">Connects to</div>
-        {#each connected as other (other.id)}
-          <button
-            class="part-row"
-            title="Open it"
-            onclick={() => app.openArtifact(other)}>{other.title}</button
-          >
-        {/each}
-        <button
-          class="btn small"
-          onclick={() =>
-            app.askCompose([artifact.id, ...connected.map((a) => a.id)])}
-          >Compose a pipeline…</button
-        >
-      {/if}
+        {#if isFilm && !isPipeline && detail.manifest.companions.length}
+          <div class="kicker">Companion files</div>
+          {#each detail.manifest.companions as companion (companion.path)}
+            <div class="companion">
+              <button
+                class="ref"
+                title={companion.path}
+                onclick={() => openRef(companion.path, 1)}
+                >{shortPath(companion.path)}</button
+              >
+              {#if companion.why}<div class="why">{companion.why}</div>{/if}
+            </div>
+          {/each}
+        {/if}
 
-      {#if isFilm && chapters.length}
-        <div class="kicker">Chapters</div>
-        {#each chapters as chapter, i (chapter.id)}
-          <button
-            class="chapter-row"
-            class:on={app.filmMoment?.chapter === i}
-            title={chapter.desc || chapter.title}
-            onclick={() =>
-              app.frameSend?.({ cj: 'seek', t: chapter.start + 0.01 })}
-          >
-            <span>{chapter.name}</span><span class="at"
-              >{formatTime(chapter.start)}</span
-            >
-          </button>
-        {/each}
-      {/if}
-      {#if isFilm && filmRationales.length}
-        <div class="kicker">Rationale</div>
-        {#each filmRationales as item}
-          <div
-            class="rationale-item"
-            class:on={app.filmMoment?.chapter === item.chapter}
-          >
+        {#if model?.modes?.length}
+          <div class="kicker">Modes</div>
+          {#each model.modes.slice(0, 6) as mode}
+            <p>
+              <code>{mode.name}</code> when {mode.trigger}
+              {#if mode.ref}{@const r = parseRef(mode.ref)}<button
+                  class="ref inline"
+                  onclick={() => openRef(r.path, r.line)}
+                  >{shortPath(r.path)}:{r.line}</button
+                >{/if}
+            </p>
+          {/each}
+        {/if}
+        {#if model?.limits?.length}
+          <div class="kicker">Limits</div>
+          {#each model.limits.slice(0, 8) as limit}
+            <p>
+              <code>{limit.name}</code>{limit.scope ? ` (${limit.scope})` : ''}: {limit.effect}
+              {#if limit.ref}{@const r = parseRef(limit.ref)}<button
+                  class="ref inline"
+                  onclick={() => openRef(r.path, r.line)}
+                  >{shortPath(r.path)}:{r.line}</button
+                >{/if}
+            </p>
+          {/each}
+        {/if}
+
+        {#if (!isFilm && (Object.keys(app.layers).length || detail.definition?.legend?.length || hasNodeRationale)) || notes.length}
+          <div class="kicker">Layers</div>
+          {#each Object.keys(app.layers) as layer}
             <button
-              class="rationale-head"
-              title="Go to the chapter this is about"
+              class="layer"
+              role="switch"
+              aria-checked={app.layers[layer]}
+              onclick={() => app.setLayer(layer, !app.layers[layer])}
+            >
+              <span class="switch" class:on={app.layers[layer]}
+              ></span>{LAYER_NAMES[layer] ?? layer}
+            </button>
+          {/each}
+          {#if detail.definition?.legend?.length}
+            <button
+              class="layer"
+              role="switch"
+              aria-checked={app.legendOn}
               onclick={() => {
-                const chapter = chapters[item.chapter];
-                if (chapter)
-                  app.frameSend?.({ cj: 'seek', t: chapter.start + 0.01 });
-              }}>{item.kicker}</button
+                app.legendOn = !app.legendOn;
+                app.frameSend?.({ cj: 'legend', on: app.legendOn });
+              }}
             >
-            <RationaleNote rationale={item.rationale} />
-          </div>
-        {/each}
-      {/if}
-      {#if isFilm && !isPipeline && detail.manifest.companions.length}
-        <div class="kicker">Companion files</div>
-        {#each detail.manifest.companions as companion (companion.path)}
-          <div class="companion">
+              <span class="switch" class:on={app.legendOn}></span>Legend
+            </button>
+          {/if}
+          {#if hasNodeRationale}
             <button
-              class="ref"
-              title={companion.path}
-              onclick={() => openRef(companion.path, 1)}
-              >{shortPath(companion.path)}</button
+              class="layer"
+              role="switch"
+              aria-checked={app.rationaleOn}
+              title="Show a ? on each part that says why the code is built that way"
+              onclick={() => {
+                app.rationaleOn = !app.rationaleOn;
+                app.frameSend?.({ cj: 'rationale', on: app.rationaleOn });
+              }}
             >
-            {#if companion.why}<div class="why">{companion.why}</div>{/if}
-          </div>
-        {/each}
-      {/if}
+              <span class="switch" class:on={app.rationaleOn}></span>Rationale
+            </button>
+          {/if}
+          {#if notes.length}
+            <button
+              class="layer"
+              role="switch"
+              aria-checked={discuss.notesOn}
+              title="Show the notes that answers in the Ask tab put on this {word}"
+              onclick={() => (discuss.notesOn = !discuss.notesOn)}
+            >
+              <span class="switch" class:on={discuss.notesOn}></span>Notes · {notes.length}
+            </button>
+          {/if}
+        {/if}
 
-      {#if model?.modes?.length}
-        <div class="kicker">Modes</div>
-        {#each model.modes.slice(0, 6) as mode}
-          <p>
-            <code>{mode.name}</code> when {mode.trigger}
-            {#if mode.ref}{@const r = parseRef(mode.ref)}<button
-                class="ref inline"
-                onclick={() => openRef(r.path, r.line)}
-                >{shortPath(r.path)}:{r.line}</button
-              >{/if}
+        {#if artifact.stale && isCurrent}
+          <div class="kicker">Stale</div>
+          <p class="muted">
+            {#each artifact.staleSources as path, i}{i ? ', ' : ''}<code
+                >{shortPath(path)}</code
+              >{/each} changed after this version was made.{isPipeline
+              ? ' Regenerate the part it belongs to first, then compose again.'
+              : ''}
           </p>
-        {/each}
-      {/if}
-      {#if model?.limits?.length}
-        <div class="kicker">Limits</div>
-        {#each model.limits.slice(0, 8) as limit}
-          <p>
-            <code>{limit.name}</code>{limit.scope ? ` (${limit.scope})` : ''}: {limit.effect}
-            {#if limit.ref}{@const r = parseRef(limit.ref)}<button
-                class="ref inline"
-                onclick={() => openRef(r.path, r.line)}
-                >{shortPath(r.path)}:{r.line}</button
-              >{/if}
-          </p>
-        {/each}
-      {/if}
+          <button
+            class="btn small"
+            disabled={app.artifactBusy}
+            onclick={() => app.askRegenerate()}
+            >{isPipeline ? 'Compose again…' : 'Regenerate…'}</button
+          >
+        {/if}
 
-      {#if (!isFilm && (Object.keys(app.layers).length || detail.definition?.legend?.length || hasNodeRationale)) || notes.length}
-        <div class="kicker">Layers</div>
-        {#each Object.keys(app.layers) as layer}
-          <button
-            class="layer"
-            role="switch"
-            aria-checked={app.layers[layer]}
-            onclick={() => app.setLayer(layer, !app.layers[layer])}
-          >
-            <span class="switch" class:on={app.layers[layer]}
-            ></span>{LAYER_NAMES[layer] ?? layer}
-          </button>
-        {/each}
-        {#if detail.definition?.legend?.length}
-          <button
-            class="layer"
-            role="switch"
-            aria-checked={app.legendOn}
-            onclick={() => {
-              app.legendOn = !app.legendOn;
-              app.frameSend?.({ cj: 'legend', on: app.legendOn });
-            }}
-          >
-            <span class="switch" class:on={app.legendOn}></span>Legend
-          </button>
-        {/if}
-        {#if hasNodeRationale}
-          <button
-            class="layer"
-            role="switch"
-            aria-checked={app.rationaleOn}
-            title="Show a ? on each part that says why the code is built that way"
-            onclick={() => {
-              app.rationaleOn = !app.rationaleOn;
-              app.frameSend?.({ cj: 'rationale', on: app.rationaleOn });
-            }}
-          >
-            <span class="switch" class:on={app.rationaleOn}></span>Rationale
-          </button>
-        {/if}
-        {#if notes.length}
-          <button
-            class="layer"
-            role="switch"
-            aria-checked={discuss.notesOn}
-            title="Show the notes that answers in the Ask tab put on this {word}"
-            onclick={() => (discuss.notesOn = !discuss.notesOn)}
-          >
-            <span class="switch" class:on={discuss.notesOn}></span>Notes · {notes.length}
-          </button>
-        {/if}
-      {/if}
+        <FeedbackBox />
 
-      {#if artifact.stale && isCurrent}
-        <div class="kicker">Stale</div>
+        <div class="kicker">Checks</div>
         <p class="muted">
-          {#each artifact.staleSources as path, i}{i ? ', ' : ''}<code
-              >{shortPath(path)}</code
-            >{/each} changed after this version was made.{isPipeline
-            ? ' Regenerate the part it belongs to first, then compose again.'
+          {kindWord(artifact)} · {errorCount
+            ? `${errorCount} problem(s)`
+            : 'passed'} · {problems.length - errorCount} warning(s) · {formatBytes(
+            detail.bytes,
+          )}
+        </p>
+        {#each problems.slice(0, 12) as problem}
+          <p class="problem" class:error={problem.severity === 'error'}>
+            {problem.text}
+          </p>
+        {/each}
+
+        <div class="kicker">Version</div>
+        <p class="muted">
+          v{detail.manifest.version} · {when(detail.manifest.createdAt)} · {detail
+            .manifest.agent.kind}{detail.manifest.agent.model
+            ? ' · ' + detail.manifest.agent.model
+            : ''}{detail.manifest.costUsd != null
+            ? ' · $' + detail.manifest.costUsd.toFixed(2)
             : ''}
         </p>
-        <button
-          class="btn small"
-          disabled={app.artifactBusy}
-          onclick={() => app.askRegenerate()}
-          >{isPipeline ? 'Compose again…' : 'Regenerate…'}</button
-        >
-      {/if}
-
-      <FeedbackBox />
-
-      <div class="kicker">Checks</div>
-      <p class="muted">
-        {kindWord(artifact)} · {errorCount
-          ? `${errorCount} problem(s)`
-          : 'passed'} · {problems.length - errorCount} warning(s) · {formatBytes(
-          detail.bytes,
-        )}
-      </p>
-      {#each problems.slice(0, 12) as problem}
-        <p class="problem" class:error={problem.severity === 'error'}>
-          {problem.text}
-        </p>
-      {/each}
-
-      <div class="kicker">Version</div>
-      <p class="muted">
-        v{detail.manifest.version} · {when(detail.manifest.createdAt)} · {detail
-          .manifest.agent.kind}{detail.manifest.agent.model
-          ? ' · ' + detail.manifest.agent.model
-          : ''}{detail.manifest.costUsd != null
-          ? ' · $' + detail.manifest.costUsd.toFixed(2)
-          : ''}
-      </p>
-      {#if !isCurrent}
-        <p class="muted">You are looking at an earlier version.</p>
-        <button class="btn small" onclick={() => app.makeCurrent()}
-          >Make this the current version</button
-        >
-      {/if}
+        {#if !isCurrent}
+          <p class="muted">You are looking at an earlier version.</p>
+          <button class="btn small" onclick={() => app.makeCurrent()}
+            >Make this the current version</button
+          >
+        {/if}
+      </div>
     {/if}
   </aside>
 {/if}

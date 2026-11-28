@@ -81,6 +81,38 @@ pub struct FileContent {
     pub highlighter: String,
 }
 
+/// The greatest size of an image file that the viewer shows, in bytes.
+pub const IMAGE_LIMIT_BYTES: usize = 20 * 1024 * 1024;
+
+/// An image file for the viewer.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageContent {
+    pub rel_path: String,
+    /// The image as a `data:` URL, which holds its media type and its bytes
+    /// in base64. The interface gives it to an `<img>` element.
+    pub data_url: String,
+    /// The size of the file in bytes.
+    pub bytes: u64,
+}
+
+/// The media type of an image file, told by the ending of its name. Returns
+/// `None` for a name that does not end like an image the viewer shows.
+pub fn image_type(rel: &str) -> Option<&'static str> {
+    let ending = rel.rsplit_once('.')?.1.to_ascii_lowercase();
+    Some(match ending.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "avif" => "image/avif",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "svg" => "image/svg+xml",
+        _ => return None,
+    })
+}
+
 /// One result of a quick-open search.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -343,6 +375,34 @@ impl Workspace {
         fs::read(path).ok().map(|bytes| hash_bytes(&bytes))
     }
 
+    /// Reads an image file for the viewer. Fails for a file whose name does
+    /// not end like an image (see [`image_type`]) and for a file larger
+    /// than [`IMAGE_LIMIT_BYTES`].
+    pub fn read_image(&self, rel: &str) -> Result<ImageContent> {
+        use base64::Engine;
+        let Some(media_type) = image_type(rel) else {
+            return Err(AppError::new(
+                "not_an_image",
+                "This file is not an image the viewer can show.",
+            ));
+        };
+        let path = self.resolve(rel)?;
+        let bytes =
+            fs::read(&path).map_err(|e| AppError::io("read that file", e))?;
+        if bytes.len() > IMAGE_LIMIT_BYTES {
+            return Err(AppError::new(
+                "image_too_large",
+                "This image is larger than 20 MB, so it is not shown.",
+            ));
+        }
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        Ok(ImageContent {
+            rel_path: rel.to_string(),
+            data_url: format!("data:{media_type};base64,{encoded}"),
+            bytes: bytes.len() as u64,
+        })
+    }
+
     /// Reads a file for the source viewer. Bytes that are not valid UTF-8 are
     /// replaced, and a file longer than the viewer's limit is cut at a line
     /// break.
@@ -562,6 +622,20 @@ mod tests {
         }
         let ws = Workspace::open(dir.path()).unwrap();
         (dir, ws)
+    }
+
+    #[test]
+    fn an_image_is_read_as_a_data_url_and_other_files_are_refused() {
+        let (dir, ws) =
+            workspace_with(&[("a.go", "package a\n"), ("icons/dot.png", "")]);
+        fs::write(dir.path().join("icons/dot.png"), [0x89, b'P', b'N', b'G'])
+            .unwrap();
+        let image = ws.read_image("icons/dot.png").unwrap();
+        assert_eq!(image.data_url, "data:image/png;base64,iVBORw==");
+        assert_eq!(image.bytes, 4);
+        assert_eq!(ws.read_image("a.go").unwrap_err().code, "not_an_image");
+        assert_eq!(image_type("logo.SVG"), Some("image/svg+xml"));
+        assert_eq!(image_type("Makefile"), None);
     }
 
     fn wait_for_index(ws: &Workspace) {

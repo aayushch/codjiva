@@ -21,9 +21,6 @@
         <button class="btn primary" onclick={() => app.pickAndOpen()}
           ><Icon name="folder-open" size={16} />Open folder…</button
         >
-        <button class="btn" onclick={() => (app.example = 'film')}
-          ><Icon name="film" size={16} />Watch the example film</button
-        >
       </div>
       {#if app.recents.length}
         <div class="recents">

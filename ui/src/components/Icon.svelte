@@ -29,7 +29,14 @@
     | 'check'
     | 'code'
     | 'swap'
-    | 'chat';
+    | 'chat'
+    | 'collapse'
+    | 'expand'
+    | 'bookmark'
+    | 'up'
+    | 'down'
+    | 'eye'
+    | 'diff';
 
   let { name, size = 14 }: { name: Name; size?: number } = $props();
 
@@ -79,6 +86,18 @@
     swap: 'M5 13V3 M2.5 5.5 5 3l2.5 2.5 M11 3v10 M8.5 10.5 11 13l2.5-2.5',
     // A speech bubble: a discussion.
     chat: 'M2.5 3h11v7.5H7L4 13v-2.5H2.5z',
+    // Two arrowheads that point at each other: close every group of a list.
+    collapse: 'M4.5 2.5 8 6l3.5-3.5 M4.5 13.5 8 10l3.5 3.5',
+    // Two arrowheads that point away from each other: open every group of a
+    // list.
+    expand: 'M4.5 6 8 2.5 11.5 6 M4.5 10 8 13.5 11.5 10',
+    // A ribbon with a notch at its lower end: a bookmark.
+    bookmark: 'M4.5 2.5h7v11L8 10.5l-3.5 3z',
+    up: 'M8 13V3 M4 7l4-4 4 4',
+    down: 'M8 3v10 M4 9l4 4 4-4',
+    // An eye: show the file as the picture or the page it describes.
+    eye: 'M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z M10 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0z',
+    diff: 'M8 1.75v7 M4.5 5.25h7 M4.5 13h7',
   };
 </script>
 

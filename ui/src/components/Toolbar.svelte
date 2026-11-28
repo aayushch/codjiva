@@ -1,9 +1,12 @@
 <script lang="ts">
   import { FILE_KINDS, isView, showsFilm } from '$lib/artifacts';
+  import { bookmarkLabel } from '$lib/bookmarks';
+  import { isPicture, previewKindOf } from '$lib/preview';
   import { scopeTitle } from '$lib/discuss';
   import { targetOfArtifact } from '$lib/jobs';
   import { api } from '$lib/ipc';
   import { app, type MenuItem } from '$lib/state/app.svelte';
+  import CommitPicker from './CommitPicker.svelte';
   import Icon from './Icon.svelte';
 
   // The bar above the editor area and the inspector. From left to right it
@@ -47,6 +50,49 @@
     app.selected ? app.selected.replace(/\/$/, '').split('/') : [],
   );
   const artifact = $derived(app.currentArtifact);
+
+  // The bookmarks of the file on screen (see SourceView.svelte), and the
+  // menu of the bookmark button, which is shown beside the Source button
+  // while the source view is on screen. The menu has one command for each
+  // bookmark, which goes to its line, and a last command that removes them
+  // all. For a file without bookmarks it only says how to add one.
+  const bookmarks = $derived(app.bookmarksOf(app.selected ?? ''));
+  // True for a file whose text can also be shown rendered. The Preview
+  // button beside the Source button then switches between the two.
+  const canPreview = $derived(previewKindOf(app.selected ?? '') != null);
+  // True for a file whose changes can be shown: a file of text in a
+  // workspace that is inside a git repository. The Changes button beside
+  // the Source button then switches between the text and the changes.
+  //
+  // While the changes are on screen, the toolbar also has the controls that
+  // choose which change is shown (CommitPicker.svelte). They are placed in
+  // front of the "Visuals" button. The buttons from "Visuals" to the right
+  // end of the bar are lined up with that end, so they stay where they are
+  // when these controls appear and disappear.
+  const canDiff = $derived(app.gitRepo && !isPicture(app.selected ?? ''));
+  const bookmarkMenu = (): MenuItem[] => {
+    const path = app.selected ?? '';
+    if (!bookmarks.length)
+      return [
+        {
+          label: 'No bookmarks in this file',
+          detail: 'Double-click a line number to add one.',
+          disabled: true,
+          action: () => {},
+        },
+      ];
+    return [
+      ...bookmarks.map((mark) => ({
+        label: bookmarkLabel(mark),
+        action: () => app.selectFile(path, mark.line),
+      })),
+      'separator',
+      {
+        label: 'Remove all bookmarks of this file',
+        action: () => app.clearBookmarks(path),
+      },
+    ];
+  };
 
   // The kind of the artifact on screen, when the editor area shows an
   // artifact of the selected file. It is null while the source is showing,
@@ -244,50 +290,23 @@
 {/snippet}
 
 <div class="toolbar">
-  {#if !app.example}
-    <span class="history">
-      <button
-        class="tb-btn tip-start"
-        data-tip="Back ({mac ? '⌘[' : 'Alt+←'})"
-        aria-label="Back"
-        disabled={!app.canGoBack}
-        onclick={() => app.goBack()}><Icon name="back" size={16} /></button
-      >
-      <button
-        class="tb-btn tip-start"
-        data-tip="Forward ({mac ? '⌘]' : 'Alt+→'})"
-        aria-label="Forward"
-        disabled={!app.canGoForward}
-        onclick={() => app.goForward()}
-        ><Icon name="forward" size={16} /></button
-      >
-    </span>
-  {/if}
-  {#if app.example}
-    <span class="crumb"
-      >Example / <b
-        >{app.example === 'film'
-          ? 'How an order moves through the orders Handler'
-          : 'Handler.Submit, a still blueprint'}</b
-      ></span
+  <span class="history">
+    <button
+      class="tb-btn tip-start"
+      data-tip="Back ({mac ? '⌘[' : 'Alt+←'})"
+      aria-label="Back"
+      disabled={!app.canGoBack}
+      onclick={() => app.goBack()}><Icon name="back" size={16} /></button
     >
-    <span class="spacer"></span>
-    <span class="tabs">
-      <button
-        class="tab"
-        class:on={app.example === 'film'}
-        onclick={() => (app.example = 'film')}>Film</button
-      >
-      <button
-        class="tab"
-        class:on={app.example === 'visual'}
-        onclick={() => (app.example = 'visual')}>Blueprint</button
-      >
-    </span>
-    <button class="btn small" onclick={() => (app.example = null)}
-      >Close example</button
+    <button
+      class="tb-btn tip-start"
+      data-tip="Forward ({mac ? '⌘]' : 'Alt+→'})"
+      aria-label="Forward"
+      disabled={!app.canGoForward}
+      onclick={() => app.goForward()}><Icon name="forward" size={16} /></button
     >
-  {:else if app.selectedPipelineId}
+  </span>
+  {#if app.selectedPipelineId}
     <span class="crumb">Pipeline / <b>{artifact?.title ?? ''}</b></span>
     <span class="spacer"></span>
     {@render controls(
@@ -335,6 +354,7 @@
       {@render controls('A source file changed after this version was made')}
       <span class="divider"></span>
     {/if}
+    {#if app.diffing}<CommitPicker />{/if}
     <span class="tabs">
       {#if app.selectedIsFolder}
         <button
@@ -371,6 +391,41 @@
               title="This file has at least one of these"
             ></span>{/if}</button
         >
+        {#if app.tab === 'source' && canPreview}
+          <button
+            class="tab preview-tab tip-end"
+            class:on={!!app.rendered}
+            aria-pressed={!!app.rendered}
+            data-tip={app.rendered ? 'Show the text' : 'Preview'}
+            aria-label="Preview"
+            onclick={() => app.togglePreview()}
+            ><Icon name="eye" size={16} /></button
+          >
+        {/if}
+        {#if app.tab === 'source' && canDiff}
+          <button
+            class="tab diff-tab tip-end"
+            class:on={app.diffing}
+            aria-pressed={app.diffing}
+            data-tip={app.diffing ? 'Show the text' : 'Changes'}
+            aria-label="Changes"
+            onclick={() => app.toggleDiff()}
+            ><Icon name="diff" size={16} /></button
+          >
+        {/if}
+        {#if app.tab === 'source' && !app.rendered}
+          <button
+            class="tab bookmarks-tab tip-end"
+            data-tip="Bookmarks of this file"
+            aria-label="Bookmarks of this file"
+            aria-haspopup="menu"
+            onclick={(event) =>
+              app.openMenuBelow(event.currentTarget, bookmarkMenu())}
+            ><Icon name="bookmark" size={16} />{#if bookmarks.length}<span
+                class="count">{bookmarks.length}</span
+              >{/if}</button
+          >
+        {/if}
         <button
           class="tab source-tab tip-end"
           class:on={app.tab === 'source'}

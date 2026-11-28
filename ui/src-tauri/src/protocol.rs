@@ -5,15 +5,11 @@
 //! pages from this scheme, and every page is sent with a policy that blocks all
 //! network requests.
 //!
-//! Paths:
-//!   - `/reference/film`: the reference film bundled with the app.
-//!   - `/reference/visual`: the still visual of the reference plant.
-//!   - `/artifact/<id>/<version>`: a built version of an artifact of the open
-//!     workspace.
+//! The only path is `/artifact/<id>/<version>`: a built version of an
+//! artifact of the open workspace.
 
 use crate::AppState;
 use codjiva_core::artifacts;
-use codjiva_core::reference;
 use tauri::http::{Response, StatusCode};
 
 fn page(html: &str) -> Response<Vec<u8>> {
@@ -50,16 +46,12 @@ fn artifact_page(state: &AppState, rest: &str) -> Option<String> {
 
 /// Answers one request. `path` is the path part of the requested URL.
 pub fn respond(state: &AppState, path: &str) -> Response<Vec<u8>> {
-    let path = path.trim_matches('/');
-    match path {
-        "reference/film" => page(reference::film_html()),
-        "reference/visual" => page(reference::visual_html()),
-        _ => match path
-            .strip_prefix("artifact/")
-            .and_then(|rest| artifact_page(state, rest))
-        {
-            Some(html) => page(&html),
-            None => not_found(),
-        },
+    match path
+        .trim_matches('/')
+        .strip_prefix("artifact/")
+        .and_then(|rest| artifact_page(state, rest))
+    {
+        Some(html) => page(&html),
+        None => not_found(),
     }
 }
