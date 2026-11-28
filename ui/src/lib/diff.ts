@@ -2,7 +2,7 @@
 // components so it can be tested.
 
 import { agoOf } from './blame';
-import type { GitChange, GitHunk } from './ipc';
+import type { GitChange, GitHunk, GitSide } from './ipc';
 
 // How many commits of a file the app lists at most. It is the same number
 // as `HISTORY_LIMIT` in git_diff.rs.
@@ -178,3 +178,49 @@ export const changeDetail = (change: GitChange, now: number) =>
 // again: the hash of the commit, or an empty string for the changes that
 // are not committed.
 export const changeKey = (change: GitChange) => change.commit ?? '';
+
+// The two versions the diff view compares when the change on screen is
+// `change`.
+//   - Without `base`, they are the two versions of `change`: the file
+//     before the change and the file after it.
+//   - With `base`, an older change of the same file, they are the file
+//     after `base` and the file after `change`. The lines `base` itself
+//     changed are then not part of the comparison.
+export const sidesOf = (
+  change: GitChange,
+  base: GitChange | null,
+): { old: GitSide | null; new: GitSide } =>
+  base
+    ? { old: base.new, new: change.new }
+    : { old: change.old, new: change.new };
+
+// A short name for the file as a change left it: the start of the hash of
+// the commit, or "Uncommitted" for the file on disk.
+export const versionName = (change: GitChange) =>
+  change.commit == null ? 'Uncommitted' : change.commit.slice(0, 7);
+
+// What stands for a comparison of two versions on the button of the list of
+// changes and in the bar of the diff view: the short names of the older and
+// the newer version with an arrow between them.
+export const compareTitle = (base: GitChange, change: GitChange) =>
+  `${versionName(base)} → ${versionName(change)}`;
+
+// Says which changes lie between two compared versions, such as "3 commits"
+// or "2 commits and the uncommitted changes". `changes` is the list of
+// changes of the file, newest first. `index` is the position of the newer
+// version and `baseIndex` the position of the older one. The changes from
+// `index` up to the one in front of `baseIndex` are the ones counted.
+export function compareDetail(
+  changes: GitChange[],
+  index: number,
+  baseIndex: number,
+): string {
+  const between = changes.slice(index, baseIndex);
+  const commits = between.filter((change) => change.commit != null).length;
+  const pending = commits < between.length;
+  const counted = `${commits} ${commits === 1 ? 'commit' : 'commits'}`;
+  if (!pending) return counted;
+  return commits
+    ? `${counted} and the uncommitted changes`
+    : 'the uncommitted changes';
+}

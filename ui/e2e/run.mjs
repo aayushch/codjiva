@@ -4878,6 +4878,224 @@ check(
     await shown(),
   );
 
+  // Two versions of the file are compared with the command at the right
+  // end of two entries of the list.
+  const entry = (at) => page.locator('.commit-entry').nth(at);
+  const command = (at) => entry(at).locator('.commit-command');
+  // The command of an entry is visible while the pointer is over the entry.
+  const useCommand = async (at) => {
+    await entry(at).hover();
+    await command(at).click();
+  };
+  const seen = (at) =>
+    command(at).evaluate((el) => getComputedStyle(el).visibility === 'visible');
+  const settled = () =>
+    page.waitForFunction(() => !document.querySelector('.diff-panes.reading'));
+  const what = () => page.locator('.diff-what').innerText();
+  await picker.click();
+  await entries.first().waitFor();
+  const detailWidth = () =>
+    entry(3)
+      .locator('.commit-detail')
+      .evaluate(
+        (el) => el.clientWidth - parseFloat(getComputedStyle(el).paddingRight),
+      );
+  await page.mouse.move(5, 5);
+  const widthBefore = await detailWidth();
+  const hiddenBefore = !(await seen(3)) && !(await seen(0));
+  await entry(3).hover();
+  check(
+    hiddenBefore &&
+      (await seen(3)) &&
+      !(await seen(0)) &&
+      (await command(3).textContent()).trim() === 'Select to compare' &&
+      (await detailWidth()) === widthBefore,
+    'the entry under the pointer has a command that selects it, and its text keeps its width',
+    `${hiddenBefore} ${await seen(3)} ${await seen(0)} ${await command(3).textContent()}`,
+  );
+  await useCommand(1);
+  const commandTexts = async () =>
+    (await page.locator('.commit-command').allTextContents())
+      .map((text) => text.trim())
+      .join('|');
+  check(
+    (await entries.count()) === 4 &&
+      (await page
+        .locator('.commit-entry.picked .commit-title')
+        .textContent()) === 'Add two prices' &&
+      (await commandTexts()) ===
+        'Compare with selected|Cancel|Compare with selected|Compare with selected' &&
+      (await seen(0)) &&
+      (await seen(3)) &&
+      (await shown()) === 'Add two prices',
+    'selecting an entry keeps the list open and offers every other entry to compare with',
+    await commandTexts(),
+  );
+  await shot('12o-diff-select-to-compare');
+  await useCommand(1);
+  check(
+    (await page.locator('.commit-entry.picked').count()) === 0 &&
+      (await commandTexts()) === Array(4).fill('Select to compare').join('|'),
+    'Cancel removes the selection',
+    await commandTexts(),
+  );
+
+  // A selection is lost when the list is closed.
+  await useCommand(1);
+  await page.locator('.commit-entry.picked').waitFor();
+  await page.locator('.diff-what').click();
+  check(
+    (await entries.count()) === 0,
+    'a press outside the list closes it while an entry is selected',
+  );
+  await picker.click();
+  await entries.first().waitFor();
+  check(
+    (await page.locator('.commit-entry.picked').count()) === 0 &&
+      (await page.locator('.commit-list.selecting').count()) === 0 &&
+      (await commandTexts()) === Array(4).fill('Select to compare').join('|'),
+    'the selection is lost when the list is closed',
+    await commandTexts(),
+  );
+
+  // The newer entry is selected first. The older one is still the old
+  // version of the comparison.
+  await useCommand(1);
+  await useCommand(3);
+  await page.locator('.diff-what', { hasText: 'c100000 → c300000' }).waitFor();
+  await settled();
+  check(
+    (await entries.count()) === 0 &&
+      (await shown()) === 'c100000 → c300000' &&
+      (await picker.boundingBox()).width === pickerWidth &&
+      (await texts('removed')) === 'const Step3 = 3' &&
+      (await texts('added')) ===
+        'const Step3 = 300|const Extra = 1|const More = 2' &&
+      (await what()).includes('2 commits') &&
+      (await what()).includes('from “Add the prices” to “Add two prices”'),
+    'two entries are compared from the older to the newer, whichever was selected first',
+    `${await shown()} / ${await what()} / ${await texts('removed')} / ${await texts('added')}`,
+  );
+  await shot('12p-diff-two-versions');
+
+  // Older and Newer replace only the newer version.
+  await older.click();
+  await page.locator('.diff-what', { hasText: 'c100000 → c200000' }).waitFor();
+  await settled();
+  check(
+    (await older.isDisabled()) &&
+      (await texts('added')) === 'const Step3 = 300' &&
+      (await what()).includes('1 commit ·'),
+    'Older replaces the newer version and stops in front of the older version',
+    await what(),
+  );
+  await newer.click();
+  await newer.click();
+  await page
+    .locator('.diff-what', { hasText: 'c100000 → Uncommitted' })
+    .waitFor();
+  await settled();
+  check(
+    (await newer.isDisabled()) &&
+      (await shown()) === 'c100000 → Uncommitted' &&
+      (await texts('removed')) ===
+        'const Step3 = 3|const Step9 = 9|const Step19 = 19' &&
+      (await what()).includes('2 commits and the uncommitted changes'),
+    'Newer goes on to the file on disk, compared with the same older version',
+    `${await what()} / ${await texts('removed')}`,
+  );
+  await picker.click();
+  await entries.first().waitFor();
+  check(
+    (await page.locator('.commit-row.on .commit-title').textContent()) ===
+      'Uncommitted changes' &&
+      (await page.locator('.commit-row.base .commit-title').textContent()) ===
+        'Add the prices',
+    'the list shows both compared entries as chosen',
+  );
+  await page.keyboard.press('Escape');
+
+  // The comparison is the same one when the user comes back to the file.
+  await page.locator('.file-tab', { hasText: 'guide.md' }).click();
+  await page.locator('.source-line').first().waitFor();
+  await page.locator('.file-tab', { hasText: 'price.go' }).click();
+  await page
+    .locator('.diff-what', { hasText: 'c100000 → Uncommitted' })
+    .waitFor();
+  check(
+    (await shown()) === 'c100000 → Uncommitted',
+    'a file shows the comparison that was last on screen for it',
+    await shown(),
+  );
+
+  // The keys: the right arrow key goes to the command of an entry. This
+  // time the older entry is selected first.
+  await picker.click();
+  await entries.first().waitFor();
+  const focusOn = () =>
+    page.evaluate(() => {
+      const el = document.activeElement;
+      const title = el
+        ?.closest('.commit-entry')
+        ?.querySelector('.commit-title');
+      return `${el?.className} ${title?.textContent}`;
+    });
+  for (const key of ['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowRight'])
+    await page.keyboard.press(key);
+  const onCommand = await focusOn();
+  await page.keyboard.press('Enter');
+  await page.locator('.commit-entry.picked').waitFor();
+  await page.keyboard.press('ArrowLeft');
+  const onEntry = await focusOn();
+  for (const key of ['ArrowUp', 'ArrowRight', 'Enter'])
+    await page.keyboard.press(key);
+  await page.locator('.diff-what', { hasText: 'c100000 → c200000' }).waitFor();
+  check(
+    onCommand === 'commit-command Add the prices' &&
+      onEntry.startsWith('commit-row') &&
+      onEntry.endsWith('Add the prices') &&
+      (await entries.count()) === 0 &&
+      (await shown()) === 'c100000 → c200000',
+    'the arrow keys and Enter select an entry and compare it with another one',
+    `${onCommand} / ${onEntry} / ${await shown()}`,
+  );
+
+  // Two versions with the same text. The newest commit is given the text
+  // of the first one for the length of this check.
+  const thirdText = await page.evaluate(() => {
+    const commits = window.__mockGitHistory['diffs/price.go'].commits;
+    const kept = commits[0].text;
+    commits[0].text = commits[2].text;
+    return kept;
+  });
+  await picker.click();
+  await useCommand(3);
+  await useCommand(1);
+  await page.locator('.diff-what', { hasText: 'c100000 → c300000' }).waitFor();
+  await page
+    .locator('.diff .source-note', { hasText: 'have the same text' })
+    .waitFor();
+  check(
+    (await page.locator('.diff-line').count()) === 0,
+    'two versions with the same text are reported as the same',
+  );
+  await page.evaluate((text) => {
+    window.__mockGitHistory['diffs/price.go'].commits[0].text = text;
+  }, thirdText);
+
+  // A click on an entry ends the comparison.
+  await picker.click();
+  await entries.nth(1).click();
+  await page.locator('.diff-what', { hasText: 'Add two prices' }).waitFor();
+  await settled();
+  check(
+    (await shown()) === 'Add two prices' &&
+      (await texts('added')) === 'const Extra = 1|const More = 2' &&
+      (await lines('removed').count()) === 0,
+    'choosing an entry shows that change again, compared with the version before it',
+    `${await shown()} / ${await texts('added')}`,
+  );
+
   // The menu of the tree opens the changes of a changed file and the
   // history of every other file.
   await changesButton.click();

@@ -4,8 +4,11 @@ import {
   changeDetail,
   changeStarts,
   changeTitle,
+  compareDetail,
+  compareTitle,
   countsOf,
   rowsOf,
+  sidesOf,
   type DiffRow,
 } from './diff';
 import type { GitChange, GitHunk } from './ipc';
@@ -171,5 +174,60 @@ describe('the words for a change', () => {
     expect(changeDetail({ ...pending, old: null }, 0)).toBe(
       'A new file that is not committed',
     );
+  });
+});
+
+describe('two versions that are compared', () => {
+  // The changes of a file, newest first: what is not committed, and three
+  // commits.
+  const commit = (hash: string, last = false): GitChange => ({
+    commit: hash.padEnd(40, '0'),
+    author: 'Ada Writer',
+    time: 1_700_000_000,
+    summary: `Commit ${hash}`,
+    old: last ? null : { commit: `${hash.padEnd(40, '0')}^`, path: 'a.go' },
+    new: { commit: hash.padEnd(40, '0'), path: 'a.go' },
+  });
+  const pending: GitChange = {
+    commit: null,
+    author: '',
+    time: 0,
+    summary: '',
+    old: { commit: 'HEAD', path: 'a.go' },
+    new: { commit: null, path: 'a.go' },
+  };
+  const changes = [pending, commit('c3'), commit('c2'), commit('c1', true)];
+
+  it('compares a change with the version before it', () => {
+    expect(sidesOf(changes[1], null)).toEqual({
+      old: changes[1].old,
+      new: changes[1].new,
+    });
+    expect(sidesOf(changes[3], null).old).toBeNull();
+  });
+
+  it('compares the file after an older change with the file after a newer one', () => {
+    expect(sidesOf(changes[1], changes[3])).toEqual({
+      old: changes[3].new,
+      new: changes[1].new,
+    });
+    expect(sidesOf(pending, changes[2])).toEqual({
+      old: changes[2].new,
+      new: pending.new,
+    });
+  });
+
+  it('names the older version first', () => {
+    expect(compareTitle(changes[3], changes[1])).toBe('c100000 → c300000');
+    expect(compareTitle(changes[2], pending)).toBe('c200000 → Uncommitted');
+  });
+
+  it('counts the changes between the two versions', () => {
+    expect(compareDetail(changes, 1, 3)).toBe('2 commits');
+    expect(compareDetail(changes, 2, 3)).toBe('1 commit');
+    expect(compareDetail(changes, 0, 3)).toBe(
+      '2 commits and the uncommitted changes',
+    );
+    expect(compareDetail(changes, 0, 1)).toBe('the uncommitted changes');
   });
 });

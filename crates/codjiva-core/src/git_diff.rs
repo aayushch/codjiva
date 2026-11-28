@@ -567,6 +567,28 @@ mod tests {
             }]
         );
 
+        // Two commits that are not next to each other, with the rename
+        // between them: the first commit against the third.
+        let created = &history.changes[3];
+        let diff = file_diff(&ws, Some(&created.new), &tuned.new).unwrap();
+        assert_eq!(diff.old_text, first);
+        assert_eq!(diff.new_text, second);
+        assert_eq!(
+            diff.hunks,
+            vec![Hunk {
+                old_start: 3,
+                old_lines: 1,
+                new_start: 3,
+                new_lines: 1
+            }]
+        );
+
+        // The first commit against the file on disk.
+        let diff = file_diff(&ws, Some(&created.new), &pending.new).unwrap();
+        assert_eq!(diff.old_text, first);
+        assert_eq!(diff.new_text, third);
+        assert_eq!(diff.hunks.len(), 2);
+
         // The commit that created the file: every line is added.
         let added = &history.changes[3];
         let diff = file_diff(&ws, added.old.as_ref(), &added.new).unwrap();

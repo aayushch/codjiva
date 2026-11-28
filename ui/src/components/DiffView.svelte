@@ -6,6 +6,8 @@
     changeDetail,
     changeStarts,
     changeTitle,
+    compareDetail,
+    compareTitle,
     countsOf,
     rowsOf,
     type DiffRow,
@@ -23,10 +25,18 @@
   // the file, newest first: the changes that are not committed, when there
   // are any, and then the commits that changed the file. One of them is on
   // screen. The toolbar has the list and the buttons that step through it.
-  // This component reads the list from git, and reads the two versions of
-  // the change on screen. A change is compared with the version before it.
+  // This component reads the list from git, and reads the two versions that
+  // `diffs.sides` gives.
+  //   - Usually they are the two versions of the change on screen: the file
+  //     before that change and the file after it.
+  //   - The user can also compare the change on screen with an older change
+  //     of the list, `diffs.baseChange`. The two versions are then the file
+  //     after the older change and the file after the change on screen.
   //
-  // The bar at the top names the change on the left. On the right it has:
+  // The bar at the top says on the left what is compared. For one change it
+  // has the name of the change, its hash, its author and its age. For two
+  // versions it has the short names of both, the number of commits between
+  // them, and the names of the two changes. On the right it has:
   //   - how many lines the change added and removed;
   //   - two buttons that scroll to the previous and to the next place where
   //     lines changed. F7 and Shift+F7 do the same;
@@ -68,10 +78,15 @@
   });
 
   const change = $derived(diffs.path === relPath ? diffs.change : null);
+  // The older change whose version `change` is compared with, or null when
+  // `change` is compared with the version before it.
+  const base = $derived(change ? diffs.baseChange : null);
   // A text that is the same for as long as the same two versions are on
   // screen. The versions are read again only when it changes.
   const sides = $derived(
-    change ? JSON.stringify([change.old, change.new]) : null,
+    change && diffs.sides
+      ? JSON.stringify([diffs.sides.old, diffs.sides.new])
+      : null,
   );
   // True when the new version is the file on disk.
   const onDisk = $derived(change?.new.commit == null);
@@ -337,14 +352,25 @@
   {:else}
     <div class="diff-bar">
       <div class="diff-what">
-        <b>{changeTitle(change)}</b>
-        <span class="muted"
-          >{changeDetail(change, now())}{#if change.commit}{change.old
-              ? change.old.path !== change.new.path
-                ? ` · renamed from ${change.old.path}`
-                : ''
-              : ' · created the file'}{/if}</span
-        >
+        {#if base}
+          <b>{compareTitle(base, change)}</b>
+          <span class="muted"
+            >{compareDetail(diffs.changes, diffs.index, diffs.baseIndex)} · from “{changeTitle(
+              base,
+            )}” to “{changeTitle(change)}”{base.new.path !== change.new.path
+              ? ` · renamed from ${base.new.path}`
+              : ''}</span
+          >
+        {:else}
+          <b>{changeTitle(change)}</b>
+          <span class="muted"
+            >{changeDetail(change, now())}{#if change.commit}{change.old
+                ? change.old.path !== change.new.path
+                  ? ` · renamed from ${change.old.path}`
+                  : ''
+                : ' · created the file'}{/if}</span
+          >
+        {/if}
       </div>
       {#if diff && !diff.binary && !diff.tooLarge}
         <span class="diff-counts" aria-label="Lines added and removed"
@@ -399,6 +425,10 @@
       </div>
     {:else if diff.tooLarge}
       <div class="source-note">This file is too large to compare.</div>
+    {:else if base && !diff.hunks.length && !reading}
+      <div class="source-note">
+        These two versions of the file have the same text.
+      </div>
     {:else}
       <div class="diff-panes" class:split={app.diffSplit} class:reading>
         {#each columns as column, at (column)}

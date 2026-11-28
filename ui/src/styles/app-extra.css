@@ -3347,7 +3347,8 @@ iframe {
   background: var(--shell-button);
   outline: none;
 }
-.commit-row.on {
+.commit-row.on,
+.commit-row.base {
   border-left-color: var(--main);
   background: var(--shell-button);
 }
@@ -3363,6 +3364,49 @@ iframe {
 .commit-row .commit-detail {
   color: var(--shell-text-2);
   font-size: 11px;
+}
+/* An entry of the list: the button that shows the change and, over the
+   right end of its second line, the command that selects or compares the
+   entry. The second line always leaves room for the longest words of the
+   command, so the text of an entry is the same width with and without it.
+   The command is visible on the entry under the pointer and on the entry
+   that has focus. While an entry is selected, it is visible on every
+   entry. */
+.commit-entry {
+  position: relative;
+}
+.commit-entry .commit-detail {
+  padding-right: 136px;
+}
+.commit-command {
+  position: absolute;
+  right: 8px;
+  bottom: 4px;
+  visibility: hidden;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.commit-entry:hover .commit-command,
+.commit-entry:focus-within .commit-command,
+.commit-list.selecting .commit-command {
+  visibility: visible;
+}
+.commit-command:hover {
+  text-decoration: underline;
+}
+.commit-command:focus-visible {
+  outline: 1px solid var(--accent);
+}
+/* The entry that is selected to be compared with another one. */
+.commit-entry.picked .commit-row {
+  background: var(--shell-button);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .commit-more {
   padding: 6px 10px;
